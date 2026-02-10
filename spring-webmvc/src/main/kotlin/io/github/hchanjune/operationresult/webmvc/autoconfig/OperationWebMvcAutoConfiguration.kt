@@ -120,13 +120,7 @@ class OperationWebMvcAutoConfiguration {
      * Applications can replace this by defining their own [OperationServiceAspect] bean.
      */
     @Bean
-    @ConditionalOnClass(
-        name = [
-            "org.aspectj.lang.annotation.Aspect",
-            "org.springframework.aop.framework.autoproxy.AutoProxyRegistrar",
-            "org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator"
-        ]
-    )
+    @ConditionalOnClass(org.aspectj.lang.annotation.Aspect::class)
     @ConditionalOnProperty(
         prefix = "operation-manager.webmvc.mdc-service-aspect",
         name = ["enabled"],
