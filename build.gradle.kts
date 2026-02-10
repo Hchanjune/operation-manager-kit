@@ -10,8 +10,8 @@ plugins {
 }
 
 allprojects {
-    group = "io.github.hchanjune"
-    version = "0.1.0"
+    group = "com.github.Hchanjune.operation-manager-kit"
+    version = System.getenv("VERSION") ?: "LOCAL-SNAPSHOT"
 
     repositories {
         mavenCentral()
