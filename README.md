@@ -36,8 +36,8 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.Hchanjune.operation-manager-kit:core:main-SNAPSHOT")
-    implementation("com.github.Hchanjune.operation-manager-kit:spring-webmvc:main-SNAPSHOT")
+    implementation("com.github.Hchanjune.operation-manager-kit:core:0.1.1")
+    implementation("com.github.Hchanjune.operation-manager-kit:spring-webmvc:0.1.1")
 }
 ```
 
