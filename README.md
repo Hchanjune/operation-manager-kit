@@ -132,7 +132,7 @@ Invocation metadata is automatically converted into InvocationInfo and stored in
 ### Disable MVC interceptor
 
 ```yaml
-operationresult:
+operation-manager:
   webmvc:
     mdc-entrypoint-interceptor:
       enabled: false
@@ -141,7 +141,7 @@ operationresult:
 ### Disable Service Aspect
 
 ```yaml
-operationresult:
+operation-manager:
   webmvc:
     mdc-service-aspect:
       enabled: false

@@ -14,6 +14,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
@@ -61,6 +62,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
  * - MDC is thread-local; async execution may require MDC propagation if consistent context is needed.
  */
 @AutoConfiguration
+@EnableConfigurationProperties(OperationManagerWebmvcProperties::class)
 @ConditionalOnClass(name = ["org.springframework.web.servlet.DispatcherServlet"])
 class OperationWebMvcAutoConfiguration {
 
@@ -68,14 +70,14 @@ class OperationWebMvcAutoConfiguration {
      * Default MVC interceptor that writes the resolved controller entrypoint into MDC.
      *
      * Controlled by:
-     * - `operationresult.webmvc.mdc-entrypoint-interceptor.enabled` (default: true)
+     * - `operation-manager.webmvc.mdc-entrypoint-interceptor.enabled` (default: true)
      *
      * Applications can replace this by defining their own [MdcEntrypointInterceptor] bean.
      */
     @Bean
     @ConditionalOnProperty(
-        prefix = "operationresult.webmvc",
-        name = ["mdc-entrypoint-interceptor.enabled"],
+        prefix = "operation-manager.webmvc.mdc-entrypoint-interceptor",
+        name = ["enabled"],
         havingValue = "true",
         matchIfMissing = true,
     )
@@ -93,8 +95,8 @@ class OperationWebMvcAutoConfiguration {
      */
     @Bean
     @ConditionalOnProperty(
-        prefix = "operationresult.webmvc",
-        name = ["mdc-entrypoint-interceptor.enabled"],
+        prefix = "operation-manager.webmvc.mdc-entrypoint-interceptor",
+        name = ["enabled"],
         havingValue = "true",
         matchIfMissing = true,
     )
@@ -110,7 +112,7 @@ class OperationWebMvcAutoConfiguration {
      * Aspect that writes `service` and `function` into MDC for operation-managed execution points.
      *
      * Controlled by:
-     * - `operationresult.webmvc.mdc-service-aspect.enabled` (default: true)
+     * - `operation-manager.webmvc.mdc-service-aspect.enabled` (default: true)
      *
      * This bean is created only when Spring AOP infrastructure is present.
      * (Typically provided by adding `spring-boot-starter-aop`.)
@@ -126,8 +128,8 @@ class OperationWebMvcAutoConfiguration {
         ]
     )
     @ConditionalOnProperty(
-        prefix = "operationresult.webmvc",
-        name = ["mdc-service-aspect.enabled"],
+        prefix = "operation-manager.webmvc.mdc-service-aspect",
+        name = ["enabled"],
         havingValue = "true",
         matchIfMissing = true,
     )
