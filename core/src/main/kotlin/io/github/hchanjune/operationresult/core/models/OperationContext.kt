@@ -59,7 +59,7 @@ data class OperationContext(
     val event: String = "",
 
     /** Optional human-readable message describing the operation outcome. */
-    val message: String = "",
+    var message: String = "",
 
     /** Best-effort textual representation of the operation response or result. */
     val response: String = "",
