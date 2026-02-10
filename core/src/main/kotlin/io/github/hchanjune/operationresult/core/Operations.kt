@@ -2,6 +2,7 @@ package io.github.hchanjune.operationresult.core
 
 import io.github.hchanjune.operationresult.core.defaults.DefaultOperationExecutorFactory
 import io.github.hchanjune.operationresult.core.models.OperationContext
+import io.github.hchanjune.operationresult.core.models.OperationResult
 
 /**
  * Global entrypoint for executing operations.
@@ -64,6 +65,5 @@ object Operations {
      * @param block operation logic to execute
      * @return an [OperationResult] containing execution context and produced data
      */
-    operator fun <T> invoke(block: OperationContext.() -> T) =
-        executor.run(block)
+    operator fun <T> invoke(block: OperationContext.() -> T): OperationResult<T> = executor.run(block)
 }
