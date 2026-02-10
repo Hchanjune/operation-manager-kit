@@ -6,7 +6,6 @@ import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.MDC
 import org.springframework.web.method.HandlerMethod
 import org.springframework.web.servlet.HandlerInterceptor
-import java.lang.Exception
 
 /**
  * Spring MVC [HandlerInterceptor] that captures the resolved controller entrypoint and stores it in MDC.
@@ -57,9 +56,9 @@ class MdcEntrypointInterceptor: HandlerInterceptor {
      * Removes the `entrypoint` key from MDC after request completion.
      */
     override fun afterCompletion(
-        request: HttpServletRequest?,
-        response: HttpServletResponse?,
-        handler: Any?,
+        request: HttpServletRequest,
+        response: HttpServletResponse,
+        handler: Any,
         ex: Exception?
     ) {
         MDC.remove(OperationMdcKeys.ENTRYPOINT)
