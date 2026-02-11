@@ -32,5 +32,6 @@ package io.github.hchanjune.operationresult.core.models
  */
 data class OperationResult<T>(
     val context: OperationContext,
+    val metrics: MetricsContext,
     val data: T
 )

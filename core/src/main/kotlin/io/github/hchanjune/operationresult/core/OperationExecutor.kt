@@ -127,6 +127,7 @@ class OperationExecutor(
 
             OperationResult(
                 context = successCtx,
+                metrics = metrics,
                 data = result
             )
         } catch (exception: Throwable) {
