@@ -14,7 +14,9 @@ class MetricsFlushFilter (
 ): OncePerRequestFilter() {
 
     override fun shouldNotFilterAsyncDispatch(): Boolean = true
-    override fun shouldNotFilterErrorDispatch(): Boolean = true
+    override fun shouldNotFilterErrorDispatch(): Boolean = false
+
+    private val flushedAttr = MetricsFlushFilter::class.java.name + ".FLUSHED"
 
     override fun doFilterInternal(
         request: HttpServletRequest,
@@ -24,6 +26,9 @@ class MetricsFlushFilter (
         try {
             filterChain.doFilter(request, response)
         } finally {
+            if (request.getAttribute(flushedAttr) == true) return
+            request.setAttribute(flushedAttr, true)
+
             val buffered = MetricsBuffer.drain(request)
             if (buffered.isEmpty()) return
 
