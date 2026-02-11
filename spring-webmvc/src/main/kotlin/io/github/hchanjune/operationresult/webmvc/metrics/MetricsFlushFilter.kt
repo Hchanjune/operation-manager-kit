@@ -14,6 +14,7 @@ class MetricsFlushFilter(private val delegate: MetricsRecorder) : OncePerRequest
 
     private val flushedAttr = MetricsFlushFilter::class.java.name + ".FLUSHED"
     private val thrownAttr = MetricsFlushFilter::class.java.name + ".THROWN"
+    private val originalRouteAttr = MetricsFlushFilter::class.java.name + ".ORIGINAL_ROUTE"
 
     override fun shouldNotFilterAsyncDispatch(): Boolean = true
     override fun shouldNotFilterErrorDispatch(): Boolean = false
@@ -45,6 +46,14 @@ class MetricsFlushFilter(private val delegate: MetricsRecorder) : OncePerRequest
                 shouldFlush = false
             }
 
+            if (!isErrorDispatch) {
+                val routeNow =
+                    request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) as? String
+                if (!routeNow.isNullOrBlank()) {
+                    request.setAttribute(originalRouteAttr, routeNow)
+                }
+            }
+
             if (shouldFlush) {
                 request.setAttribute(flushedAttr, true)
 
@@ -52,8 +61,10 @@ class MetricsFlushFilter(private val delegate: MetricsRecorder) : OncePerRequest
                 if (buffered.isNotEmpty()) {
 
                     val status = response.status
-                    val route =
+                    val originalRoute = request.getAttribute(originalRouteAttr) as? String
+                    val currentRoute =
                         request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) as? String
+                    val route = originalRoute ?: currentRoute
 
                     val statusGroup = when (status) {
                         in 200..299 -> MetricOutcome.StatusGroup.S2XX
