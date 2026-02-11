@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class OperationManagerWebmvcProperties(
     var mdcEntrypointInterceptor: Toggle = Toggle(),
     var mdcServiceAspect: Toggle = Toggle(),
+    var micrometer: Toggle = Toggle(),
 ) {
     data class Toggle(
         var enabled: Boolean = true

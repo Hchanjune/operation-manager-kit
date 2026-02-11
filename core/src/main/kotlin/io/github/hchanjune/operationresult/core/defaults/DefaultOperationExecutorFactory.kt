@@ -8,6 +8,10 @@ object DefaultOperationExecutorFactory {
             invocationInfoProvider = DefaultInvocationInfoProvider,
             issuerProvider = DefaultIssuerProvider,
             correlationIdProvider = DefaultCorrelationIdProvider,
-            hooks = NoopOperationHooks
+            hooks = NoopOperationHooks,
+
+            metricsContextFactory = DefaultMetricsContextFactory,
+            metricOutcomeClassifier = DefaultMetricOutcomeClassifier,
+            metricsRecorder = NoopMetricsRecorder,
         )
 }

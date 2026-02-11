@@ -5,39 +5,57 @@ import io.github.hchanjune.operationresult.core.models.OperationResult
 import io.github.hchanjune.operationresult.core.providers.CorrelationIdProvider
 import io.github.hchanjune.operationresult.core.providers.InvocationInfoProvider
 import io.github.hchanjune.operationresult.core.providers.IssuerProvider
+import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifier
+import io.github.hchanjune.operationresult.core.providers.MetricsContextFactory
+import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
 import io.github.hchanjune.operationresult.core.providers.OperationHooks
 
 /**
  * Core executor responsible for running an operation and producing an [OperationResult].
  *
  * ## Purpose
- * [OperationExecutor] provides a structured execution boundary around business logic,
- * capturing consistent metadata such as:
+ * [OperationExecutor] defines a consistent execution boundary around business logic.
+ *
+ * It captures two complementary concerns:
+ *
+ * ### 1. Invocation Metadata (per-invocation tracing)
  * - Correlation ID (execution trace identifier)
  * - Issuer (actor identity)
  * - Invocation context (entrypoint/service/function)
- * - Execution duration
  *
- * It also triggers lifecycle hooks for success/failure handling.
+ * These values are primarily used for structured logging and audit-style tracing.
+ *
+ * ### 2. Aggregated Metrics (operational monitoring)
+ * - MetricsContext lifecycle (start/end)
+ * - Outcome classification (success/reject/failure)
+ * - Recording into an external metrics backend via [MetricsRecorder]
+ *
+ * Metrics are intended for low-cardinality aggregation in time-series systems
+ * such as Prometheus (via Micrometer integrations).
  *
  * ## Execution flow
  * 1. Resolve invocation metadata via [InvocationInfoProvider]
  * 2. Generate correlation ID via [CorrelationIdProvider]
  * 3. Resolve issuer identity via [IssuerProvider]
- * 4. Execute the user-provided [block] with an initialized [OperationContext]
- * 5. Record execution duration and response summary
- * 6. Invoke [OperationHooks] callbacks
- * 7. Return an [OperationResult] on success, or rethrow exceptions on failure
+ * 4. Create and start a backend-agnostic metrics scope via [MetricsContextFactory]
+ * 5. Execute the user-provided [block] with an initialized [OperationContext]
+ * 6. Finalize execution duration and response summary
+ * 7. Classify the execution outcome via [MetricOutcomeClassifier]
+ * 8. Record the finalized metrics via [MetricsRecorder]
+ * 9. Invoke lifecycle callbacks via [OperationHooks]
+ * 10. Return an [OperationResult] on success, or rethrow exceptions on failure
  *
  * ## Exception handling
  * This executor does **not** swallow exceptions.
- * If the operation block throws, [onFailure] is invoked and the exception is rethrown.
+ * If the operation block throws, [OperationHooks.onFailure] is invoked,
+ * metrics are finalized as failure, and the exception is rethrown.
  *
  * ## Notes
- * - The response stored in [OperationContext.response] is currently derived from
- *   `result.toString()` or exception type name. Applications may customize this behavior
- *   by extending hooks or wrapping results differently.
- * - Implementations of hooks should be lightweight and exception-safe.
+ * - Metrics tags MUST remain low-cardinality. Do not include values such as
+ *   userId, requestId, correlationId, or full request paths.
+ *   Those belong in invocation logs, not metrics.
+ *
+ * - Hook implementations and metric recorders should be lightweight and exception-safe.
  *
  * ## Usage example
  * ```kotlin
@@ -51,7 +69,11 @@ class OperationExecutor(
     private val invocationInfoProvider: InvocationInfoProvider,
     private val issuerProvider: IssuerProvider,
     private val correlationIdProvider: CorrelationIdProvider,
-    private val hooks: OperationHooks
+    private val hooks: OperationHooks,
+
+    private val metricsContextFactory: MetricsContextFactory,
+    private val metricOutcomeClassifier: MetricOutcomeClassifier,
+    private val metricsRecorder: MetricsRecorder,
 ) {
 
     /**
@@ -68,7 +90,6 @@ class OperationExecutor(
     ): OperationResult<T> {
         val info = invocationInfoProvider.current()
 
-        // Base operation context created before execution begins.
         val baseCtx = OperationContext(
             correlationId = correlationIdProvider.newCorrelationId(),
             issuer = issuerProvider.currentIssuer(),
@@ -79,17 +100,28 @@ class OperationExecutor(
             attributes = info.attributes,
         )
 
+        // Metrics scope starts here (backend-agnostic).
+        var metrics = metricsContextFactory.create().start()
+
         val start = System.nanoTime()
 
         return try {
-            // Execute user business logic.
             val result = baseCtx.block()
 
-            // Successful completion context.
+            val durationMs = (System.nanoTime() - start) / 1_000_000
+
             val successCtx = baseCtx.copy(
-                durationMs = (System.nanoTime() - start) / 1_000_000,
+                durationMs = durationMs,
                 response = result.toString()
             )
+
+            // Finalize metrics as SUCCESS (no HTTP status in core).
+            val outcome = metricOutcomeClassifier.classify(
+                statusCode = null,
+                error = null
+            )
+            metrics = metrics.end(outcome = outcome)
+            metricsRecorder.record(metrics)
 
             hooks.onSuccess(successCtx)
 
@@ -98,17 +130,27 @@ class OperationExecutor(
                 data = result
             )
         } catch (exception: Throwable) {
-            // Failure completion context.
+            val durationMs = (System.nanoTime() - start) / 1_000_000
+
             val failureCtx = baseCtx.copy(
-                durationMs = (System.nanoTime() - start) / 1_000_000,
+                durationMs = durationMs,
                 response = exception::class.simpleName ?: "Exception"
             )
+
+            // Finalize metrics as FAILURE/REJECT (based on classifier policy).
+            val outcome = metricOutcomeClassifier.classify(
+                statusCode = null,
+                error = exception
+            )
+            metrics = metrics.end(outcome = outcome)
+            metricsRecorder.record(metrics)
+
             hooks.onFailure(failureCtx, exception)
 
-            // Exceptions are not swallowed.
             throw exception
         }
     }
+
 
     /**
      * Operator shortcut for [run].

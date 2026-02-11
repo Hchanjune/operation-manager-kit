@@ -3,13 +3,22 @@ package io.github.hchanjune.operationresult.webmvc.autoconfig
 import io.github.hchanjune.operationresult.core.Operations
 import io.github.hchanjune.operationresult.core.OperationExecutor
 import io.github.hchanjune.operationresult.core.defaults.DefaultCorrelationIdProvider
+import io.github.hchanjune.operationresult.core.defaults.NoopMetricsRecorder
 import io.github.hchanjune.operationresult.core.defaults.NoopOperationHooks
+import io.github.hchanjune.operationresult.core.models.MetricName
 import io.github.hchanjune.operationresult.core.providers.IssuerProvider
 import io.github.hchanjune.operationresult.core.providers.InvocationInfoProvider
+import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifier
+import io.github.hchanjune.operationresult.core.providers.MetricsContextFactory
+import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
 import io.github.hchanjune.operationresult.core.providers.OperationHooks
 import io.github.hchanjune.operationresult.webmvc.aop.OperationServiceAspect
 import io.github.hchanjune.operationresult.webmvc.interceptor.MdcEntrypointInterceptor
 import io.github.hchanjune.operationresult.webmvc.invocation.MdcInvocationInfoProvider
+import io.github.hchanjune.operationresult.webmvc.metrics.OperationMetricsRecorder
+import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricOutcomeClassifier
+import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricsContextFactory
+import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -184,27 +193,110 @@ class OperationWebMvcAutoConfiguration {
     fun fallbackIssuerProvider(): IssuerProvider = IssuerProvider { "anonymous" }
 
     /**
+     * Provides the default [MetricsContextFactory] for WebMVC environments.
+     *
+     * This factory creates a new [MetricsContext] for each operation scope and
+     * enriches it with HTTP-related tags such as:
+     * - request method
+     * - URI template (route pattern)
+     *
+     * Applications may override this bean to customize metric names or tag policies.
+     */
+    @Bean
+    fun metricsContextFactory(): MetricsContextFactory =
+        WebMvcMetricsContextFactory(metricName = MetricName("operation.duration"))
+
+    /**
+     * Provides the default [MetricOutcomeClassifier] for WebMVC environments.
+     *
+     * This classifier determines whether an execution should be treated as:
+     * - SUCCESS  (normal completion)
+     * - REJECT   (client/validation/auth related errors)
+     * - FAILURE  (server-side or unexpected errors)
+     *
+     * Applications may override this bean to apply custom classification rules.
+     */
+    @Bean
+    fun metricOutcomeClassifier(): MetricOutcomeClassifier =
+        WebMvcMetricOutcomeClassifier()
+
+    /**
+     * Registers the default Micrometer-backed [MetricsRecorder] when Micrometer is available.
+     *
+     * Enabled by default and can be disabled via property:
+     * - operationresult.webmvc.metrics.micrometer.enabled=false
+     */
+    @Bean
+    @ConditionalOnClass(MeterRegistry::class)
+    @ConditionalOnProperty(
+        prefix = "operation-manager.webmvc.metrics.micrometer",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true,
+    )
+    @ConditionalOnMissingBean(MetricsRecorder::class)
+    fun micrometerMetricsRecorder(
+        registry: MeterRegistry
+    ): MetricsRecorder =
+        OperationMetricsRecorder(registry)
+
+    /**
+     * Registers a fallback no-op [MetricsRecorder].
+     *
+     * This ensures the library remains functional even when no metrics backend
+     * is configured. If Micrometer is not present, or metrics collection is
+     * intentionally disabled, this recorder will silently discard metric events.
+     *
+     * Applications may override this bean to enable custom metric recording.
+     */
+    @Bean
+    @ConditionalOnMissingBean(MetricsRecorder::class)
+    fun noopMetricsRecorder(): MetricsRecorder =
+        NoopMetricsRecorder
+
+    /**
      * Creates the core [OperationExecutor] used by this application.
      *
-     * This executor is wired with the resolved providers and hooks:
-     * - [InvocationInfoProvider]
-     * - [IssuerProvider]
-     * - [DefaultCorrelationIdProvider]
-     * - [OperationHooks]
+     * ## Responsibilities
+     * This executor acts as the primary execution boundary for operations and is wired with:
      *
-     * Note: this method does not reference Spring Security types directly.
+     * ### Invocation metadata providers
+     * - [InvocationInfoProvider] (entrypoint/service/function resolution)
+     * - [IssuerProvider] (actor identity resolution)
+     * - [DefaultCorrelationIdProvider] (trace identifier generation)
+     *
+     * ### Lifecycle hooks
+     * - [OperationHooks] for success/failure callbacks
+     *
+     * ### Metrics pipeline (aggregated monitoring)
+     * - [MetricsContextFactory] to create and enrich a metrics scope
+     * - [MetricOutcomeClassifier] to classify outcomes (success/reject/failure)
+     * - [MetricsRecorder] to record finalized metrics into an external backend
+     *
+     * ## Notes
+     * - The default recorder is [NoopMetricsRecorder], meaning metrics are disabled
+     *   unless an integration module (e.g., Micrometer) provides a real implementation.
+     * - WebMVC-specific factories/classifiers may enrich tags such as HTTP method and URI template.
+     * - This configuration remains independent of Spring Security types.
      */
     @Bean
     fun operationExecutor(
         invocationInfoProvider: InvocationInfoProvider,
         issuerProvider: IssuerProvider,
         hooks: OperationHooks,
+
+        metricsContextFactory: MetricsContextFactory,
+        metricOutcomeClassifier: MetricOutcomeClassifier,
+        metricsRecorder: MetricsRecorder
     ): OperationExecutor =
         OperationExecutor(
             invocationInfoProvider = invocationInfoProvider,
             issuerProvider = issuerProvider,
             correlationIdProvider = DefaultCorrelationIdProvider,
             hooks = hooks,
+            metricsContextFactory = metricsContextFactory,
+            metricOutcomeClassifier = metricOutcomeClassifier,
+            metricsRecorder = metricsRecorder,
         )
 
     /**

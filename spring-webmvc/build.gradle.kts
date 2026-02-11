@@ -15,6 +15,7 @@ dependencies {
     kapt("org.springframework.boot:spring-boot-configuration-processor:4.0.2")
 
     compileOnly("org.slf4j:slf4j-api")
+    compileOnly("io.micrometer:micrometer-core")
     compileOnly("jakarta.servlet:jakarta.servlet-api")
     compileOnly("jakarta.annotation:jakarta.annotation-api")
     compileOnly("org.springframework:spring-webmvc")

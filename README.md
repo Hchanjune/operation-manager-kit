@@ -127,6 +127,45 @@ function  = create
 
 Invocation metadata is automatically converted into InvocationInfo and stored into OperationContext.
 
+### Micrometer(Spring Actuator) Auto Integration
+
+When Micrometer is available on the classpath, operation-manager-kit-webmvc automatically enables
+a default metrics recorder.
+
+This allows operation execution metrics to be exported through Spring Boot Actuator and collected
+by monitoring systems such as Prometheus.
+
+What is recorded?
+
+By default, the library records aggregated metrics such as:
+
+execution duration (operation.duration)
+
+execution outcome (success / reject / failure)
+
+HTTP method and route template (WebMVC only)
+
+```yaml
+http.method = GET
+http.uri    = /trees/{id}
+result      = failure
+exception   = TimeoutException
+```
+
+### Prometheus Export
+
+If you include:
+- `spring-boot-starter-actuator`
+- `micrometer-registry-prometheus`
+ 
+Metrics will be exposed at:
+
+```yaml
+/actuator/prometheus
+```
+
+and can be scraped by Prometheus.
+
 ## Configuration Properties
 
 ### Disable MVC interceptor
@@ -144,6 +183,14 @@ operation-manager:
 operation-manager:
   webmvc:
     mdc-service-aspect:
+      enabled: false
+```
+
+### Disable Micrometer Default Integration
+```yaml
+operation-manager:
+  webmvc:
+    micrometer:
       enabled: false
 ```
 
