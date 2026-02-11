@@ -30,6 +30,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.servlet.FilterRegistrationBean
@@ -247,6 +248,12 @@ class OperationWebMvcAutoConfiguration {
      */
     @Bean
     @ConditionalOnClass(name = ["io.micrometer.core.instrument.MeterRegistry"])
+    @ConditionalOnProperty(
+        prefix = "operation-manager.webmvc.micrometer",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true,
+    )
     @ConditionalOnMissingBean(MetricsEnricher::class)
     fun webMvcMetricsEnricher(): MetricsEnricher =
         WebMvcMetricsEnricher()
@@ -268,31 +275,35 @@ class OperationWebMvcAutoConfiguration {
         DefaultMetricsEnricher
 
     @Bean(name = ["operationMetricsBackendRecorder"])
+    @ConditionalOnProperty(
+        prefix = "operation-manager.webmvc.micrometer",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true,
+    )
+    @ConditionalOnClass(MeterRegistry::class)
     @ConditionalOnBean(MeterRegistry::class)
     fun operationMetricsBackendRecorder(registry: MeterRegistry): MetricsRecorder =
         OperationMetricsRecorder(registry)
 
     @Bean
     @Primary
-    @ConditionalOnBean(MeterRegistry::class)
-    @ConditionalOnClass(MeterRegistry::class)
+    @ConditionalOnBean(name = ["operationMetricsBackendRecorder"])
     fun metricsRecorderWithMicrometer(
-        @Qualifier("operationMetricsBackendRecorder") recorder: MetricsRecorder
+        @Qualifier("operationMetricsBackendRecorder") backend: MetricsRecorder
     ): MetricsRecorder =
-        RoutingWebMvcMetricsRecorder(recorder)
+        RoutingWebMvcMetricsRecorder(backend)
 
-    @Bean
-    @Primary
-    @ConditionalOnBean(MeterRegistry::class)
+    @Bean(name = ["operationMetricsFallbackRecorder"])
     fun metricsRecorderFallback(): MetricsRecorder =
         NoopMetricsRecorder
 
     @Bean
-    @ConditionalOnBean(MeterRegistry::class)
+    @ConditionalOnBean(name = ["operationMetricsBackendRecorder"])
     fun operationMetricsFlushFilter(
-        @Qualifier("operationMetricsBackendRecorder") recorder: MetricsRecorder
+        @Qualifier("operationMetricsBackendRecorder") backend: MetricsRecorder
     ): FilterRegistrationBean<MetricsFlushFilter> {
-        val filter = MetricsFlushFilter(recorder)
+        val filter = MetricsFlushFilter(backend)
         return FilterRegistrationBean(filter).apply {
             order = Ordered.LOWEST_PRECEDENCE - 50
             addUrlPatterns("/*")
