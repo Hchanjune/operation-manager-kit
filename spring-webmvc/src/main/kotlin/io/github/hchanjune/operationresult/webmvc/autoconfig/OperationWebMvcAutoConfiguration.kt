@@ -279,6 +279,17 @@ class OperationWebMvcAutoConfiguration {
     fun defaultMetricsEnricher(): MetricsEnricher =
         DefaultMetricsEnricher
 
+    /**
+     * Micrometer-based MetricsRecorder auto-configuration.
+     *
+     * This bean is only created when:
+     *  - Micrometer is present on the classpath (MeterRegistry exists)
+     *  - A MeterRegistry bean is actually registered in the application context
+     *  - The feature is enabled via configuration property
+     *
+     * This allows the library to integrate with Spring Boot Actuator metrics
+     * automatically, without forcing Micrometer as a hard dependency.
+     */
     @Bean(name = ["operationManagerOperationMetricRecorder"])
     @ConditionalOnProperty(
         prefix = "operation-manager.webmvc.micrometer",
@@ -291,8 +302,24 @@ class OperationWebMvcAutoConfiguration {
     fun operationMetricRecorder(
         @Suppress("SpringJavaInjectionPointsAutowiringInspection") registry: MeterRegistry
     ): MetricsRecorder =
+        /**
+         * The actual Micrometer-backed recorder implementation.
+         *
+         * This recorder writes operation-level metrics
+         * (e.g., execution time, success/failure counters)
+         * into the provided MeterRegistry.
+         */
         OperationMetricsRecorder(registry)
 
+    /**
+     * Primary routing MetricsRecorder.
+     *
+     * This bean wraps the Micrometer-backed recorder and becomes the primary
+     * MetricsRecorder used by the framework.
+     *
+     * Routing can later be extended to support multiple backends or strategies
+     * without changing the core recorder implementation.
+     */
     @Bean(name = ["operationManagerRoutingWebMvcMetricRecorder"])
     @Primary
     @ConditionalOnBean(name = ["operationManagerOperationMetricRecorder"])
@@ -301,10 +328,27 @@ class OperationWebMvcAutoConfiguration {
     ): MetricsRecorder =
         RoutingWebMvcMetricsRecorder(backend)
 
+    /**
+     * Fallback MetricsRecorder.
+     *
+     * If no MetricsRecorder implementation is available (e.g., Micrometer is not
+     * on the classpath or explicitly disabled), this No-Op recorder is registered.
+     *
+     * This guarantees that the framework can operate safely even without metrics,
+     * avoiding missing-bean failures in consumer applications.
+     */
     @Bean(name = ["operationMetricsFallbackRecorder"])
+    @ConditionalOnMissingBean(MetricsRecorder::class)
     fun metricsRecorderFallback(): MetricsRecorder =
         NoopMetricsRecorder
 
+    /**
+     * Servlet filter responsible for flushing buffered metrics at the end of each request.
+     *
+     * This filter is only registered when the Micrometer recorder is active.
+     * It ensures that operation metrics are properly finalized and emitted
+     * after the HTTP request lifecycle completes.
+     */
     @Bean
     @ConditionalOnBean(name = ["operationManagerOperationMetricRecorder"])
     fun operationMetricsFlushFilter(
@@ -335,6 +379,7 @@ class OperationWebMvcAutoConfiguration {
      * ### Metrics pipeline (aggregated monitoring)
      * - [MetricsContextFactory] to create and enrich a metrics scope
      * - [MetricOutcomeClassifier] to classify outcomes (success/reject/failure)
+     * - [MetricsEnricher] to convert metric outcome to usable object
      * - [MetricsRecorder] to record finalized metrics into an external backend
      *
      * ## Notes
@@ -351,8 +396,8 @@ class OperationWebMvcAutoConfiguration {
 
         metricsContextFactory: MetricsContextFactory,
         metricOutcomeClassifier: MetricOutcomeClassifier,
+        metricsEnricher: MetricsEnricher,
         metricsRecorder: MetricsRecorder,
-        metricsEnricher: MetricsEnricher
     ): OperationExecutor =
         OperationExecutor(
             invocationInfoProvider = invocationInfoProvider,
