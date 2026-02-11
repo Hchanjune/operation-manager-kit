@@ -1,5 +1,6 @@
 package io.github.hchanjune.operationresult.webmvc.metrics
 
+import io.github.hchanjune.operationresult.core.defaults.MetricTagOption
 import io.github.hchanjune.operationresult.core.models.MetricKind
 import io.github.hchanjune.operationresult.core.models.MetricsContext
 import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
@@ -21,9 +22,9 @@ class OperationMetricsRecorder(
         val durationMs = context.durationMillis() ?: return
 
         val enrichedTags = context.tags.toBuilder()
-            .put("result", outcome.result.name.lowercase())
-            .put("status_group", outcome.statusGroup?.name?.lowercase())
-            .put("exception", outcome.exception)
+            .put(MetricTagOption.RESULT, outcome.result.name.lowercase())
+            .put(MetricTagOption.STATUS_GROUP, outcome.statusGroup?.name?.lowercase())
+            .put(MetricTagOption.EXCEPTION, outcome.exception)
             .build()
 
         val tags = enrichedTags.values

@@ -7,6 +7,7 @@ import io.github.hchanjune.operationresult.core.providers.InvocationInfoProvider
 import io.github.hchanjune.operationresult.core.providers.IssuerProvider
 import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifier
 import io.github.hchanjune.operationresult.core.providers.MetricsContextFactory
+import io.github.hchanjune.operationresult.core.providers.MetricsEnricher
 import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
 import io.github.hchanjune.operationresult.core.providers.OperationHooks
 
@@ -74,6 +75,7 @@ class OperationExecutor(
     private val metricsContextFactory: MetricsContextFactory,
     private val metricOutcomeClassifier: MetricOutcomeClassifier,
     private val metricsRecorder: MetricsRecorder,
+    private val metricsEnricher: MetricsEnricher
 ) {
 
     /**
@@ -101,7 +103,7 @@ class OperationExecutor(
         )
 
         // Metrics scope starts here (backend-agnostic).
-        var metrics = metricsContextFactory.create().start()
+        val metrics = metricsContextFactory.create().start()
 
         val start = System.nanoTime()
 
@@ -120,14 +122,15 @@ class OperationExecutor(
                 statusCode = null,
                 error = null
             )
-            metrics = metrics.end(outcome = outcome)
-            metricsRecorder.record(metrics)
+            val finalized = metrics.end(outcome = outcome)
+            val enriched = metricsEnricher.enrich(finalized)
+            metricsRecorder.record(enriched)
 
             hooks.onSuccess(successCtx)
 
             OperationResult(
                 context = successCtx,
-                metrics = metrics,
+                metrics = enriched,
                 data = result
             )
         } catch (exception: Throwable) {
@@ -143,8 +146,10 @@ class OperationExecutor(
                 statusCode = null,
                 error = exception
             )
-            metrics = metrics.end(outcome = outcome)
-            metricsRecorder.record(metrics)
+            val finalized = metrics.end(outcome = outcome)
+            val enriched = metricsEnricher.enrich(finalized)
+            metricsRecorder.record(enriched)
+
 
             hooks.onFailure(failureCtx, exception)
 

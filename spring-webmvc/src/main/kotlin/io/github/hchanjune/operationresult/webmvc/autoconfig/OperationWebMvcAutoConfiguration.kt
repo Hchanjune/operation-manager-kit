@@ -3,6 +3,7 @@ package io.github.hchanjune.operationresult.webmvc.autoconfig
 import io.github.hchanjune.operationresult.core.Operations
 import io.github.hchanjune.operationresult.core.OperationExecutor
 import io.github.hchanjune.operationresult.core.defaults.DefaultCorrelationIdProvider
+import io.github.hchanjune.operationresult.core.defaults.DefaultMetricsEnricher
 import io.github.hchanjune.operationresult.core.defaults.NoopMetricsRecorder
 import io.github.hchanjune.operationresult.core.defaults.NoopOperationHooks
 import io.github.hchanjune.operationresult.core.models.MetricName
@@ -10,21 +11,31 @@ import io.github.hchanjune.operationresult.core.providers.IssuerProvider
 import io.github.hchanjune.operationresult.core.providers.InvocationInfoProvider
 import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifier
 import io.github.hchanjune.operationresult.core.providers.MetricsContextFactory
+import io.github.hchanjune.operationresult.core.providers.MetricsEnricher
 import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
 import io.github.hchanjune.operationresult.core.providers.OperationHooks
 import io.github.hchanjune.operationresult.webmvc.aop.OperationServiceAspect
 import io.github.hchanjune.operationresult.webmvc.interceptor.MdcEntrypointInterceptor
 import io.github.hchanjune.operationresult.webmvc.invocation.MdcInvocationInfoProvider
+import io.github.hchanjune.operationresult.webmvc.metrics.MetricsFlushFilter
 import io.github.hchanjune.operationresult.webmvc.metrics.OperationMetricsRecorder
+import io.github.hchanjune.operationresult.webmvc.metrics.RoutingWebMvcMetricsRecorder
 import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricOutcomeClassifier
 import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricsContextFactory
+import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricsEnricher
 import io.micrometer.core.instrument.MeterRegistry
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.AutoConfiguration
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Primary
+import org.springframework.core.Ordered
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 
@@ -221,38 +232,76 @@ class OperationWebMvcAutoConfiguration {
         WebMvcMetricOutcomeClassifier()
 
     /**
-     * Registers the default Micrometer-backed [MetricsRecorder] when Micrometer is available.
+     * Registers the default WebMVC-specific [MetricsEnricher] when Micrometer is available.
      *
-     * Enabled by default and can be disabled via property:
-     * - operationresult.webmvc.metrics.micrometer.enabled=false
+     * This enricher is only created if:
+     * - Micrometer is present on the classpath
+     * - No other [MetricsEnricher] bean has been provided by the application
+     *
+     * When enabled, it enriches operation metrics with low-cardinality HTTP tags such as:
+     * - http.method
+     * - http.route (URI template)
+     * - result (success/reject/failure)
+     *
+     * This provides meaningful metrics out-of-the-box when exporting through Micrometer.
      */
     @Bean
-    @ConditionalOnClass(MeterRegistry::class)
-    @ConditionalOnProperty(
-        prefix = "operation-manager.webmvc.metrics.micrometer",
-        name = ["enabled"],
-        havingValue = "true",
-        matchIfMissing = true,
-    )
-    @ConditionalOnMissingBean(MetricsRecorder::class)
-    fun micrometerMetricsRecorder(
-        registry: MeterRegistry
-    ): MetricsRecorder =
-        OperationMetricsRecorder(registry)
+    @ConditionalOnClass(name = ["io.micrometer.core.instrument.MeterRegistry"])
+    @ConditionalOnMissingBean(MetricsEnricher::class)
+    fun webMvcMetricsEnricher(): MetricsEnricher =
+        WebMvcMetricsEnricher()
 
     /**
-     * Registers a fallback no-op [MetricsRecorder].
+     * Registers the fallback core [DefaultMetricsEnricher].
      *
-     * This ensures the library remains functional even when no metrics backend
-     * is configured. If Micrometer is not present, or metrics collection is
-     * intentionally disabled, this recorder will silently discard metric events.
+     * This enricher is used when:
+     * - Micrometer is not present, or
+     * - WebMVC-specific enrichment is disabled/unavailable, or
+     * - The application has not provided a custom [MetricsEnricher]
      *
-     * Applications may override this bean to enable custom metric recording.
+     * The default implementation attaches only minimal outcome tags
+     * (e.g., result=success/failure) to keep core behavior lightweight.
      */
     @Bean
-    @ConditionalOnMissingBean(MetricsRecorder::class)
-    fun noopMetricsRecorder(): MetricsRecorder =
+    @ConditionalOnMissingBean(MetricsEnricher::class)
+    fun defaultMetricsEnricher(): MetricsEnricher =
+        DefaultMetricsEnricher
+
+    @Bean(name = ["operationMetricsBackendRecorder"])
+    @ConditionalOnClass(MeterRegistry::class)
+    @ConditionalOnBean(MeterRegistry::class)
+    fun operationMetricsBackendRecorder(registry: MeterRegistry): MetricsRecorder =
+        OperationMetricsRecorder(registry)
+
+    @Bean
+    @Primary
+    @ConditionalOnClass(MeterRegistry::class)
+    @ConditionalOnBean(MeterRegistry::class)
+    fun metricsRecorderWithMicrometer(
+        @Qualifier("operationMetricsBackendRecorder") recorder: MetricsRecorder
+    ): MetricsRecorder =
+        RoutingWebMvcMetricsRecorder(recorder)
+
+    @Bean
+    @Primary
+    @ConditionalOnClass(MeterRegistry::class)
+    @ConditionalOnBean(MeterRegistry::class)
+    fun metricsRecorderFallback(): MetricsRecorder =
         NoopMetricsRecorder
+
+    @Bean
+    @ConditionalOnClass(MeterRegistry::class)
+    @ConditionalOnBean(MeterRegistry::class)
+    fun operationMetricsFlushFilter(
+        @Qualifier("operationMetricsBackendRecorder") recorder: MetricsRecorder
+    ): FilterRegistrationBean<MetricsFlushFilter> {
+        val filter = MetricsFlushFilter(recorder)
+        return FilterRegistrationBean(filter).apply {
+            order = Ordered.LOWEST_PRECEDENCE - 50
+            addUrlPatterns("/*")
+            setName("operationMetricsFlushFilter")
+        }
+    }
 
     /**
      * Creates the core [OperationExecutor] used by this application.
@@ -287,7 +336,8 @@ class OperationWebMvcAutoConfiguration {
 
         metricsContextFactory: MetricsContextFactory,
         metricOutcomeClassifier: MetricOutcomeClassifier,
-        metricsRecorder: MetricsRecorder
+        metricsRecorder: MetricsRecorder,
+        metricsEnricher: MetricsEnricher
     ): OperationExecutor =
         OperationExecutor(
             invocationInfoProvider = invocationInfoProvider,
@@ -297,6 +347,7 @@ class OperationWebMvcAutoConfiguration {
             metricsContextFactory = metricsContextFactory,
             metricOutcomeClassifier = metricOutcomeClassifier,
             metricsRecorder = metricsRecorder,
+            metricsEnricher = metricsEnricher
         )
 
     /**

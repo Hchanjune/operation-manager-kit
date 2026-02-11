@@ -13,5 +13,6 @@ object DefaultOperationExecutorFactory {
             metricsContextFactory = DefaultMetricsContextFactory,
             metricOutcomeClassifier = DefaultMetricOutcomeClassifier,
             metricsRecorder = NoopMetricsRecorder,
+            metricsEnricher = DefaultMetricsEnricher,
         )
 }
