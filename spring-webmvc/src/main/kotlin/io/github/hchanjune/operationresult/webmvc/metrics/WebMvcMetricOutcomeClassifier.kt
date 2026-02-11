@@ -54,7 +54,7 @@ class WebMvcMetricOutcomeClassifier: MetricOutcomeClassifier {
         return MetricOutcome(
             result = result,
             statusGroup = group,
-            exception = error?.javaClass?.simpleName?: "Exception"
+            exception = error?.javaClass?.simpleName
         )
     }
 
