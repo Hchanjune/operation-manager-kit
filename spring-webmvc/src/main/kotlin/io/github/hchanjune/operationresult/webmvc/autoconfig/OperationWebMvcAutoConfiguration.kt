@@ -24,13 +24,11 @@ import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricOutcomeCla
 import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricsContextFactory
 import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricsEnricher
 import io.micrometer.core.instrument.MeterRegistry
-import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.servlet.FilterRegistrationBean
@@ -247,7 +245,7 @@ class OperationWebMvcAutoConfiguration {
      * This provides meaningful metrics out-of-the-box when exporting through Micrometer.
      */
     @Bean
-    @ConditionalOnClass(name = ["io.micrometer.core.instrument.MeterRegistry"])
+    @ConditionalOnClass(MeterRegistry::class)
     @ConditionalOnProperty(
         prefix = "operation-manager.webmvc.micrometer",
         name = ["enabled"],
@@ -274,7 +272,7 @@ class OperationWebMvcAutoConfiguration {
     fun defaultMetricsEnricher(): MetricsEnricher =
         DefaultMetricsEnricher
 
-    @Bean(name = ["operationMetricsBackendRecorder"])
+    @Bean(name = ["operationManagerOperationMetricRecorder"])
     @ConditionalOnProperty(
         prefix = "operation-manager.webmvc.micrometer",
         name = ["enabled"],
@@ -283,14 +281,16 @@ class OperationWebMvcAutoConfiguration {
     )
     @ConditionalOnClass(MeterRegistry::class)
     @ConditionalOnBean(MeterRegistry::class)
-    fun operationMetricsBackendRecorder(registry: MeterRegistry): MetricsRecorder =
+    fun operationMetricRecorder(
+        @Suppress("SpringJavaInjectionPointsAutowiringInspection") registry: MeterRegistry
+    ): MetricsRecorder =
         OperationMetricsRecorder(registry)
 
-    @Bean
+    @Bean(name = ["operationManagerRoutingWebMvcMetricRecorder"])
     @Primary
-    @ConditionalOnBean(name = ["operationMetricsBackendRecorder"])
-    fun metricsRecorderWithMicrometer(
-        @Qualifier("operationMetricsBackendRecorder") backend: MetricsRecorder
+    @ConditionalOnBean(name = ["operationManagerOperationMetricRecorder"])
+    fun routingWebMvcMetricRecorder(
+        @Qualifier("operationManagerOperationMetricRecorder") backend: MetricsRecorder
     ): MetricsRecorder =
         RoutingWebMvcMetricsRecorder(backend)
 
@@ -299,9 +299,9 @@ class OperationWebMvcAutoConfiguration {
         NoopMetricsRecorder
 
     @Bean
-    @ConditionalOnBean(name = ["operationMetricsBackendRecorder"])
+    @ConditionalOnBean(name = ["operationManagerOperationMetricRecorder"])
     fun operationMetricsFlushFilter(
-        @Qualifier("operationMetricsBackendRecorder") backend: MetricsRecorder
+        @Qualifier("operationManagerOperationMetricRecorder") backend: MetricsRecorder
     ): FilterRegistrationBean<MetricsFlushFilter> {
         val filter = MetricsFlushFilter(backend)
         return FilterRegistrationBean(filter).apply {
