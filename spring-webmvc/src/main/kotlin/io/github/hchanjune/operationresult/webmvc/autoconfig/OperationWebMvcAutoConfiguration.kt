@@ -268,15 +268,14 @@ class OperationWebMvcAutoConfiguration {
         DefaultMetricsEnricher
 
     @Bean(name = ["operationMetricsBackendRecorder"])
-    @ConditionalOnClass(MeterRegistry::class)
     @ConditionalOnBean(MeterRegistry::class)
     fun operationMetricsBackendRecorder(registry: MeterRegistry): MetricsRecorder =
         OperationMetricsRecorder(registry)
 
     @Bean
     @Primary
-    @ConditionalOnClass(MeterRegistry::class)
     @ConditionalOnBean(MeterRegistry::class)
+    @ConditionalOnClass(MeterRegistry::class)
     fun metricsRecorderWithMicrometer(
         @Qualifier("operationMetricsBackendRecorder") recorder: MetricsRecorder
     ): MetricsRecorder =
@@ -284,13 +283,11 @@ class OperationWebMvcAutoConfiguration {
 
     @Bean
     @Primary
-    @ConditionalOnClass(MeterRegistry::class)
     @ConditionalOnBean(MeterRegistry::class)
     fun metricsRecorderFallback(): MetricsRecorder =
         NoopMetricsRecorder
 
     @Bean
-    @ConditionalOnClass(MeterRegistry::class)
     @ConditionalOnBean(MeterRegistry::class)
     fun operationMetricsFlushFilter(
         @Qualifier("operationMetricsBackendRecorder") recorder: MetricsRecorder
