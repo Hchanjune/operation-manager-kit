@@ -13,9 +13,11 @@ class RoutingWebMvcMetricsRecorder(
         val request = currentRequestOrNull()
         if (request == null) {
             // non-web (tests, batch jobs, async threads without request context)
+            println("non web request")
             delegate.record(context)
             return
         }
+        println("web request")
         // web request: buffer and flush later with final status
         MetricsBuffer.add(request, context)
     }
