@@ -22,7 +22,7 @@ class OperationListenersWebMvcAutoConfiguration {
 
     @Bean
     @ConditionalOnProperty(
-        prefix = "operation-manager.logging",
+        prefix = "operation-manager.webmvc.logging",
         name = ["enabled"],
         havingValue = "true",
         matchIfMissing = true

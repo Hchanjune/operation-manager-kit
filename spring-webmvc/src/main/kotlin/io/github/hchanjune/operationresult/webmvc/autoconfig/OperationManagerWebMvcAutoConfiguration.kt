@@ -175,9 +175,10 @@ class OperationManagerWebMvcAutoConfiguration {
      *
      * Applications may override hooks by defining a custom [OperationListener] bean.
      */
-    @Bean
-    @ConditionalOnMissingBean(name = ["operationListener"])
-    fun operationListener(
+    @Bean(name = ["operationCompositeListener"])
+    @Primary
+    @ConditionalOnMissingBean(CompositeOperationListener::class)
+    fun operationCompositeListener(
         provider: ObjectProvider<List<OperationListener>>
     ): OperationListener {
 
@@ -406,7 +407,7 @@ class OperationManagerWebMvcAutoConfiguration {
     fun operationExecutor(
         invocationInfoProvider: InvocationInfoProvider,
         issuerProvider: IssuerProvider,
-        listener: OperationListener,
+        @Qualifier("operationCompositeListener") listener: OperationListener,
 
         metricsContextFactory: MetricsContextFactory,
         metricOutcomeClassifier: MetricOutcomeClassifier,
