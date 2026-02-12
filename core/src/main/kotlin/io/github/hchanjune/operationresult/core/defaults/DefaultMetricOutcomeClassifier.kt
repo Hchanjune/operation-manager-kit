@@ -40,7 +40,7 @@ object DefaultMetricOutcomeClassifier: MetricOutcomeClassifier {
             else -> MetricOutcome.Result.FAILURE
         }
 
-        val exception = error?.javaClass?.simpleName
+        val exception = error?.javaClass?.simpleName?: "none"
 
         return MetricOutcome(
             result = result,

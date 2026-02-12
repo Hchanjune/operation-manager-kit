@@ -26,7 +26,7 @@ class WebMvcMetricsEnricher: MetricsEnricher {
             // Outcome tags
             put(MetricTagOption.RESULT, outcome?.result?.name?.lowercase())
             put(MetricTagOption.STATUS_GROUP, outcome?.statusGroup?.name?.lowercase())
-            outcome?.exception?.let { put(MetricTagOption.EXCEPTION, it) }
+            put(MetricTagOption.EXCEPTION, outcome?.exception)
 
             // HTTP tags (adapter-specific)
             put(MetricTagOption.HTTP_METHOD, request?.method)

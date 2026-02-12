@@ -26,7 +26,7 @@ class WebMvcMetricOutcomeClassifier: MetricOutcomeClassifier {
                 MetricOutcome.StatusGroup.S3XX -> MetricOutcome.Result.SUCCESS
                 null -> if (error == null) MetricOutcome.Result.SUCCESS else MetricOutcome.Result.FAILURE
             }
-            return MetricOutcome(result, group, error?.javaClass?.simpleName)
+            return MetricOutcome(result, group, error?.javaClass?.simpleName?: "none")
         }
 
         // 2) Otherwise, classify by exception type (WebMVC signal).
