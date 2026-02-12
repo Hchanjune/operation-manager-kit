@@ -42,6 +42,8 @@ class MdcInvocationInfoProvider: InvocationInfoProvider {
             entrypoint = MDC.get(OperationMdcKeys.ENTRYPOINT)?: "UnknownEntry",
             service = MDC.get(OperationMdcKeys.SERVICE)?: "UnknownService",
             function = MDC.get(OperationMdcKeys.FUNCTION)?: "UnknownFunction",
+            operation = MDC.get(OperationMdcKeys.OPERATION)?: "UnknownOperation",
+            useCase = MDC.get(OperationMdcKeys.USE_CASE)?: "UnknownCase",
             event = MDC.get(OperationMdcKeys.EVENT)?: "UnknownEvent",
             attributes = emptyMap(),
         )

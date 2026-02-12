@@ -20,4 +20,8 @@ package io.github.hchanjune.operationresult.core.annotations
 @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
 @MustBeDocumented
-annotation class OperationManaged
+annotation class OperationManaged(
+    val operation: String = "",
+    val useCase: String = "",
+    val event: String = ""
+)

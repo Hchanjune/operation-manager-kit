@@ -40,14 +40,8 @@ object MetricTagOption {
     /** operation name (stable logical identifier) */
     const val OPERATION = "operation"
 
-    /** entrypoint name (controller/consumer/job) */
-    const val ENTRYPOINT = "entrypoint"
-
-    /** service name (application/service boundary) */
-    const val SERVICE = "service"
-
-    /** function name (method/usecase) */
-    const val FUNCTION = "function"
+    /** use case name (domain logic entry) */
+    const val USE_CASE = "use_case"
 
     /** event name (message/event-driven entry) */
     const val EVENT = "event"

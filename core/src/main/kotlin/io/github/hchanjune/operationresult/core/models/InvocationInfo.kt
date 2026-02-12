@@ -17,7 +17,8 @@ package io.github.hchanjune.operationresult.core.models
  * - [entrypoint]: External entry location (e.g. controller method)
  * - [service]: Service class name associated with execution
  * - [function]: Function or method name being executed
- * - [event]: Optional operation classification or event label
+ * - [useCase]: Optional operation classification or use case label (domain-driven)
+ * - [event]: Optional operation classification or event label (event-driven)
  * - [attributes]: Additional custom metadata
  *
  * ## Defaults
@@ -32,6 +33,8 @@ data class InvocationInfo(
     val entrypoint: String = "UnknownEntry",
     val service: String = "UnknownService",
     val function: String = "UnknownFunction",
+    val operation: String = "UnknownOperation",
+    val useCase: String = "UnknownCase",
     val event: String = "UnknownEvent",
     val attributes: Map<String, String> = emptyMap(),
 )

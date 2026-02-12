@@ -5,7 +5,7 @@ import io.github.hchanjune.operationresult.core.OperationExecutor
 import io.github.hchanjune.operationresult.core.defaults.DefaultCorrelationIdProvider
 import io.github.hchanjune.operationresult.core.defaults.DefaultMetricsEnricher
 import io.github.hchanjune.operationresult.core.defaults.NoopMetricsRecorder
-import io.github.hchanjune.operationresult.core.defaults.NoopOperationHooks
+import io.github.hchanjune.operationresult.core.defaults.CompositeOperationListener
 import io.github.hchanjune.operationresult.core.models.MetricName
 import io.github.hchanjune.operationresult.core.providers.IssuerProvider
 import io.github.hchanjune.operationresult.core.providers.InvocationInfoProvider
@@ -13,7 +13,7 @@ import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifie
 import io.github.hchanjune.operationresult.core.providers.MetricsContextFactory
 import io.github.hchanjune.operationresult.core.providers.MetricsEnricher
 import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
-import io.github.hchanjune.operationresult.core.providers.OperationHooks
+import io.github.hchanjune.operationresult.core.providers.OperationListener
 import io.github.hchanjune.operationresult.webmvc.aop.OperationServiceAspect
 import io.github.hchanjune.operationresult.webmvc.interceptor.MdcEntrypointInterceptor
 import io.github.hchanjune.operationresult.webmvc.invocation.MdcInvocationInfoProvider
@@ -24,6 +24,7 @@ import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricOutcomeCla
 import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricsContextFactory
 import io.github.hchanjune.operationresult.webmvc.metrics.WebMvcMetricsEnricher
 import io.micrometer.core.instrument.MeterRegistry
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.AutoConfigureAfter
@@ -36,6 +37,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import org.springframework.core.Ordered
+import org.springframework.core.annotation.AnnotationAwareOrderComparator
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 
@@ -60,7 +62,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
  * ## User overrides
  * The following beans can be overridden by the application:
  * - [InvocationInfoProvider]
- * - [OperationHooks]
+ * - [OperationListener]
  * - [IssuerProvider]
  *
  * For MVC integration components:
@@ -90,7 +92,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 )
 @EnableConfigurationProperties(OperationManagerWebmvcProperties::class)
 @ConditionalOnClass(name = ["org.springframework.web.servlet.DispatcherServlet"])
-class OperationWebMvcAutoConfiguration {
+class OperationManagerWebMvcAutoConfiguration {
 
     /**
      * Default MVC interceptor that writes the resolved controller entrypoint into MDC.
@@ -169,13 +171,25 @@ class OperationWebMvcAutoConfiguration {
     fun invocationInfoProvider(): InvocationInfoProvider = MdcInvocationInfoProvider()
 
     /**
-     * Default no-op [OperationHooks] implementation.
+     * Default no-op [OperationListener] implementation.
      *
-     * Applications may override hooks by defining a custom [OperationHooks] bean.
+     * Applications may override hooks by defining a custom [OperationListener] bean.
      */
     @Bean
-    @ConditionalOnMissingBean(OperationHooks::class)
-    fun operationHooks(): OperationHooks = NoopOperationHooks
+    @ConditionalOnMissingBean(name = ["operationListener"])
+    fun operationListener(
+        provider: ObjectProvider<List<OperationListener>>
+    ): OperationListener {
+
+        val listeners = (provider.ifAvailable ?: emptyList())
+            .filterNot { it is CompositeOperationListener }
+
+        val ordered = listeners.toMutableList().apply {
+            AnnotationAwareOrderComparator.sort(this)
+        }
+
+        return CompositeOperationListener(ordered)
+    }
 
     /**
      * [IssuerProvider] implementation backed by Spring Security authentication context.
@@ -374,7 +388,7 @@ class OperationWebMvcAutoConfiguration {
      * - [DefaultCorrelationIdProvider] (trace identifier generation)
      *
      * ### Lifecycle hooks
-     * - [OperationHooks] for success/failure callbacks
+     * - [OperationListener] for success/failure callbacks
      *
      * ### Metrics pipeline (aggregated monitoring)
      * - [MetricsContextFactory] to create and enrich a metrics scope
@@ -392,7 +406,7 @@ class OperationWebMvcAutoConfiguration {
     fun operationExecutor(
         invocationInfoProvider: InvocationInfoProvider,
         issuerProvider: IssuerProvider,
-        hooks: OperationHooks,
+        listener: OperationListener,
 
         metricsContextFactory: MetricsContextFactory,
         metricOutcomeClassifier: MetricOutcomeClassifier,
@@ -403,7 +417,7 @@ class OperationWebMvcAutoConfiguration {
             invocationInfoProvider = invocationInfoProvider,
             issuerProvider = issuerProvider,
             correlationIdProvider = DefaultCorrelationIdProvider,
-            hooks = hooks,
+            listener = listener,
             metricsContextFactory = metricsContextFactory,
             metricOutcomeClassifier = metricOutcomeClassifier,
             metricsRecorder = metricsRecorder,

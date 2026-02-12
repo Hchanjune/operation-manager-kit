@@ -1,5 +1,6 @@
 package io.github.hchanjune.operationresult.core
 
+import io.github.hchanjune.operationresult.core.models.MetricDescriptor
 import io.github.hchanjune.operationresult.core.models.OperationContext
 import io.github.hchanjune.operationresult.core.models.OperationResult
 import io.github.hchanjune.operationresult.core.providers.CorrelationIdProvider
@@ -9,7 +10,7 @@ import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifie
 import io.github.hchanjune.operationresult.core.providers.MetricsContextFactory
 import io.github.hchanjune.operationresult.core.providers.MetricsEnricher
 import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
-import io.github.hchanjune.operationresult.core.providers.OperationHooks
+import io.github.hchanjune.operationresult.core.providers.OperationListener
 
 /**
  * Core executor responsible for running an operation and producing an [OperationResult].
@@ -43,12 +44,12 @@ import io.github.hchanjune.operationresult.core.providers.OperationHooks
  * 6. Finalize execution duration and response summary
  * 7. Classify the execution outcome via [MetricOutcomeClassifier]
  * 8. Record the finalized metrics via [MetricsRecorder]
- * 9. Invoke lifecycle callbacks via [OperationHooks]
+ * 9. Invoke lifecycle callbacks via [OperationListener]
  * 10. Return an [OperationResult] on success, or rethrow exceptions on failure
  *
  * ## Exception handling
  * This executor does **not** swallow exceptions.
- * If the operation block throws, [OperationHooks.onFailure] is invoked,
+ * If the operation block throws, [OperationListener.onFailure] is invoked,
  * metrics are finalized as failure, and the exception is rethrown.
  *
  * ## Notes
@@ -70,12 +71,12 @@ class OperationExecutor(
     private val invocationInfoProvider: InvocationInfoProvider,
     private val issuerProvider: IssuerProvider,
     private val correlationIdProvider: CorrelationIdProvider,
-    private val hooks: OperationHooks,
+    private val listener: OperationListener,
 
     private val metricsContextFactory: MetricsContextFactory,
     private val metricOutcomeClassifier: MetricOutcomeClassifier,
     private val metricsRecorder: MetricsRecorder,
-    private val metricsEnricher: MetricsEnricher
+    private val metricsEnricher: MetricsEnricher,
 ) {
 
     /**
@@ -98,12 +99,21 @@ class OperationExecutor(
             entrypoint = info.entrypoint,
             service = info.service,
             function = info.function,
+            operation = info.operation,
+            useCase = info.useCase,
             event = info.event,
             attributes = info.attributes,
         )
 
         // Metrics scope starts here (backend-agnostic).
-        val metrics = metricsContextFactory.create().start()
+        val metrics = metricsContextFactory.create()
+            .injectDescriptor(
+                MetricDescriptor(
+                    operation = baseCtx.operation,
+                    useCase = baseCtx.useCase,
+                    event = baseCtx.event,
+                )
+            ).start()
 
         val start = System.nanoTime()
 
@@ -124,9 +134,11 @@ class OperationExecutor(
             )
             val finalized = metrics.end(outcome = outcome)
             val enriched = metricsEnricher.enrich(finalized)
+
+            listener.onSuccess(successCtx)
             metricsRecorder.record(enriched)
 
-            hooks.onSuccess(successCtx)
+
 
             OperationResult(
                 context = successCtx,
@@ -148,10 +160,9 @@ class OperationExecutor(
             )
             val finalized = metrics.end(outcome = outcome)
             val enriched = metricsEnricher.enrich(finalized)
+
+            listener.onFailure(failureCtx, exception)
             metricsRecorder.record(enriched)
-
-
-            hooks.onFailure(failureCtx, exception)
 
             throw exception
         }

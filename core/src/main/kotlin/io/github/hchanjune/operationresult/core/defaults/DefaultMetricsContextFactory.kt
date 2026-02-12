@@ -1,5 +1,6 @@
 package io.github.hchanjune.operationresult.core.defaults
 
+import io.github.hchanjune.operationresult.core.models.MetricDescriptor
 import io.github.hchanjune.operationresult.core.models.MetricKind
 import io.github.hchanjune.operationresult.core.models.MetricName
 import io.github.hchanjune.operationresult.core.models.MetricPolicy
@@ -29,12 +30,13 @@ object DefaultMetricsContextFactory: MetricsContextFactory {
      * Integration modules may override this behavior or wrap this factory.
      */
     private val defaultName: MetricName =
-        MetricName("operation.duration")
+        MetricName("OperationManager")
 
     override fun create(): MetricsContext {
         return MetricsContext(
             name = defaultName,
             kind = MetricKind.TIMER,
+            descriptor = MetricDescriptor(),
             policy = MetricPolicy.defaults()
         )
     }

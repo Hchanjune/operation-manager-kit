@@ -55,6 +55,12 @@ data class OperationContext(
     /** Function or method name associated with the operation execution. */
     val function: String,
 
+    /** Optional classification or operation name for the operation. */
+    val operation: String = "",
+
+    /** Optional classification or use case name for the operation. */
+    val useCase: String = "",
+
     /** Optional classification or event name for the operation. */
     val event: String = "",
 

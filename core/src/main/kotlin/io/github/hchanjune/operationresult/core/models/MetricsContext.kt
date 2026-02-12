@@ -54,11 +54,23 @@ data class MetricsContext(
     val outcome: MetricOutcome? = null,
 
     /**
+     * Description of the execution
+     * Includes basic invocation infos such as Operation, UseCase, Event
+     */
+    val descriptor: MetricDescriptor? = null,
+
+    /**
      * Safety policy for tags.
      * Used to prevent cardinality explosions by limiting tag count/value length and normalizing values.
      */
     val policy: MetricPolicy = MetricPolicy.defaults()
 ) {
+
+    /**
+     * Injects Descriptor Object to Current Context
+     */
+    fun injectDescriptor(descriptor: MetricDescriptor): MetricsContext =
+        copy(descriptor = descriptor)
 
     /**
      * Adds/updates tags and normalizes them using the configured policy.

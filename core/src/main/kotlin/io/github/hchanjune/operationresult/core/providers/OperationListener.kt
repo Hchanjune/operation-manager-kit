@@ -6,7 +6,7 @@ import io.github.hchanjune.operationresult.core.models.OperationContext
  * Lifecycle hooks for observing and extending operation execution.
  *
  * ## Purpose
- * [OperationHooks] provides extension points that are invoked when an operation
+ * [OperationListener] provides extension points that are invoked when an operation
  * completes successfully or fails with an exception.
  *
  * This allows applications to integrate cross-cutting concerns such as:
@@ -33,10 +33,10 @@ import io.github.hchanjune.operationresult.core.models.OperationContext
  * - Side-effect aware (hooks run as part of the operation lifecycle)
  *
  * ## Customization
- * Applications can provide a custom [OperationHooks] bean to override the default
+ * Applications can provide a custom [OperationListener] bean to override the default
  * no-op behavior.
  */
-interface OperationHooks {
+interface OperationListener {
     /**
      * Called after an operation completes successfully.
      *

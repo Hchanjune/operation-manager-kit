@@ -8,7 +8,7 @@ object DefaultOperationExecutorFactory {
             invocationInfoProvider = DefaultInvocationInfoProvider,
             issuerProvider = DefaultIssuerProvider,
             correlationIdProvider = DefaultCorrelationIdProvider,
-            hooks = NoopOperationHooks,
+            listener = CompositeOperationListener(emptyList()),
 
             metricsContextFactory = DefaultMetricsContextFactory,
             metricOutcomeClassifier = DefaultMetricOutcomeClassifier,

@@ -1,0 +1,5 @@
+package io.github.hchanjune.operationresult.webmvc.defaultListeners
+
+import io.github.hchanjune.operationresult.core.providers.OperationListener
+
+interface OperationLoggingListener: OperationListener
