@@ -2,10 +2,10 @@ package io.github.hchanjune.operationresult.webmvc.defaultListeners
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 
-@ConfigurationProperties("operation-manager.logging")
+@ConfigurationProperties("operation-manager.webmvc.logging")
 data class DefaultOperationLoggingProperties(
-    val enabled: Boolean = true,
-    val pretty: Boolean = false,
-    val successLevel: LogLevel = LogLevel.INFO,
-    val failureLevel: LogLevel = LogLevel.ERROR,
+    var enabled: Boolean = true,
+    var pretty: Boolean = false,
+    var successLevel: LogLevel = LogLevel.INFO,
+    var failureLevel: LogLevel = LogLevel.ERROR,
 )
