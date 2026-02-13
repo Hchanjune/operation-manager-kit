@@ -23,6 +23,7 @@ dependencies {
     compileOnly("org.aspectj:aspectjrt")
     compileOnly("org.springframework.security:spring-security-core")
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")
+    compileOnly("io.opentelemetry:opentelemetry-api")
 
     testImplementation(kotlin("test"))
 }

@@ -103,6 +103,7 @@ class OperationManagerWebMvcAutoConfiguration {
     fun correlationIdProvider(): CorrelationIdProvider =
         DefaultCorrelationIdProvider
 
+
     @Bean
     @ConditionalOnMissingBean(TelemetryContextProvider::class)
     fun telemetryContextProvider(): TelemetryContextProvider =
