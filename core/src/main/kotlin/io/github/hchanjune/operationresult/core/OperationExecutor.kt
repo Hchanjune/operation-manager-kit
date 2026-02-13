@@ -11,6 +11,7 @@ import io.github.hchanjune.operationresult.core.providers.MetricsContextFactory
 import io.github.hchanjune.operationresult.core.providers.MetricsEnricher
 import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
 import io.github.hchanjune.operationresult.core.providers.OperationListener
+import io.github.hchanjune.operationresult.core.providers.TelemetryContextProvider
 
 /**
  * Core executor responsible for running an operation and producing an [OperationResult].
@@ -71,6 +72,7 @@ class OperationExecutor(
     private val invocationInfoProvider: InvocationInfoProvider,
     private val issuerProvider: IssuerProvider,
     private val correlationIdProvider: CorrelationIdProvider,
+    private val telemetryContextProvider: TelemetryContextProvider,
     private val listener: OperationListener,
 
     private val metricsContextFactory: MetricsContextFactory,
@@ -92,6 +94,7 @@ class OperationExecutor(
         block: OperationContext.() -> T
     ): OperationResult<T> {
         val info = invocationInfoProvider.current()
+        val telemetry = telemetryContextProvider.current()
 
         val baseCtx = OperationContext(
             correlationId = correlationIdProvider.newCorrelationId(),
@@ -103,6 +106,7 @@ class OperationExecutor(
             useCase = info.useCase,
             event = info.event,
             attributes = info.attributes,
+            telemetry = telemetry,
         )
 
         // Metrics scope starts here (backend-agnostic).

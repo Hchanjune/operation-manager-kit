@@ -1,5 +1,6 @@
 package io.github.hchanjune.operationresult.core.models
 
+import io.github.hchanjune.operationresult.core.providers.TelemetryContextProvider
 import java.time.Instant
 
 /**
@@ -41,7 +42,7 @@ import java.time.Instant
  */
 data class OperationContext(
     /** Unique identifier for correlating logs and traces within the same operation flow. */
-    val correlationId: String,
+    var correlationId: String,
 
     /** Identity of the actor (user/system) who initiated the operation. */
     val issuer: String,
@@ -78,4 +79,10 @@ data class OperationContext(
 
     /** Additional custom metadata attributes for application-specific enrichment. */
     val attributes: Map<String, String> = emptyMap(),
+
+    /**
+     * Telemetry information (trace/span ids) for observability correlation.
+     * Optional: present only when OpenTelemetry or tracing is enabled.
+     */
+    val telemetry: TelemetryContext
 )

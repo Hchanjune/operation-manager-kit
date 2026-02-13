@@ -8,6 +8,7 @@ object DefaultOperationExecutorFactory {
             invocationInfoProvider = DefaultInvocationInfoProvider,
             issuerProvider = DefaultIssuerProvider,
             correlationIdProvider = DefaultCorrelationIdProvider,
+            telemetryContextProvider = DefaultTelemetryContextProvider,
             listener = CompositeOperationListener(emptyList()),
 
             metricsContextFactory = DefaultMetricsContextFactory,

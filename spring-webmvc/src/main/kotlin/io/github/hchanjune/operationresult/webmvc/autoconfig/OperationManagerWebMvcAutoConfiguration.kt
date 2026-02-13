@@ -6,7 +6,9 @@ import io.github.hchanjune.operationresult.core.defaults.DefaultCorrelationIdPro
 import io.github.hchanjune.operationresult.core.defaults.DefaultMetricsEnricher
 import io.github.hchanjune.operationresult.core.defaults.NoopMetricsRecorder
 import io.github.hchanjune.operationresult.core.defaults.CompositeOperationListener
+import io.github.hchanjune.operationresult.core.defaults.DefaultTelemetryContextProvider
 import io.github.hchanjune.operationresult.core.models.MetricName
+import io.github.hchanjune.operationresult.core.providers.CorrelationIdProvider
 import io.github.hchanjune.operationresult.core.providers.IssuerProvider
 import io.github.hchanjune.operationresult.core.providers.InvocationInfoProvider
 import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifier
@@ -14,6 +16,7 @@ import io.github.hchanjune.operationresult.core.providers.MetricsContextFactory
 import io.github.hchanjune.operationresult.core.providers.MetricsEnricher
 import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
 import io.github.hchanjune.operationresult.core.providers.OperationListener
+import io.github.hchanjune.operationresult.core.providers.TelemetryContextProvider
 import io.github.hchanjune.operationresult.webmvc.aop.OperationServiceAspect
 import io.github.hchanjune.operationresult.webmvc.interceptor.MdcEntrypointInterceptor
 import io.github.hchanjune.operationresult.webmvc.invocation.MdcInvocationInfoProvider
@@ -93,6 +96,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 @EnableConfigurationProperties(OperationManagerWebmvcProperties::class)
 @ConditionalOnClass(name = ["org.springframework.web.servlet.DispatcherServlet"])
 class OperationManagerWebMvcAutoConfiguration {
+
+
+    @Bean
+    @ConditionalOnMissingBean(CorrelationIdProvider::class)
+    fun correlationIdProvider(): CorrelationIdProvider =
+        DefaultCorrelationIdProvider
+
+    @Bean
+    @ConditionalOnMissingBean(TelemetryContextProvider::class)
+    fun telemetryContextProvider(): TelemetryContextProvider =
+        DefaultTelemetryContextProvider
 
     /**
      * Default MVC interceptor that writes the resolved controller entrypoint into MDC.
@@ -407,6 +421,8 @@ class OperationManagerWebMvcAutoConfiguration {
     fun operationExecutor(
         invocationInfoProvider: InvocationInfoProvider,
         issuerProvider: IssuerProvider,
+        correlationIdProvider: CorrelationIdProvider,
+        telemetryContextProvider: TelemetryContextProvider,
         @Qualifier("operationCompositeListener") listener: OperationListener,
 
         metricsContextFactory: MetricsContextFactory,
@@ -417,7 +433,8 @@ class OperationManagerWebMvcAutoConfiguration {
         OperationExecutor(
             invocationInfoProvider = invocationInfoProvider,
             issuerProvider = issuerProvider,
-            correlationIdProvider = DefaultCorrelationIdProvider,
+            correlationIdProvider = correlationIdProvider,
+            telemetryContextProvider = telemetryContextProvider,
             listener = listener,
             metricsContextFactory = metricsContextFactory,
             metricOutcomeClassifier = metricOutcomeClassifier,

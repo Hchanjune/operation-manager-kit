@@ -39,8 +39,10 @@ class DefaultOperationLoggingListener(
     private fun prettyContext(context: OperationContext, exception: Throwable?): String {
         return buildString {
             appendLine(" ")
-            appendLine("┌───────────────────────────────────────────────────────")
+            appendLine("┌───────────────────────────────────────────────────────────────────────────────────")
             appendLine(if (exception != null) "│ ❌ Failed" else "│ ✅ Success")
+            appendLine("├─ TraceId     : ${context.telemetry.traceId}")
+            appendLine("├─ SpanId      : ${context.telemetry.spanId}")
             appendLine("├─ Correlation : ${context.correlationId}")
             appendLine("├─ Issuer      : ${context.issuer}")
             appendLine("├─ Entry Point : ${context.entrypoint}")
@@ -58,7 +60,7 @@ class DefaultOperationLoggingListener(
             appendLine("├─ Exception   : ${it::class.simpleName}: ${it.message}")
             appendLine("├─ Stacktrace  : ${it.stackTrace.take(20).joinToString("\n") { e -> e.toString() }}")
             }
-            appendLine("└───────────────────────────────────────────────────────")
+            appendLine("└───────────────────────────────────────────────────────────────────────────────────")
             appendLine(" ")
         }
     }
@@ -101,6 +103,8 @@ class DefaultOperationLoggingListener(
             append("{")
             val fields = mutableListOf<String>()
 
+            fields += add("traceId", context.telemetry.traceId)
+            fields += add("spanId", context.telemetry.spanId)
             fields += add("correlationId", context.correlationId)
             fields += add("issuer", context.issuer)
             fields += add("entrypoint", context.entrypoint)
