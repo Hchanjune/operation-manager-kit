@@ -6,7 +6,7 @@ import io.github.hchanjune.operationresult.core.providers.TelemetryContextProvid
 object DefaultTelemetryContextProvider: TelemetryContextProvider {
     override fun current(): TelemetryContext =
         TelemetryContext(
-            traceId = "none",
-            spanId = "none"
+            traceId = "",
+            spanId = ""
         )
 }
