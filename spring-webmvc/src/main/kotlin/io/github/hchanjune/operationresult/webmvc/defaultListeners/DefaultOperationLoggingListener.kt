@@ -4,25 +4,23 @@ import io.github.hchanjune.operationresult.core.models.OperationContext
 import org.slf4j.Logger
 
 class DefaultOperationLoggingListener(
-    private val logger: Logger,
+    private val prettyLogger: Logger,
+    private val jsonLogger: Logger,
     private val props: DefaultOperationLoggingProperties
 ) : OperationLoggingListener {
 
     override fun onSuccess(context: OperationContext) {
-        log(
-            level = props.successLevel,
-            args = formatContext(context),
-        )
+        if (props.pretty) log(logger = prettyLogger, level = props.successLevel, args = prettyContext(context, null))
+        if (props.json) log(logger = jsonLogger, level = props.successLevel, args = jsonContext(context, null))
     }
 
     override fun onFailure(context: OperationContext, exception: Throwable) {
-        log(
-            level = props.failureLevel,
-            args = formatContext(context, exception),
-        )
+        if (props.pretty) log(logger = prettyLogger, level = props.failureLevel, args = prettyContext(context, exception))
+        if (props.json) log(logger = jsonLogger, level = props.failureLevel, args = jsonContext(context, exception))
     }
 
     private fun log(
+        logger: Logger,
         level: LogLevel,
         args: String,
     ) {
@@ -37,13 +35,6 @@ class DefaultOperationLoggingListener(
             else -> Unit
         }
     }
-
-    private fun formatContext(ctx: OperationContext, exception: Throwable? = null): String =
-        if (props.pretty) {
-            prettyContext(ctx, exception)
-        } else {
-            "operation=${ctx.operation}, useCase=${ctx.useCase}, event=${ctx.event}"
-        }
 
     private fun prettyContext(context: OperationContext, exception: Throwable?): String {
         return buildString {
@@ -64,17 +55,93 @@ class DefaultOperationLoggingListener(
             appendLine("├─ Performance : ${context.durationMs}Ms")
             appendLine("├─ Timestamp   : ${context.timestamp}")
             exception?.let {
-            appendLine("├─ Exception   : ${exception::class.simpleName}: ${it.message}")
-            appendLine("├─ Stacktrace  : ${exception.stackTrace.joinToString("\n")}")
+            appendLine("├─ Exception   : ${it::class.simpleName}: ${it.message}")
+            appendLine("├─ Stacktrace  : ${it.stackTrace.take(20).joinToString("\n") { e -> e.toString() }}")
             }
             appendLine("└───────────────────────────────────────────────────────")
             appendLine(" ")
         }
-
-
-
-
     }
+
+    private fun jsonContext(context: OperationContext, exception: Throwable?): String {
+        fun esc(s: String): String = buildString(s.length + 16) {
+            for (ch in s) {
+                when (ch) {
+                    '\\' -> append("\\\\")
+                    '"'  -> append("\\\"")
+                    '\b' -> append("\\b")
+                    '\u000C' -> append("\\f")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> {
+                        if (ch.code in 0x00..0x1F) append("\\u").append(ch.code.toString(16).padStart(4, '0'))
+                        else append(ch)
+                    }
+                }
+            }
+        }
+
+        fun trunc(s: String, max: Int = 2000): String =
+            if (s.length <= max) s else s.take(max) + "…(truncated)"
+
+        fun add(key: String, value: Any?): String {
+            if (value == null) return ""
+            val s = trunc(value.toString())
+            if (s.isBlank()) return ""
+            return "\"$key\":\"${esc(s)}\""
+        }
+
+        fun addNum(key: String, value: Number?): String {
+            if (value == null) return ""
+            return "\"$key\":$value"
+        }
+
+        return buildString {
+            append("{")
+            val fields = mutableListOf<String>()
+
+            fields += add("correlationId", context.correlationId)
+            fields += add("issuer", context.issuer)
+            fields += add("entrypoint", context.entrypoint)
+            fields += add("service", context.service)
+            fields += add("function", context.function)
+            fields += add("operation", context.operation)
+            fields += add("useCase", context.useCase)
+            fields += add("event", context.event)
+            fields += add("message", context.message)
+            fields += add("response", context.response)
+            fields += addNum("durationMs", context.durationMs)
+            fields += add("timestamp", context.timestamp)
+
+            exception?.let {
+                val rc = rootCause(it)
+                fields += add("exception", "${it::class.simpleName}:${it.message}")
+                fields += add("rootCause", "${rc::class.simpleName}:${rc.message}")
+                fields += add(
+                    "rootCauseTopFrames",
+                    rc.stackTrace.take(8).joinToString("\\n") { e -> e.toString() }
+                )
+            }
+
+            append(fields.filter { it.isNotBlank() }.joinToString(","))
+            append("}")
+        }
+    }
+
+    private fun rootCause(t: Throwable): Throwable {
+        var cur: Throwable = t
+        val seen = HashSet<Throwable>(8)
+
+        while (true) {
+            val next = cur.cause ?: break
+            if (!seen.add(next)) break
+            cur = next
+        }
+        return cur
+    }
+
+
 }
 
 

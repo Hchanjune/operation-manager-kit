@@ -33,8 +33,8 @@ class OperationListenersWebMvcAutoConfiguration {
         props: DefaultOperationLoggingProperties
     ): OperationListener =
         DefaultOperationLoggingListener(
-            logger = LoggerFactory.getLogger("OperationManager"),
+            prettyLogger = LoggerFactory.getLogger("OperationManager[Pretty]"),
+            jsonLogger = LoggerFactory.getLogger("OperationManager[JSON]"),
             props = props
         )
-
 }

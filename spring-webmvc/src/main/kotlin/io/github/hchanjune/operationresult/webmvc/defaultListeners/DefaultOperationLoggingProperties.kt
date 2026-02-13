@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class DefaultOperationLoggingProperties(
     var enabled: Boolean = true,
     var pretty: Boolean = false,
+    var json: Boolean = true,
     var successLevel: LogLevel = LogLevel.INFO,
     var failureLevel: LogLevel = LogLevel.ERROR,
 )
