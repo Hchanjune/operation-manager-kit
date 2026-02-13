@@ -11,48 +11,78 @@ class DefaultOperationLoggingListener(
     override fun onSuccess(context: OperationContext) {
         log(
             level = props.successLevel,
-            throwable = null,
-            message = "operation success: {}",
-            args = arrayOf(formatContext(context)),
+            args = formatContext(context),
         )
     }
 
     override fun onFailure(context: OperationContext, exception: Throwable) {
         log(
             level = props.failureLevel,
-            throwable = exception,
-            message = "operation failure: {}",
-            args = arrayOf(formatContext(context)),
+            args = formatContext(context, exception),
         )
     }
 
     private fun log(
         level: LogLevel,
-        throwable: Throwable?,
-        message: String,
-        args: Array<Any>,
+        args: String,
     ) {
         if (level == LogLevel.NONE) return
 
-        // throwable이 있으면 마지막 인자로 붙여서 호출 (SLF4J 규칙)
-        val fullArgs: Array<Any> =
-            if (throwable == null) args else args + throwable
-
         when (level) {
-            LogLevel.TRACE -> if (logger.isTraceEnabled) logger.trace(message, *fullArgs)
-            LogLevel.DEBUG -> if (logger.isDebugEnabled) logger.debug(message, *fullArgs)
-            LogLevel.INFO  -> if (logger.isInfoEnabled)  logger.info(message, *fullArgs)
-            LogLevel.WARN  -> if (logger.isWarnEnabled)  logger.warn(message, *fullArgs)
-            LogLevel.ERROR -> if (logger.isErrorEnabled) logger.error(message, *fullArgs)
-            LogLevel.NONE  -> Unit
+            LogLevel.TRACE -> if (logger.isTraceEnabled) logger.trace(args)
+            LogLevel.DEBUG -> if (logger.isDebugEnabled) logger.debug(args)
+            LogLevel.INFO  -> if (logger.isInfoEnabled)  logger.info(args)
+            LogLevel.WARN  -> if (logger.isWarnEnabled)  logger.warn(args)
+            LogLevel.ERROR -> if (logger.isErrorEnabled) logger.error(args)
+            else -> Unit
         }
     }
 
-    private fun formatContext(ctx: OperationContext): String =
+    private fun formatContext(ctx: OperationContext, exception: Throwable? = null): String =
         if (props.pretty) {
-            "operation=${ctx.operation}, useCase=${ctx.useCase}, event=${ctx.event}, issuer=${ctx.issuer}"
+            prettyContext(ctx, exception)
         } else {
-            // 기본은 짧게 (toString은 피하는 편이 안전)
             "operation=${ctx.operation}, useCase=${ctx.useCase}, event=${ctx.event}"
         }
+
+    private fun prettyContext(context: OperationContext, exception: Throwable?): String {
+        return buildString {
+            appendLine(" ")
+            appendLine("┌───────────────────────────────────────────────────────")
+            appendLine(if (exception != null) "│ ❌ Failed" else "│ ✅ Success")
+            appendLine("├─ Correlation : ${context.correlationId}")
+            appendLine("├─ Issuer      : ${context.issuer}")
+            appendLine("├─ Entry Point : ${context.entrypoint}")
+            appendLine("├─ Service     : ${context.service}")
+            appendLine("├─ Function    : ${context.function}")
+            appendLine("├─ Operation   : ${context.operation}")
+            appendLine("├─ UseCase     : ${context.useCase}")
+            appendLine("├─ Event       : ${context.event}")
+            appendLine("├─ Attributes  : ${context.attributes}")
+            appendLine("├─ Message     : ${context.message}")
+            appendLine("├─ Response    : ${context.response}")
+            appendLine("├─ Performance : ${context.durationMs}Ms")
+            appendLine("├─ Timestamp   : ${context.timestamp}")
+            exception?.let {
+            appendLine("├─ Exception   : ${exception::class.simpleName}: ${it.message}")
+            appendLine("├─ Stacktrace  : ${exception.stackTrace.joinToString("\n")}")
+            }
+            appendLine("└───────────────────────────────────────────────────────")
+            appendLine(" ")
+        }
+
+
+
+
+    }
 }
+
+
+
+
+
+
+
+
+
+
