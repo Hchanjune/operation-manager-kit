@@ -115,13 +115,12 @@ class DefaultOperationLoggingListener(
             fields += add("timestamp", context.timestamp)
 
             exception?.let {
-                val rc = rootCause(it)
+                val rc = try { rootCause(it) } catch (e: Throwable) { it }
+                val top = try { rc.stackTrace.take(8).joinToString("\\n") { e -> e.toString() } } catch (e: Throwable) { "<stacktrace_failed>" }
+
                 fields += add("exception", "${it::class.simpleName}:${it.message}")
                 fields += add("rootCause", "${rc::class.simpleName}:${rc.message}")
-                fields += add(
-                    "rootCauseTopFrames",
-                    rc.stackTrace.take(8).joinToString("\\n") { e -> e.toString() }
-                )
+                fields += add("rootCauseTopFrames", top)
             }
 
             append(fields.filter { it.isNotBlank() }.joinToString(","))
