@@ -1,7 +1,8 @@
 package io.github.hchanjune.operationresult.webmvc.invocation
 
-import io.github.hchanjune.operationresult.core.models.InvocationInfo
-import io.github.hchanjune.operationresult.core.providers.InvocationInfoProvider
+import io.github.hchanjune.operationresult.core.models.invocation.InvocationInfo
+import io.github.hchanjune.operationresult.core.providers.invocation.InvocationInfoProvider
+import io.github.hchanjune.operationresult.core.providers.telemetry.TelemetryContextProvider
 import io.github.hchanjune.operationresult.webmvc.constants.OperationMdcKeys
 import org.slf4j.MDC
 
@@ -31,20 +32,30 @@ import org.slf4j.MDC
  * - This provider is read-only and does not mutate MDC.
  * - MDC is thread-local; async execution requires MDC propagation if consistent values are needed.
  */
-class MdcInvocationInfoProvider: InvocationInfoProvider {
+class MdcInvocationInfoProvider(
+    private val telemetryProvider: TelemetryContextProvider
+): InvocationInfoProvider {
     /**
      * Returns the current invocation metadata derived from MDC.
      *
      * @return an [InvocationInfo] populated from MDC keys with safe fallbacks.
      */
-    override fun current(): InvocationInfo =
-        InvocationInfo(
+    override fun current(): InvocationInfo {
+        val telemetry = telemetryProvider.current()
+        return InvocationInfo(
             entrypoint = MDC.get(OperationMdcKeys.ENTRYPOINT)?: "UnknownEntry",
             service = MDC.get(OperationMdcKeys.SERVICE)?: "UnknownService",
             function = MDC.get(OperationMdcKeys.FUNCTION)?: "UnknownFunction",
             operation = MDC.get(OperationMdcKeys.OPERATION)?: "UnknownOperation",
             useCase = MDC.get(OperationMdcKeys.USE_CASE)?: "UnknownCase",
             event = MDC.get(OperationMdcKeys.EVENT)?: "UnknownEvent",
-            attributes = emptyMap(),
+            attributes = mapOf(
+                "HTTP_METHOD" to (MDC.get(OperationMdcKeys.HTTP_METHOD)?: "UnknownMethod"),
+                "HTTP_URI" to (MDC.get(OperationMdcKeys.HTTP_URI)?: "UnknownURI"),
+                "TRACE_ID" to telemetry.traceId.ifBlank { "none" },
+                "SPAN_ID" to telemetry.spanId.ifBlank { "none" },
+                "CAUSATION_ID" to telemetry.causationId.ifBlank { "none" },
+            )
         )
+    }
 }

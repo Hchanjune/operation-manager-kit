@@ -1,8 +1,10 @@
 package io.github.hchanjune.operationresult.core
 
 import io.github.hchanjune.operationresult.core.defaults.DefaultOperationExecutorFactory
-import io.github.hchanjune.operationresult.core.models.OperationContext
+import io.github.hchanjune.operationresult.core.models.context.MetricsContext
+import io.github.hchanjune.operationresult.core.models.context.OperationContext
 import io.github.hchanjune.operationresult.core.models.OperationResult
+import io.github.hchanjune.operationresult.core.models.context.TelemetryContext
 
 /**
  * Global entrypoint for executing operations.
@@ -66,4 +68,11 @@ object Operations {
      * @return an [OperationResult] containing execution context and produced data
      */
     operator fun <T> invoke(block: OperationContext.() -> T): OperationResult<T> = executor.run(block)
+
+    val current: OperationContext
+        get() = executor.context.operationContext?: throw RuntimeException("OperationContext not configured")
+    val metrics: MetricsContext
+        get() = executor.context.metricContext?: throw RuntimeException("MetricsContext not configured")
+    val telemetry: TelemetryContext
+        get() = executor.context.telemetryContext?: throw RuntimeException("TelemetryContext not configured")
 }

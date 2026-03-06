@@ -1,7 +1,7 @@
 package io.github.hchanjune.operationresult.core.defaults
 
-import io.github.hchanjune.operationresult.core.models.MetricOutcome
-import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifier
+import io.github.hchanjune.operationresult.core.models.metric.MetricOutcome
+import io.github.hchanjune.operationresult.core.providers.metric.MetricOutcomeClassifier
 
 /**
  * Default implementation of [MetricOutcomeClassifier].

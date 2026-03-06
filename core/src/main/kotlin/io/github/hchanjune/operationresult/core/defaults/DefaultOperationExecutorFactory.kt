@@ -5,13 +5,17 @@ import io.github.hchanjune.operationresult.core.OperationExecutor
 object DefaultOperationExecutorFactory {
     fun create(): OperationExecutor =
         OperationExecutor(
-            invocationInfoProvider = DefaultInvocationInfoProvider,
+            contextHolderProvider = DefaultOperationContextHolderProvider,
+
             issuerProvider = DefaultIssuerProvider,
-            correlationIdProvider = DefaultCorrelationIdProvider,
+            invocationInfoProvider = DefaultInvocationInfoProvider,
+            operationContextProvider = DefaultOperationContextProvider,
+            metricsContextProvider = DefaultMetricsContextProvider,
             telemetryContextProvider = DefaultTelemetryContextProvider,
+
+            correlationIdProvider = DefaultCorrelationIdProvider,
             listener = CompositeOperationListener(emptyList()),
 
-            metricsContextFactory = DefaultMetricsContextFactory,
             metricOutcomeClassifier = DefaultMetricOutcomeClassifier,
             metricsRecorder = NoopMetricsRecorder,
             metricsEnricher = DefaultMetricsEnricher,

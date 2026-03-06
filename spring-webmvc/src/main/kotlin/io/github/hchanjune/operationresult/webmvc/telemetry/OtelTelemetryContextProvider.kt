@@ -1,7 +1,7 @@
 package io.github.hchanjune.operationresult.webmvc.telemetry
 
-import io.github.hchanjune.operationresult.core.models.TelemetryContext
-import io.github.hchanjune.operationresult.core.providers.TelemetryContextProvider
+import io.github.hchanjune.operationresult.core.models.context.TelemetryContext
+import io.github.hchanjune.operationresult.core.providers.telemetry.TelemetryContextProvider
 import io.opentelemetry.api.baggage.Baggage
 import io.opentelemetry.api.trace.Span
 
@@ -17,6 +17,7 @@ class OtelTelemetryContextProvider(
             return TelemetryContext(
                 traceId = "",
                 spanId = "",
+                causationId = "",
                 baggage = emptyMap(),
             )
         }
@@ -26,6 +27,7 @@ class OtelTelemetryContextProvider(
         return TelemetryContext(
             traceId = spanContext.traceId,
             spanId = spanContext.spanId,
+            causationId = baggage["causation-id"]?: "",
             baggage = baggage,
         )
 
@@ -39,9 +41,10 @@ class OtelTelemetryContextProvider(
         if (allowList.isEmpty()) return emptyMap()
 
         val out = LinkedHashMap<String, String>(minOf(allowList.size, 16))
-        for (k in allowList) {
-            val entry = baggage.getEntryValue(k) ?: continue
-            if (entry.isNotBlank()) out[k] = entry
+        allowList.forEach { key ->
+            baggage.getEntryValue(key)?.takeIf { it.isNotBlank() }?.let { value ->
+                out[key] = value
+            }
         }
         return out
     }

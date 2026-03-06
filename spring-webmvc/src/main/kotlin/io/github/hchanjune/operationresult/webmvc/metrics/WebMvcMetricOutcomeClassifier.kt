@@ -1,7 +1,7 @@
 package io.github.hchanjune.operationresult.webmvc.metrics
 
-import io.github.hchanjune.operationresult.core.models.MetricOutcome
-import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifier
+import io.github.hchanjune.operationresult.core.models.metric.MetricOutcome
+import io.github.hchanjune.operationresult.core.providers.metric.MetricOutcomeClassifier
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
@@ -13,50 +13,30 @@ import org.springframework.web.server.ResponseStatusException
  * If statusCode is not provided (core executor passes null),
  * we still classify common MVC validation/binding issues as REJECT (4xx bucket).
  */
-class WebMvcMetricOutcomeClassifier: MetricOutcomeClassifier {
+class WebMvcMetricOutcomeClassifier : MetricOutcomeClassifier {
 
     override fun classify(statusCode: Int?, error: Throwable?): MetricOutcome {
-        // 1) If HTTP status code is explicitly provided, use it.
-        if (statusCode != null) {
-            val group = toStatusGroup(statusCode)
-            val result = when (group) {
-                MetricOutcome.StatusGroup.S4XX -> MetricOutcome.Result.REJECT
-                MetricOutcome.StatusGroup.S5XX -> MetricOutcome.Result.FAILURE
-                MetricOutcome.StatusGroup.S2XX,
-                MetricOutcome.StatusGroup.S3XX -> MetricOutcome.Result.SUCCESS
-                null -> if (error == null) MetricOutcome.Result.SUCCESS else MetricOutcome.Result.FAILURE
-            }
-            return MetricOutcome(result, group, error?.javaClass?.simpleName?: "none")
-        }
+        val code = statusCode ?: (error as? ResponseStatusException)?.statusCode?.value()
+        val group = code?.let { toStatusGroup(it) }
 
-        // 2) Otherwise, classify by exception type (WebMVC signal).
-        val (result, group) = when (error) {
-            null -> MetricOutcome.Result.SUCCESS to MetricOutcome.StatusGroup.S2XX
-
-            is ResponseStatusException -> {
-                val g = toStatusGroup(error.statusCode.value())
-                val r = when (g) {
-                    MetricOutcome.StatusGroup.S4XX -> MetricOutcome.Result.REJECT
-                    MetricOutcome.StatusGroup.S5XX -> MetricOutcome.Result.FAILURE
-                    else -> MetricOutcome.Result.FAILURE
-                }
-                r to g
-            }
-
-            // Typical client-side/binding/validation errors
-            is MethodArgumentNotValidException,
-            is MissingServletRequestParameterException,
-            is MethodArgumentTypeMismatchException -> MetricOutcome.Result.REJECT to MetricOutcome.StatusGroup.S4XX
-
-            else -> MetricOutcome.Result.FAILURE to null
+        val result = when {
+            group == MetricOutcome.StatusGroup.S4XX || isBindingError(error) -> MetricOutcome.Result.REJECT
+            group == MetricOutcome.StatusGroup.S5XX -> MetricOutcome.Result.FAILURE
+            error != null && group != MetricOutcome.StatusGroup.S2XX && group != MetricOutcome.StatusGroup.S3XX -> MetricOutcome.Result.FAILURE
+            else -> MetricOutcome.Result.SUCCESS
         }
 
         return MetricOutcome(
             result = result,
             statusGroup = group,
-            exception = error?.javaClass?.simpleName?: "none"
+            exception = error?.javaClass?.simpleName ?: "none"
         )
     }
+
+    private fun isBindingError(error: Throwable?): Boolean =
+        error is MethodArgumentNotValidException ||
+                error is MissingServletRequestParameterException ||
+                error is MethodArgumentTypeMismatchException
 
     private fun toStatusGroup(code: Int): MetricOutcome.StatusGroup? =
         when (code) {

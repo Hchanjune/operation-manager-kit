@@ -1,17 +1,19 @@
 package io.github.hchanjune.operationresult.core
 
-import io.github.hchanjune.operationresult.core.models.MetricDescriptor
-import io.github.hchanjune.operationresult.core.models.OperationContext
+import io.github.hchanjune.operationresult.core.models.metric.MetricDescriptor
+import io.github.hchanjune.operationresult.core.models.context.OperationContext
 import io.github.hchanjune.operationresult.core.models.OperationResult
-import io.github.hchanjune.operationresult.core.providers.CorrelationIdProvider
-import io.github.hchanjune.operationresult.core.providers.InvocationInfoProvider
-import io.github.hchanjune.operationresult.core.providers.IssuerProvider
-import io.github.hchanjune.operationresult.core.providers.MetricOutcomeClassifier
-import io.github.hchanjune.operationresult.core.providers.MetricsContextFactory
-import io.github.hchanjune.operationresult.core.providers.MetricsEnricher
-import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
-import io.github.hchanjune.operationresult.core.providers.OperationListener
-import io.github.hchanjune.operationresult.core.providers.TelemetryContextProvider
+import io.github.hchanjune.operationresult.core.providers.invocation.CorrelationIdProvider
+import io.github.hchanjune.operationresult.core.providers.invocation.InvocationInfoProvider
+import io.github.hchanjune.operationresult.core.providers.invocation.IssuerProvider
+import io.github.hchanjune.operationresult.core.providers.metric.MetricOutcomeClassifier
+import io.github.hchanjune.operationresult.core.providers.metric.MetricsContextProvider
+import io.github.hchanjune.operationresult.core.providers.metric.MetricsEnricher
+import io.github.hchanjune.operationresult.core.providers.metric.MetricsRecorder
+import io.github.hchanjune.operationresult.core.providers.operation.OperationContextHolderProvider
+import io.github.hchanjune.operationresult.core.providers.operation.OperationContextProvider
+import io.github.hchanjune.operationresult.core.providers.operation.OperationListener
+import io.github.hchanjune.operationresult.core.providers.telemetry.TelemetryContextProvider
 
 /**
  * Core executor responsible for running an operation and producing an [OperationResult].
@@ -40,7 +42,7 @@ import io.github.hchanjune.operationresult.core.providers.TelemetryContextProvid
  * 1. Resolve invocation metadata via [InvocationInfoProvider]
  * 2. Generate correlation ID via [CorrelationIdProvider]
  * 3. Resolve issuer identity via [IssuerProvider]
- * 4. Create and start a backend-agnostic metrics scope via [MetricsContextFactory]
+ * 4. Create and start a backend-agnostic metrics scope via [MetricsContextProvider]
  * 5. Execute the user-provided [block] with an initialized [OperationContext]
  * 6. Finalize execution duration and response summary
  * 7. Classify the execution outcome via [MetricOutcomeClassifier]
@@ -69,17 +71,25 @@ import io.github.hchanjune.operationresult.core.providers.TelemetryContextProvid
  * ```
  */
 class OperationExecutor(
-    private val invocationInfoProvider: InvocationInfoProvider,
+    private val contextHolderProvider: OperationContextHolderProvider,
+
     private val issuerProvider: IssuerProvider,
-    private val correlationIdProvider: CorrelationIdProvider,
+    private val invocationInfoProvider: InvocationInfoProvider,
+
+    private val operationContextProvider: OperationContextProvider,
+    private val metricsContextProvider: MetricsContextProvider,
     private val telemetryContextProvider: TelemetryContextProvider,
+
+    private val correlationIdProvider: CorrelationIdProvider,
     private val listener: OperationListener,
 
-    private val metricsContextFactory: MetricsContextFactory,
     private val metricOutcomeClassifier: MetricOutcomeClassifier,
     private val metricsRecorder: MetricsRecorder,
     private val metricsEnricher: MetricsEnricher,
 ) {
+    private val _contextHolder = contextHolderProvider.current()
+    val context: OperationContextHolder
+        get() = _contextHolder
 
     /**
      * Executes the given [block] as an operation.
@@ -93,40 +103,35 @@ class OperationExecutor(
     fun <T> run(
         block: OperationContext.() -> T
     ): OperationResult<T> {
-        val info = invocationInfoProvider.current()
+        val issuer = issuerProvider.currentIssuer()
+        val invocation = invocationInfoProvider.current()
+        val operation = operationContextProvider.current(issuer, invocation)
+        val metrics = metricsContextProvider.current()
         val telemetry = telemetryContextProvider.current()
 
-        val baseCtx = OperationContext(
-            correlationId = correlationIdProvider.newCorrelationId(),
-            issuer = issuerProvider.currentIssuer(),
-            entrypoint = info.entrypoint,
-            service = info.service,
-            function = info.function,
-            operation = info.operation,
-            useCase = info.useCase,
-            event = info.event,
-            attributes = info.attributes,
-            telemetry = telemetry,
-        )
-
         // Metrics scope starts here (backend-agnostic).
-        val metrics = metricsContextFactory.create()
+        metrics
             .injectDescriptor(
                 MetricDescriptor(
-                    operation = baseCtx.operation,
-                    useCase = baseCtx.useCase,
-                    event = baseCtx.event,
+                    operation = operation.operation,
+                    useCase = operation.useCase,
+                    event = operation.event,
                 )
             ).start()
+
+        // ContextHolder
+        _contextHolder.applyOperationContext(operation)
+        _contextHolder.applyMetricContext(metrics)
+        _contextHolder.applyTelemetryContext(telemetry)
 
         val start = System.nanoTime()
 
         return try {
-            val result = baseCtx.block()
+            val result = operation.block()
 
             val durationMs = (System.nanoTime() - start) / 1_000_000
 
-            val successCtx = baseCtx.copy(
+            val successCtx = operation.copy(
                 durationMs = durationMs,
                 response = result.toString()
             )
@@ -139,20 +144,20 @@ class OperationExecutor(
             val finalized = metrics.end(outcome = outcome)
             val enriched = metricsEnricher.enrich(finalized)
 
-            listener.onSuccess(successCtx)
+            listener.onSuccess(successCtx, enriched, telemetry)
             metricsRecorder.record(enriched)
 
 
-
             OperationResult(
-                context = successCtx,
+                operation = successCtx,
                 metrics = enriched,
+                telemetry = telemetry,
                 data = result
             )
         } catch (exception: Throwable) {
             val durationMs = (System.nanoTime() - start) / 1_000_000
 
-            val failureCtx = baseCtx.copy(
+            val failureCtx = operation.copy(
                 durationMs = durationMs,
                 response = exception::class.simpleName ?: "Exception"
             )
@@ -165,10 +170,12 @@ class OperationExecutor(
             val finalized = metrics.end(outcome = outcome)
             val enriched = metricsEnricher.enrich(finalized)
 
-            listener.onFailure(failureCtx, exception)
+            listener.onFailure(failureCtx, enriched, telemetry, exception)
             metricsRecorder.record(enriched)
 
             throw exception
+        } finally {
+            _contextHolder.clear()
         }
     }
 

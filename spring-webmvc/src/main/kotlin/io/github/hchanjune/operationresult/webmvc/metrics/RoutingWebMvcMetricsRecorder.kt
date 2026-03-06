@@ -1,7 +1,7 @@
 package io.github.hchanjune.operationresult.webmvc.metrics
 
-import io.github.hchanjune.operationresult.core.models.MetricsContext
-import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
+import io.github.hchanjune.operationresult.core.models.context.MetricsContext
+import io.github.hchanjune.operationresult.core.providers.metric.MetricsRecorder
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes

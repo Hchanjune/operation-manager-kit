@@ -1,12 +1,16 @@
 package io.github.hchanjune.operationresult.core.models
 
+import io.github.hchanjune.operationresult.core.models.context.MetricsContext
+import io.github.hchanjune.operationresult.core.models.context.OperationContext
+import io.github.hchanjune.operationresult.core.models.context.TelemetryContext
+
 /**
  * Represents the outcome of an operation execution.
  *
  * ## Purpose
  * [OperationResult] bundles together:
  * - The produced business result ([data])
- * - The associated execution metadata ([context])
+ * - The associated execution metadata ([operation])
  *
  * This allows applications to return or log results with consistent
  * operational context such as correlation ID, issuer, entrypoint, and duration.
@@ -27,11 +31,12 @@ package io.github.hchanjune.operationresult.core.models
  * - The context is immutable and reflects the completed operation snapshot.
  *
  * @param T the type of the operation result data
- * @property context execution metadata describing this operation
+ * @property operation execution metadata describing this operation
  * @property data the business result produced by the operation
  */
 data class OperationResult<T>(
-    val context: OperationContext,
+    val operation: OperationContext,
     val metrics: MetricsContext,
+    val telemetry: TelemetryContext,
     val data: T
 )

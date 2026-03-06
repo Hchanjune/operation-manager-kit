@@ -1,10 +1,11 @@
 package io.github.hchanjune.operationresult.webmvc.metrics
 
 import io.github.hchanjune.operationresult.core.defaults.MetricTagOption
-import io.github.hchanjune.operationresult.core.models.MetricKind
-import io.github.hchanjune.operationresult.core.models.MetricsContext
-import io.github.hchanjune.operationresult.core.providers.MetricsRecorder
+import io.github.hchanjune.operationresult.core.models.metric.MetricKind
+import io.github.hchanjune.operationresult.core.models.context.MetricsContext
+import io.github.hchanjune.operationresult.core.providers.metric.MetricsRecorder
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Tag
 import io.micrometer.core.instrument.Timer
 import java.time.Duration
 
@@ -15,35 +16,29 @@ import java.time.Duration
  */
 class OperationMetricsRecorder(
     private val registry: MeterRegistry
-): MetricsRecorder {
+) : MetricsRecorder {
 
     override fun record(context: MetricsContext) {
         val outcome = context.outcome ?: return
         val durationMs = context.durationMillis() ?: return
 
-        val enrichedTags = context.tags.toBuilder()
-            .put(MetricTagOption.RESULT, outcome.result.name.lowercase())
-            .put(MetricTagOption.STATUS_GROUP, outcome.statusGroup?.name?.lowercase())
-            .put(MetricTagOption.EXCEPTION, outcome.exception)
-            .build()
+        val micrometerTags = context.tags.values.map { (k, v) ->
+            Tag.of(k, v)
+        }
 
-        val tags = enrichedTags.values
-            .flatMap { (k, v) -> listOf(k, v) }
-            .toTypedArray()
+        val metricName = context.name.value
 
         when (context.kind) {
             MetricKind.TIMER -> {
-                Timer.builder(context.name.value)
-                    .tags(*tags)
+                Timer.builder(metricName)
+                    .tags(micrometerTags)
                     .register(registry)
                     .record(Duration.ofMillis(durationMs))
             }
 
             MetricKind.COUNTER -> {
-                registry.counter(context.name.value, *tags).increment()
+                registry.counter(metricName, micrometerTags).increment()
             }
         }
     }
-
-
 }

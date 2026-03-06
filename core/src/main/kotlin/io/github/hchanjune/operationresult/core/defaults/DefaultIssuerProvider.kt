@@ -1,6 +1,6 @@
 package io.github.hchanjune.operationresult.core.defaults
 
-import io.github.hchanjune.operationresult.core.providers.IssuerProvider
+import io.github.hchanjune.operationresult.core.providers.invocation.IssuerProvider
 
 object DefaultIssuerProvider: IssuerProvider {
     override fun currentIssuer() = "anonymous"

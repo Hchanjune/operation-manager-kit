@@ -1,5 +1,6 @@
 package io.github.hchanjune.operationresult.webmvc.interceptor
 
+import io.github.hchanjune.operationresult.core.providers.telemetry.TelemetryContextProvider
 import io.github.hchanjune.operationresult.webmvc.constants.OperationMdcKeys
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -29,7 +30,9 @@ import org.springframework.web.servlet.HandlerInterceptor
  *   (Non-controller handlers may not populate `entrypoint`.)
  * - MDC is thread-local; async boundaries may require MDC propagation if needed.
  */
-class MdcEntrypointInterceptor: HandlerInterceptor {
+class MdcEntrypointInterceptor(
+    private val telemetryProvider: TelemetryContextProvider
+): HandlerInterceptor {
 
     /**
      * Writes the controller entrypoint into MDC before controller execution.
@@ -41,14 +44,18 @@ class MdcEntrypointInterceptor: HandlerInterceptor {
         response: HttpServletResponse,
         handler: Any
     ): Boolean {
+        val telemetry = telemetryProvider.current()
+
+        MDC.put(OperationMdcKeys.TRACE_ID, telemetry.traceId.ifBlank { "none" })
+        MDC.put(OperationMdcKeys.SPAN_ID, telemetry.spanId.ifBlank { "none" })
+        MDC.put(OperationMdcKeys.CAUSATION_ID, telemetry.causationId.ifBlank { "none" })
 
         if (handler is HandlerMethod) {
-            val controller = handler.beanType.simpleName
-            val method = handler.method.name
-
-            MDC.put(OperationMdcKeys.ENTRYPOINT, "$controller#$method")
+            val entryPoint = "${handler.beanType.simpleName}#${handler.method.name}"
+            MDC.put(OperationMdcKeys.ENTRYPOINT, entryPoint)
+            MDC.put(OperationMdcKeys.HTTP_METHOD, request.method)
+            MDC.put(OperationMdcKeys.HTTP_URI, request.requestURI)
         }
-
         return true
     }
 
@@ -62,6 +69,11 @@ class MdcEntrypointInterceptor: HandlerInterceptor {
         ex: Exception?
     ) {
         MDC.remove(OperationMdcKeys.ENTRYPOINT)
+        MDC.remove(OperationMdcKeys.HTTP_METHOD)
+        MDC.remove(OperationMdcKeys.HTTP_URI)
+        MDC.remove(OperationMdcKeys.TRACE_ID)
+        MDC.remove(OperationMdcKeys.SPAN_ID)
+        MDC.remove(OperationMdcKeys.CAUSATION_ID)
     }
 
 }

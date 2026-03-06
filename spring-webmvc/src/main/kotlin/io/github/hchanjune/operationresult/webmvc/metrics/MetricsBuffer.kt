@@ -1,6 +1,6 @@
 package io.github.hchanjune.operationresult.webmvc.metrics
 
-import io.github.hchanjune.operationresult.core.models.MetricsContext
+import io.github.hchanjune.operationresult.core.models.context.MetricsContext
 import jakarta.servlet.http.HttpServletRequest
 
 internal object MetricsBuffer {

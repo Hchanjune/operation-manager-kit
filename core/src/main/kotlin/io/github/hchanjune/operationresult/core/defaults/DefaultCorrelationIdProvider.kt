@@ -1,6 +1,6 @@
 package io.github.hchanjune.operationresult.core.defaults
 
-import io.github.hchanjune.operationresult.core.providers.CorrelationIdProvider
+import io.github.hchanjune.operationresult.core.providers.invocation.CorrelationIdProvider
 import java.util.UUID
 
 object DefaultCorrelationIdProvider: CorrelationIdProvider {

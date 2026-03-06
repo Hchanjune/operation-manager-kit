@@ -8,7 +8,9 @@ import org.aspectj.lang.annotation.Aspect
 import org.aspectj.lang.reflect.MethodSignature
 import org.slf4j.MDC
 import org.springframework.aop.support.AopUtils
+import org.springframework.core.Ordered
 import org.springframework.core.annotation.AnnotatedElementUtils
+import org.springframework.core.annotation.Order
 import org.springframework.util.ReflectionUtils
 
 /**
@@ -48,6 +50,7 @@ import org.springframework.util.ReflectionUtils
  *   across async boundaries.
  */
 @Aspect
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
 class OperationServiceAspect {
 
     /**
@@ -65,58 +68,47 @@ class OperationServiceAspect {
                 "execution(* *(..))"
     )
     fun captureService(joinPoint: ProceedingJoinPoint): Any? {
-        val target = joinPoint.target
-        val targetClass = target?.let { AopUtils.getTargetClass(it) }?: joinPoint.signature.declaringType
-
+        val targetClass = AopUtils.getTargetClass(joinPoint.target ?: joinPoint.signature.declaringType)
         val signature = joinPoint.signature as MethodSignature
-        val interfaceMethod = signature.method
-        val implementedMethod = ReflectionUtils.findMethod(
-            targetClass,
-            interfaceMethod.name,
-            *interfaceMethod.parameterTypes
-        )?: interfaceMethod
+        val method = signature.method
 
-        val methodAnnotation = AnnotatedElementUtils.findMergedAnnotation(implementedMethod, OperationManaged::class.java)
+        val methodAnnotation = AnnotatedElementUtils.findMergedAnnotation(method, OperationManaged::class.java)
         val classAnnotation = AnnotatedElementUtils.findMergedAnnotation(targetClass, OperationManaged::class.java)
 
         val className = targetClass.simpleName
-        val methodName = implementedMethod.name
+        val methodName = method.name
 
-        val operationRaw = methodAnnotation?.operation?.takeIf { it.isNotBlank() }
+        val operation = methodAnnotation?.operation?.takeIf { it.isNotBlank() }
             ?: classAnnotation?.operation?.takeIf { it.isNotBlank() }
+            ?: "$className#$methodName"
 
-        val useCaseRaw = methodAnnotation?.useCase?.takeIf { it.isNotBlank() }
+        val useCase = methodAnnotation?.useCase?.takeIf { it.isNotBlank() }
             ?: classAnnotation?.useCase?.takeIf { it.isNotBlank() }
+            ?: "none"
 
-        val eventRaw = methodAnnotation?.event?.takeIf { it.isNotBlank() }
+        val event = methodAnnotation?.event?.takeIf { it.isNotBlank() }
             ?: classAnnotation?.event?.takeIf { it.isNotBlank() }
+            ?: "none"
 
-        val operation = operationRaw?: "$className#$methodName"
-        val useCase = useCaseRaw?: "none"
-        val event = eventRaw?: "none"
+        val backup = mapOf(
+            OperationMdcKeys.SERVICE to MDC.get(OperationMdcKeys.SERVICE),
+            OperationMdcKeys.FUNCTION to MDC.get(OperationMdcKeys.FUNCTION),
+            OperationMdcKeys.OPERATION to MDC.get(OperationMdcKeys.OPERATION),
+            OperationMdcKeys.USE_CASE to MDC.get(OperationMdcKeys.USE_CASE),
+            OperationMdcKeys.EVENT to MDC.get(OperationMdcKeys.EVENT)
+        )
 
-        val prevService = MDC.get(OperationMdcKeys.SERVICE)
-        val prevFunction = MDC.get(OperationMdcKeys.FUNCTION)
-        val prevOperation = MDC.get(OperationMdcKeys.OPERATION)
-        val prevUseCase = MDC.get(OperationMdcKeys.USE_CASE)
-        val prevEvent = MDC.get(OperationMdcKeys.EVENT)
+        try {
+            MDC.put(OperationMdcKeys.SERVICE, className)
+            MDC.put(OperationMdcKeys.FUNCTION, methodName)
+            MDC.put(OperationMdcKeys.OPERATION, operation)
+            MDC.put(OperationMdcKeys.USE_CASE, useCase)
+            MDC.put(OperationMdcKeys.EVENT, event)
 
-        MDC.put(OperationMdcKeys.SERVICE, className)
-        MDC.put(OperationMdcKeys.FUNCTION, methodName)
-        MDC.put(OperationMdcKeys.OPERATION, operation)
-        MDC.put(OperationMdcKeys.USE_CASE, useCase)
-        MDC.put(OperationMdcKeys.EVENT, event)
-
-        return try {
-            joinPoint.proceed()
+            return joinPoint.proceed()
         } finally {
-            restore(OperationMdcKeys.SERVICE, prevService)
-            restore(OperationMdcKeys.FUNCTION, prevFunction)
-            restore(OperationMdcKeys.OPERATION, prevOperation)
-            restore(OperationMdcKeys.USE_CASE, prevUseCase)
-            restore(OperationMdcKeys.EVENT, prevEvent)
+            backup.forEach { (k, v) -> restore(k, v) }
         }
-
     }
 
     private fun restore(key: String, prev: String?) {

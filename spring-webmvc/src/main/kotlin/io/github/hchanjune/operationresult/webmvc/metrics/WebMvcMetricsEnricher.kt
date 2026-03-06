@@ -1,8 +1,8 @@
 package io.github.hchanjune.operationresult.webmvc.metrics
 
 import io.github.hchanjune.operationresult.core.defaults.MetricTagOption
-import io.github.hchanjune.operationresult.core.models.MetricsContext
-import io.github.hchanjune.operationresult.core.providers.MetricsEnricher
+import io.github.hchanjune.operationresult.core.models.context.MetricsContext
+import io.github.hchanjune.operationresult.core.providers.metric.MetricsEnricher
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
@@ -36,18 +36,18 @@ class WebMvcMetricsEnricher: MetricsEnricher {
 
         return context.withTags {
             // Outcome tags
-            put(MetricTagOption.RESULT, outcome?.result?.name?.lowercase())
-            put(MetricTagOption.STATUS_GROUP, outcome?.statusGroup?.name?.lowercase())
-            put(MetricTagOption.EXCEPTION, outcome?.exception?: "none")
+            put(MetricTagOption.RESULT, outcome?.result?.name?.lowercase() ?: "unknown")
+            put(MetricTagOption.STATUS_GROUP, outcome?.statusGroup?.name?.lowercase() ?: "none")
+            put(MetricTagOption.EXCEPTION, outcome?.exception ?: "none")
 
             // Descriptor
-            put(MetricTagOption.OPERATION, descriptor?.operation?: "none")
-            put(MetricTagOption.USE_CASE, descriptor?.useCase?: "none")
-            put(MetricTagOption.EVENT, descriptor?.event?: "none")
+            put(MetricTagOption.OPERATION, descriptor?.operation ?: "none")
+            put(MetricTagOption.USE_CASE, descriptor?.useCase ?: "none")
+            put(MetricTagOption.EVENT, descriptor?.event ?: "none")
 
             // HTTP tags (adapter-specific)
-            put(MetricTagOption.HTTP_METHOD, request?.method?: "ConnectionLost")
-            put(MetricTagOption.HTTP_ROUTE, request?.bestMatchingRoute()?: "ConnectionLost")
+            put(MetricTagOption.HTTP_METHOD, request?.method ?: "UNKNOWN")
+            put(MetricTagOption.HTTP_ROUTE, request?.bestMatchingRoute() ?: "UNKNOWN")
         }
     }
 

@@ -1,3 +1,1 @@
-io.github.hchanjune.operationresult.webmvc.autoconfig.OperationListenersWebMvcAutoConfiguration
-io.github.hchanjune.operationresult.webmvc.autoconfig.OperationOtelTelemetryWebMvcAutoConfiguration
-io.github.hchanjune.operationresult.webmvc.autoconfig.OperationManagerWebMvcAutoConfiguration
+io.github.hchanjune.operationresult.webmvc.config.auto.OperationManagerWebMvcAutoConfiguration
