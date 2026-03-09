@@ -7,6 +7,6 @@ data class TelemetryConfigureProperties(
     var enabled: Boolean = true,
     var includeBaggage: Boolean = false,
     var baggageAllowList: Set<String> = emptySet(),
-    var traceparentHeader: String,
-    var causationHeader: String,
+    var traceparentHeader: String = "traceparent",
+    var causationHeader: String = "causation_id",
 )
