@@ -1,22 +1,22 @@
 package io.github.hchanjune.omk.webmvc.config
 
 import io.github.hchanjune.omk.core.OperationExecutor
-import io.github.hchanjune.omk.core.Operations
+import io.github.hchanjune.omk.core.OperationsEntryPoint
 import io.github.hchanjune.omk.core.defaults.CompositeOperationListener
 import io.github.hchanjune.omk.core.defaults.DefaultOperationContextProvider
-import io.github.hchanjune.omk.core.providers.invocation.CorrelationIdProvider
+import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.core.providers.invocation.InvocationInfoProvider
-import io.github.hchanjune.omk.core.providers.invocation.IssuerProvider
+import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.core.providers.metric.MetricOutcomeClassifier
 import io.github.hchanjune.omk.core.providers.metric.MetricsContextProvider
 import io.github.hchanjune.omk.core.providers.metric.MetricsEnricher
-import io.github.hchanjune.omk.core.providers.metric.MetricsRecorder
-import io.github.hchanjune.omk.core.providers.operation.OperationContextHolderProvider
+import io.github.hchanjune.omk.core.metric.MetricsRecorder
+import io.github.hchanjune.omk.core.providers.operation.OmkContextHolderProvider
 import io.github.hchanjune.omk.core.providers.operation.OperationContextProvider
-import io.github.hchanjune.omk.core.providers.operation.OperationListener
+import io.github.hchanjune.omk.core.OperationListener
 import io.github.hchanjune.omk.core.providers.telemetry.TelemetryContextProvider
-import io.github.hchanjune.omk.webmvc.context.ThreadLocalContextClearFilter
-import io.github.hchanjune.omk.webmvc.context.ThreadLocalOperationContextHolder
+import io.github.hchanjune.omk.webmvc.filter.OmkFilter
+import io.github.hchanjune.omk.webmvc.context.ThreadLocalManagedContextHolder
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -41,9 +41,9 @@ internal class OperationConfiguration {
      * ###### OperationContextHolderProvider
      */
     @Bean
-    fun operationContextHolderProvider(): OperationContextHolderProvider {
-        val holder = ThreadLocalOperationContextHolder()
-        return OperationContextHolderProvider { holder }
+    fun operationContextHolderProvider(): OmkContextHolderProvider {
+        val holder = ThreadLocalManagedContextHolder()
+        return OmkContextHolderProvider { holder }
     }
 
     /**
@@ -71,7 +71,7 @@ internal class OperationConfiguration {
      */
     @Bean
     fun operationExecutor(
-        contextHolderProvider: OperationContextHolderProvider,
+        contextHolderProvider: OmkContextHolderProvider,
 
         issuerProvider: IssuerProvider,
         invocationInfoProvider: InvocationInfoProvider,
@@ -80,7 +80,7 @@ internal class OperationConfiguration {
         metricsContextProvider: MetricsContextProvider,
         telemetryContextProvider: TelemetryContextProvider,
 
-        correlationIdProvider: CorrelationIdProvider,
+        spanIdProvider: SpanIdProvider,
         @Qualifier("operationCompositeListener") listener: OperationListener,
 
         metricOutcomeClassifier: MetricOutcomeClassifier,
@@ -97,7 +97,7 @@ internal class OperationConfiguration {
             metricsContextProvider = metricsContextProvider,
             telemetryContextProvider = telemetryContextProvider,
 
-            correlationIdProvider = correlationIdProvider,
+            spanIdProvider = spanIdProvider,
             listener = listener,
 
             metricOutcomeClassifier = metricOutcomeClassifier,
@@ -110,7 +110,7 @@ internal class OperationConfiguration {
      */
     @Bean
     fun operationInitializer(executor: OperationExecutor): Any {
-        Operations.configure(executor)
+        OperationsEntryPoint.configure(executor)
         return Any()
     }
 
@@ -120,9 +120,9 @@ internal class OperationConfiguration {
      */
     @Bean
     fun operationContextClearFilter(
-        holderProvider: OperationContextHolderProvider
-    ): FilterRegistrationBean<ThreadLocalContextClearFilter> {
-        return FilterRegistrationBean(ThreadLocalContextClearFilter(holderProvider)).apply {
+        holderProvider: OmkContextHolderProvider
+    ): FilterRegistrationBean<OmkFilter> {
+        return FilterRegistrationBean(OmkFilter(holderProvider)).apply {
             order = Ordered.LOWEST_PRECEDENCE
             addUrlPatterns("/*")
             setName("operationContextClearFilter")

@@ -1,11 +1,7 @@
 package io.github.hchanjune.omk.webmvc.defaultListeners
 
-import io.github.hchanjune.omk.core.models.context.MetricsContext
-import io.github.hchanjune.omk.core.models.context.OperationContext
-import io.github.hchanjune.omk.core.models.context.TelemetryContext
+import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.webmvc.config.properties.DefaultOperationLoggingProperties
-import io.github.hchanjune.omk.webmvc.defaultListeners.LogLevel
-import io.github.hchanjune.omk.webmvc.defaultListeners.OperationLoggingListener
 import org.slf4j.Logger
 import kotlin.text.iterator
 
@@ -15,14 +11,14 @@ class DefaultOperationLoggingListener(
     private val props: DefaultOperationLoggingProperties
 ) : OperationLoggingListener {
 
-    override fun onSuccess(operation: OperationContext, metrics: MetricsContext, telemetry: TelemetryContext) {
-        if (props.pretty) log(logger = prettyLogger, level = props.successLevel, args = prettyContext(operation, telemetry, null))
-        if (props.json) log(logger = jsonLogger, level = props.successLevel, args = jsonContext(operation, telemetry, null))
+    override fun onSuccess(context: ManagedContext) {
+        if (props.pretty) log(logger = prettyLogger, level = props.successLevel, args = prettyContext(context, null))
+        if (props.json) log(logger = jsonLogger, level = props.successLevel, args = jsonContext(context, null))
     }
 
-    override fun onFailure(operation: OperationContext, metrics: MetricsContext, telemetry: TelemetryContext, exception: Throwable) {
-        if (props.pretty) log(logger = prettyLogger, level = props.failureLevel, args = prettyContext(operation, telemetry, exception))
-        if (props.json) log(logger = jsonLogger, level = props.failureLevel, args = jsonContext(operation, telemetry, exception))
+    override fun onFailure(context: ManagedContext, exception: Throwable) {
+        if (props.pretty) log(logger = prettyLogger, level = props.failureLevel, args = prettyContext(context, exception))
+        if (props.json) log(logger = jsonLogger, level = props.failureLevel, args = jsonContext(context, exception))
     }
 
     private fun log(
@@ -42,26 +38,25 @@ class DefaultOperationLoggingListener(
         }
     }
 
-    private fun prettyContext(operation: OperationContext, telemetry: TelemetryContext, exception: Throwable?): String {
+    private fun prettyContext(context: ManagedContext, exception: Throwable?): String {
         return buildString {
             appendLine(" ")
             appendLine("┌───────────────────────────────────────────────────────────────────────────────────")
             appendLine(if (exception != null) "│ ❌ Failed" else "│ ✅ Success")
-            appendLine("├─ TraceId     : ${telemetry.traceId}")
-            appendLine("├─ SpanId      : ${telemetry.spanId}")
-            appendLine("├─ Correlation : ${telemetry.traceId}")
-            appendLine("├─ Issuer      : ${operation.issuer}")
-            appendLine("├─ Entry Point : ${operation.entrypoint}")
-            appendLine("├─ Service     : ${operation.service}")
-            appendLine("├─ Function    : ${operation.function}")
-            appendLine("├─ Operation   : ${operation.operation}")
-            appendLine("├─ UseCase     : ${operation.useCase}")
-            appendLine("├─ Event       : ${operation.event}")
-            appendLine("├─ Attributes  : ${operation.attributes}")
-            appendLine("├─ Message     : ${operation.message}")
-            appendLine("├─ Response    : ${operation.response}")
-            appendLine("├─ Performance : ${operation.durationMs}Ms")
-            appendLine("├─ Timestamp   : ${operation.timestamp}")
+            appendLine("├─ TraceId     : ${context.traceId}")
+            appendLine("├─ CausationId : ${context.causationId}")
+            appendLine("├─ Issuer      : ${context.issuer}")
+            appendLine("├─ Entry Point : ${context.entrypoint}")
+            appendLine("├─ Service     : ${context.service}")
+            //appendLine("├─ Function    : ${context.function}")
+            appendLine("├─ Operation   : ${context.operation}")
+            appendLine("├─ UseCase     : ${context.useCase}")
+            //appendLine("├─ Event       : ${context.event}")
+            //appendLine("├─ Attributes  : ${context.attributes}")
+            appendLine("├─ Message     : ${context.message}")
+            //appendLine("├─ Response    : ${context.response}")
+            //appendLine("├─ Performance : ${context.durationMs}Ms")
+            //appendLine("├─ Timestamp   : ${context.timestamp}")
             exception?.let {
             appendLine("├─ Exception   : ${it::class.simpleName}: ${it.message}")
             appendLine("├─ Stacktrace  : ${it.stackTrace.take(20).joinToString("\n") { e -> e.toString() }}")
@@ -71,7 +66,7 @@ class DefaultOperationLoggingListener(
         }
     }
 
-    private fun jsonContext(operation: OperationContext, telemetry: TelemetryContext, exception: Throwable?): String {
+    private fun jsonContext(context: ManagedContext, exception: Throwable?): String {
         fun esc(s: String): String = buildString(s.length + 16) {
             for (ch in s) {
                 when (ch) {
@@ -109,20 +104,17 @@ class DefaultOperationLoggingListener(
             append("{")
             val fields = mutableListOf<String>()
 
-            fields += add("traceId", telemetry.traceId)
-            fields += add("spanId", telemetry.spanId)
-            fields += add("correlationId", telemetry.traceId)
-            fields += add("issuer", operation.issuer)
-            fields += add("entrypoint", operation.entrypoint)
-            fields += add("service", operation.service)
-            fields += add("function", operation.function)
-            fields += add("operation", operation.operation)
-            fields += add("useCase", operation.useCase)
-            fields += add("event", operation.event)
-            fields += add("message", operation.message)
-            fields += add("response", operation.response)
-            fields += addNum("durationMs", operation.durationMs)
-            fields += add("timestamp", operation.timestamp)
+            fields += add("traceId", context.traceId)
+            fields += add("causationId", context.causationId)
+            fields += add("issuer", context.issuer)
+            fields += add("entrypoint", context.entrypoint)
+            fields += add("service", context.service)
+            fields += add("operation", context.operation)
+            fields += add("useCase", context.useCase)
+            fields += add("message", context.message)
+            //fields += add("response", context.response)
+            //fields += addNum("durationMs", context.durationMs)
+            //fields += add("timestamp", context.timestamp)
 
             exception?.let {
                 val rc = rootCause(it)

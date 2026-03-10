@@ -1,6 +1,6 @@
 package io.github.hchanjune.omk.webmvc.config
 
-import io.github.hchanjune.omk.core.providers.operation.OperationListener
+import io.github.hchanjune.omk.core.OperationListener
 import io.github.hchanjune.omk.webmvc.config.properties.DefaultOperationLoggingProperties
 import io.github.hchanjune.omk.webmvc.defaultListeners.DefaultOperationLoggingListener
 import io.github.hchanjune.omk.webmvc.defaultListeners.OperationLoggingListener

@@ -2,13 +2,13 @@ package io.github.hchanjune.omk.webmvc.config
 
 import io.github.hchanjune.omk.core.defaults.DefaultMetricsEnricher
 import io.github.hchanjune.omk.core.defaults.NoopMetricsRecorder
-import io.github.hchanjune.omk.core.models.metric.MetricName
+import io.github.hchanjune.omk.core.metric.MetricName
 import io.github.hchanjune.omk.core.providers.metric.MetricOutcomeClassifier
 import io.github.hchanjune.omk.core.providers.metric.MetricsContextProvider
 import io.github.hchanjune.omk.core.providers.metric.MetricsEnricher
-import io.github.hchanjune.omk.core.providers.metric.MetricsRecorder
+import io.github.hchanjune.omk.core.metric.MetricsRecorder
 import io.github.hchanjune.omk.webmvc.metrics.MetricsFlushFilter
-import io.github.hchanjune.omk.webmvc.metrics.OperationMetricsRecorder
+import io.github.hchanjune.omk.webmvc.metrics.ServletMetricsRecorder
 import io.github.hchanjune.omk.webmvc.metrics.RoutingWebMvcMetricsRecorder
 import io.github.hchanjune.omk.webmvc.metrics.WebMvcMetricOutcomeClassifier
 import io.github.hchanjune.omk.webmvc.metrics.WebMvcMetricsContextProvider
@@ -88,7 +88,7 @@ internal class MetricsConfiguration {
          * (e.g., execution time, success/failure counters)
          * into the provided MeterRegistry.
          */
-        OperationMetricsRecorder(registry)
+        ServletMetricsRecorder(registry)
 
     /**
      * ###### MetricsRecorder (Routing)

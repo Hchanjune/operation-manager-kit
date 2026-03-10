@@ -1,6 +1,8 @@
 package io.github.hchanjune.omk.webmvc.config.auto
 
-import io.github.hchanjune.omk.webmvc.config.InvocationConfiguration
+import io.github.hchanjune.omk.webmvc.config.AspectConfiguration
+import io.github.hchanjune.omk.webmvc.config.FilterConfiguration
+import io.github.hchanjune.omk.webmvc.config.ProviderConfiguration
 import io.github.hchanjune.omk.webmvc.config.MetricsConfiguration
 import io.github.hchanjune.omk.webmvc.config.OperationConfiguration
 import io.github.hchanjune.omk.webmvc.config.OperationListenerConfiguration
@@ -14,11 +16,13 @@ import org.springframework.context.annotation.Import
 
 @AutoConfiguration
 @Import(
-    InvocationConfiguration::class,
+    ProviderConfiguration::class,
     OperationConfiguration::class,
     MetricsConfiguration::class,
     TelemetryConfiguration::class,
     OperationListenerConfiguration::class,
+    FilterConfiguration::class,
+    AspectConfiguration::class,
 )
 @AutoConfigureAfter(
     name = [
