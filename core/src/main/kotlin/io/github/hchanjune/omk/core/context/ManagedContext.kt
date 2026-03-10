@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.core.context
 
+import io.github.hchanjune.omk.core.contants.ManagedProtocolType
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
 import io.github.hchanjune.omk.core.metric.MetricName
@@ -16,7 +17,7 @@ class ManagedContext(
 ) {
 
     // HTTP, GRPC, KAFKA, LOCAL
-    var protocol: String = "Protocol not injected yet."
+    var protocol: ManagedProtocolType = ManagedProtocolType.UNSUPPORTED
         private set
     // API, WEBHOOK, COMMAND, EVENT, BATCH, SCHEDULED
     var type: String = "Type not injected yet."
@@ -36,7 +37,7 @@ class ManagedContext(
     var message: String = "Operation Managed"
 
     fun injectProtocol(protocol: String) {
-        this.protocol = protocol
+        this.protocol = ManagedProtocolType.from(protocol)
     }
 
     fun injectType(type: String) {

@@ -18,19 +18,19 @@ class ManagedContextPersistenceFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
+        val context = contextProvider.provide().apply {
+            this.injectProtocol("HTTP")
+            this.injectType("API")
+            this.injectHttpInfo(
+                uri = request.requestURI,
+                method = request.method,
+            )
+        }
+
         try {
-            val context = contextProvider.provide().apply {
-                this.injectProtocol("HTTP")
-                this.injectType("API")
-                this.injectHttpInfo(
-                    uri = request.requestURI,
-                    method = request.method,
-                )
-            }
             Operations.initialize(context)
             filterChain.doFilter(request, response)
         } finally {
-            val context = Operations.context
             context.rootSpan?.let {
                 metricsRecorder.record(it)
             }
