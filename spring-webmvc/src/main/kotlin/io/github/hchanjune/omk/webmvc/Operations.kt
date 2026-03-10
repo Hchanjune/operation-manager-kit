@@ -9,8 +9,7 @@ object Operations: ManagedContextHolder {
 
     private val contextHolder = ThreadLocal<ManagedContext>()
 
-    @Volatile
-    private var executor: OperationExecutor? = null
+    private lateinit var executor: OperationExecutor
 
     override val context: ManagedContext
         get() = contextHolder.get()
@@ -28,8 +27,8 @@ object Operations: ManagedContextHolder {
     }
 
     override fun <T> invoke(block: ManagedContext.() -> T): OperationResult<T> {
-        val exe = executor?: throw IllegalStateException("Executor not initialized")
-        return exe.run(block)
+        val exe = executor
+        return exe.run(context, block)
     }
 
     override fun configure(executor: OperationExecutor)  {

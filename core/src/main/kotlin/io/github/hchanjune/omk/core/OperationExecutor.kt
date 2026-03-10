@@ -1,15 +1,13 @@
 package io.github.hchanjune.omk.core
 
-import io.github.hchanjune.omk.core.context.ManagedContextHolder
 import io.github.hchanjune.omk.core.context.ManagedContext
 
+class OperationExecutor {
 
-class OperationExecutor(
-    val contextHolder: ManagedContextHolder
-) {
-
-    fun <T> run(block: ManagedContext.() -> T): OperationResult<T> {
-        val context = contextHolder.context?: throw IllegalStateException("ManagedContext Not Found")
+    fun <T> run(
+        context: ManagedContext,
+        block: ManagedContext.() -> T
+    ): OperationResult<T> {
         return try {
             val result = context.block()
             OperationResult(
