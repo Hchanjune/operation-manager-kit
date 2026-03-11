@@ -35,9 +35,9 @@ class ManagedContextPersistenceFilter(
                 this.injectHttpInfo(
                     uri = request.requestURI,
                     method = request.method,
-                ).also {
-                    request.setAttribute(KEY, it)
-                }
+                )
+            }.also {
+                request.setAttribute(KEY, it)
             }
 
         val firstDispatch = request.dispatcherType != DispatcherType.ERROR

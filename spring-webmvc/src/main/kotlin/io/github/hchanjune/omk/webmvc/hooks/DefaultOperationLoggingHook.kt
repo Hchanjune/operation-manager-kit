@@ -122,7 +122,6 @@ class DefaultOperationLoggingHook(
             fields += add("service", context.service)
             fields += add("operation", context.operation)
             fields += add("useCase", context.useCase)
-            fields += add("status", if (exception != null) "FAILED" else "SUCCESS")
             fields += addNum("durationMs", context.durationMs)
             fields += add("message", context.message)
             fields += add("response", context.response)
