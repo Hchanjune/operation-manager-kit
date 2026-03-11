@@ -15,6 +15,8 @@ class ManagedContextPersistenceFilter(
     private val compositeHook: OperationHook
 ): OncePerRequestFilter() {
 
+    override fun shouldNotFilterErrorDispatch() = false
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
