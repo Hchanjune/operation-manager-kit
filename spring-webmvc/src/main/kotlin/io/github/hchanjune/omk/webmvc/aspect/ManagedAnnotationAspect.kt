@@ -2,7 +2,7 @@ package io.github.hchanjune.omk.webmvc.aspect
 
 import io.github.hchanjune.omk.core.annotations.OperationManaged
 import io.github.hchanjune.omk.webmvc.Operations
-import org.aspectj.lang.ProceedingJoinPoint
+import org.aspectj.lang.JoinPoint
 import org.aspectj.lang.annotation.Aspect
 import org.aspectj.lang.annotation.Before
 import org.aspectj.lang.reflect.MethodSignature
@@ -24,7 +24,7 @@ class ManagedAnnotationAspect {
                 "@annotation(io.github.hchanjune.omk.core.annotations.OperationManaged)) && " +
                 "execution(* *(..))"
     )
-    fun captureService(joinPoint: ProceedingJoinPoint): Any? {
+    fun captureService(joinPoint: JoinPoint) {
         val targetClass = AopUtils.getTargetClass(joinPoint.target ?: joinPoint.signature.declaringType)
         val signature = joinPoint.signature as MethodSignature
         val method = signature.method
@@ -48,8 +48,6 @@ class ManagedAnnotationAspect {
             operation = operation,
             useCase = useCase,
         )
-
-        return joinPoint.proceed()
     }
 
 }
