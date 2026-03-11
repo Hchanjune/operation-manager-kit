@@ -1,6 +1,6 @@
 package io.github.hchanjune.omk.webmvc.config.properties
 
-import io.github.hchanjune.omk.webmvc.defaultListeners.LogLevel
+import io.github.hchanjune.omk.webmvc.hooks.LogLevel
 import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties("operation-manager.webmvc.logging")

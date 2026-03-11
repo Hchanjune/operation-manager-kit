@@ -2,7 +2,7 @@ package io.github.hchanjune.omk.core
 
 import io.github.hchanjune.omk.core.context.ManagedContext
 
-interface OperationListener {
+interface OperationHook {
 
     fun onSuccess(context: ManagedContext) {}
 

@@ -15,12 +15,11 @@ class ManagedControllerAspect {
 
     @Around("controllerMethods()")
     fun injectEntryPoint(joinPoint: ProceedingJoinPoint): Any? {
-        val signature = joinPoint.signature as MethodSignature
-        val className = signature.declaringType.simpleName
-        val methodName = signature.method.name
+        val signature = joinPoint.signature
+        val entrypointKey = "${signature.declaringType.simpleName}#${signature.name}"
 
         Operations.context.injectEntryPoint(
-            entrypoint = "$className#$methodName"
+            entrypoint = entrypointKey
         )
 
         return joinPoint.proceed()

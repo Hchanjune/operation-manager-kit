@@ -24,6 +24,11 @@ object Operations: ManagedContextHolder {
 
     override fun initialize(context: ManagedContext) {
         contextHolder.set(context)
+        context.start()
+    }
+
+    override fun complete() {
+        contextHolder.get()?.end()
     }
 
     override fun <T> invoke(block: ManagedContext.() -> T): OperationResult<T> {

@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.webmvc.config
 
+import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.metric.MetricsRecorder
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.webmvc.filter.ManagedContextPersistenceFilter
@@ -14,8 +15,15 @@ class FilterConfiguration {
     fun managedContextPersistenceFilter(
         contextProvider: ManagedContextProvider,
         metricsRecorder: MetricsRecorder,
+        compositeHook: OperationHook
     ): FilterRegistrationBean<ManagedContextPersistenceFilter> =
-        FilterRegistrationBean(ManagedContextPersistenceFilter(contextProvider, metricsRecorder)).apply {
+        FilterRegistrationBean(
+            ManagedContextPersistenceFilter(
+                contextProvider = contextProvider,
+                metricsRecorder = metricsRecorder,
+                compositeHook = compositeHook
+            )
+        ).apply {
         addUrlPatterns("/*")
         order = 1
     }

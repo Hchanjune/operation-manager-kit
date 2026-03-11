@@ -1,15 +1,15 @@
-package io.github.hchanjune.omk.webmvc.defaultListeners
+package io.github.hchanjune.omk.webmvc.hooks
 
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.webmvc.config.properties.DefaultOperationLoggingProperties
 import org.slf4j.Logger
 import kotlin.text.iterator
 
-class DefaultOperationLoggingListener(
+class DefaultOperationLoggingHook(
     private val prettyLogger: Logger,
     private val jsonLogger: Logger,
     private val props: DefaultOperationLoggingProperties
-) : OperationLoggingListener {
+) : OperationLoggingHook {
 
     override fun onSuccess(context: ManagedContext) {
         if (props.pretty) log(logger = prettyLogger, level = props.successLevel, args = prettyContext(context, null))

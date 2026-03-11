@@ -7,6 +7,7 @@ interface ManagedContextHolder {
     val context: ManagedContext
     val hasContext: Boolean
     fun initialize(context: ManagedContext)
+    fun complete()
     fun configure(executor: OperationExecutor)
     operator fun <T> invoke(block: ManagedContext.() -> T): OperationResult<T>
     fun applyContext(context: ManagedContext)

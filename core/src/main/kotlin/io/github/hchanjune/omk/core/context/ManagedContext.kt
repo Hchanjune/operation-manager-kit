@@ -8,11 +8,13 @@ import io.github.hchanjune.omk.core.metric.MetricPolicy
 import io.github.hchanjune.omk.core.metric.MetricSpan
 import io.github.hchanjune.omk.core.metric.MetricTags
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
+import java.time.Clock
 
 class ManagedContext(
     val traceId: String,
     val causationId: String = "",
     val issuer: String,
+    private val clock: Clock = Clock.systemUTC(),
     private val spanIdProvider: SpanIdProvider
 ) {
 
@@ -35,6 +37,24 @@ class ManagedContext(
     var useCase: String = "UseCase not injected yet."
         private set
     var message: String = "Operation Managed"
+
+    var startMillis: Long = 0L
+        private set
+    var endMillis: Long = 0L
+        private set
+    var durationMs: Long = 0L
+        private set
+
+
+    fun start() {
+        this.startMillis = clock.millis()
+    }
+
+    fun end() {
+        if (this.startMillis == 0L) return
+        this.endMillis = clock.millis()
+        this.durationMs = endMillis - startMillis
+    }
 
     fun injectProtocol(protocol: String) {
         this.protocol = ManagedProtocolType.from(protocol)
@@ -63,6 +83,7 @@ class ManagedContext(
     }
 
 
+
     private val spanStack = ArrayDeque<MetricSpan>()
 
     var rootSpan: MetricSpan? = null
@@ -83,7 +104,8 @@ class ManagedContext(
             kind = kind,
             policy = policy,
             tags = tags,
-            descriptor = descriptor
+            descriptor = descriptor,
+            clock = clock
         )
 
         if (spanStack.isEmpty()) {
