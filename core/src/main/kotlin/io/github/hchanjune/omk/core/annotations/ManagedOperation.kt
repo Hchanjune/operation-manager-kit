@@ -17,10 +17,10 @@ package io.github.hchanjune.omk.core.annotations
  *   so advice might not run for the inner call.
  * - MDC values are thread-local and may not propagate across async boundaries unless explicitly configured.
  */
-@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+@Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
 @MustBeDocumented
-annotation class OperationManaged(
+annotation class ManagedOperation(
     val operation: String = "",
     val useCase: String = "",
     val event: String = ""
