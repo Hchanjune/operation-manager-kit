@@ -3,8 +3,8 @@ package io.github.hchanjune.omk.webmvc.aspect
 import io.github.hchanjune.omk.core.annotations.OperationManaged
 import io.github.hchanjune.omk.webmvc.Operations
 import org.aspectj.lang.ProceedingJoinPoint
-import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
+import org.aspectj.lang.annotation.Before
 import org.aspectj.lang.reflect.MethodSignature
 import org.springframework.aop.support.AopUtils
 import org.springframework.core.Ordered
@@ -19,7 +19,7 @@ class ManagedAnnotationAspect {
         private val ANNOTATION_NAME = OperationManaged::class.java.name
     }
 
-    @Around(
+    @Before(
         "(@within(io.github.hchanjune.omk.core.annotations.OperationManaged) || " +
                 "@annotation(io.github.hchanjune.omk.core.annotations.OperationManaged)) && " +
                 "execution(* *(..))"

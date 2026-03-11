@@ -43,9 +43,14 @@ class DefaultOperationLoggingHook(
             appendLine(" ")
             appendLine("┌───────────────────────────────────────────────────────────────────────────────────")
             appendLine(if (exception != null) "│ ❌ Failed" else "│ ✅ Success")
+            appendLine("├─ Status      : ${if (exception != null) "FAILED" else "SUCCESS"}")
             appendLine("├─ TraceId     : ${context.traceId}")
             appendLine("├─ CausationId : ${context.causationId}")
             appendLine("├─ Issuer      : ${context.issuer}")
+            appendLine("├─ Protocol    : ${context.protocol}")
+            appendLine("├─ Type        : ${context.type}")
+            appendLine("├─ HTTP_URI    : ${context.uri}")
+            appendLine("├─ HTTP_METHOD : ${context.method}")
             appendLine("├─ Entry Point : ${context.entrypoint}")
             appendLine("├─ Service     : ${context.service}")
             //appendLine("├─ Function    : ${context.function}")
@@ -54,13 +59,15 @@ class DefaultOperationLoggingHook(
             //appendLine("├─ Event       : ${context.event}")
             //appendLine("├─ Attributes  : ${context.attributes}")
             appendLine("├─ Message     : ${context.message}")
-            //appendLine("├─ Response    : ${context.response}")
-            //appendLine("├─ Performance : ${context.durationMs}Ms")
-            //appendLine("├─ Timestamp   : ${context.timestamp}")
+            appendLine("├─ Response    : ${context.response}")
+            appendLine("├─ Performance : ${context.durationMs}Ms")
+            appendLine("├─ Timestamp   : ${context.timestamp}")
+
             exception?.let {
             appendLine("├─ Exception   : ${it::class.simpleName}: ${it.message}")
             appendLine("├─ Stacktrace  : ${it.stackTrace.take(20).joinToString("\n") { e -> e.toString() }}")
             }
+
             appendLine("└───────────────────────────────────────────────────────────────────────────────────")
             appendLine(" ")
         }
@@ -107,14 +114,17 @@ class DefaultOperationLoggingHook(
             fields += add("traceId", context.traceId)
             fields += add("causationId", context.causationId)
             fields += add("issuer", context.issuer)
+            fields += add("protocol", context.protocol)
+            fields += add("method", context.method)
+            fields += add("uri", context.uri)
             fields += add("entrypoint", context.entrypoint)
             fields += add("service", context.service)
             fields += add("operation", context.operation)
             fields += add("useCase", context.useCase)
+            fields += add("status", if (exception != null) "FAILED" else "SUCCESS")
+            fields += addNum("durationMs", context.durationMs)
             fields += add("message", context.message)
-            //fields += add("response", context.response)
-            //fields += addNum("durationMs", context.durationMs)
-            //fields += add("timestamp", context.timestamp)
+            fields += add("response", context.response)
 
             exception?.let {
                 val rc = rootCause(it)
@@ -125,6 +135,8 @@ class DefaultOperationLoggingHook(
                     rc.stackTrace.take(8).joinToString("\\n") { e -> e.toString() }
                 )
             }
+
+            fields += add("timestamp", context.timestamp.toString())
 
             append(fields.filter { it.isNotBlank() }.joinToString(","))
             append("}")

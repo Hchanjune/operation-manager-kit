@@ -9,6 +9,7 @@ import io.github.hchanjune.omk.core.metric.MetricSpan
 import io.github.hchanjune.omk.core.metric.MetricTags
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import java.time.Clock
+import java.time.Instant
 
 class ManagedContext(
     val traceId: String,
@@ -22,21 +23,34 @@ class ManagedContext(
     var protocol: ManagedProtocolType = ManagedProtocolType.UNSUPPORTED
         private set
     // API, WEBHOOK, COMMAND, EVENT, BATCH, SCHEDULED
+
     var type: String = "Type not injected yet."
         private set
+
     var uri: String = "Http URI not injected yet."
         private set
+
     var method: String = "Http Method not injected yet."
         private set
+
     var entrypoint: String = "Entrypoint not injected yet."
         private set
+
     var service: String = "Service not injected yet."
         private set
+
     var operation: String = "Operation not injected yet."
         private set
+
     var useCase: String = "UseCase not injected yet."
         private set
+
+    var response: String = ""
+        private set
+
     var message: String = "Operation Managed"
+
+    val timestamp: Instant = Instant.now(clock)
 
     var startMillis: Long = 0L
         private set
@@ -82,6 +96,9 @@ class ManagedContext(
         this.useCase = useCase
     }
 
+    fun injectResponse(response:String) {
+        this.response = response
+    }
 
 
     private val spanStack = ArrayDeque<MetricSpan>()
