@@ -4,11 +4,9 @@ import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.metric.MetricsRecorder
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.webmvc.filter.ManagedContextPersistenceFilter
-import jakarta.servlet.DispatcherType
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.core.Ordered
 
 @Configuration
 class FilterConfiguration {
@@ -28,7 +26,6 @@ class FilterConfiguration {
         ).apply {
             setName("managedContextPersistenceFilter")
             addUrlPatterns("/*")
-            setDispatcherTypes(DispatcherType.REQUEST, DispatcherType.ERROR)
             order = -90
     }
 

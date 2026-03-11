@@ -15,7 +15,7 @@ class ManagedContextPersistenceFilter(
     private val compositeHook: OperationHook
 ): OncePerRequestFilter() {
 
-    override fun shouldNotFilterErrorDispatch() = false
+    override fun shouldNotFilterErrorDispatch() = true
 
     override fun doFilterInternal(
         request: HttpServletRequest,
@@ -23,7 +23,6 @@ class ManagedContextPersistenceFilter(
         filterChain: FilterChain
     ) {
 
-        var isSuccess = false
         val context = contextProvider.provide().apply {
             this.injectProtocol("HTTP")
             this.injectType("API")
@@ -36,18 +35,22 @@ class ManagedContextPersistenceFilter(
         try {
             Operations.initialize(context)
             filterChain.doFilter(request, response)
-            isSuccess = true
-        } catch (exception: Throwable) {
-            compositeHook.onFailure(context, exception)
-            throw exception
         } finally {
             Operations.complete()
-            if (isSuccess) {
+            val isErrorStatus = response.status >= 400
+
+            if (isErrorStatus) {
+                val exception = request.getAttribute("jakarta.servlet.error.exception") as? Throwable
+                    ?: RuntimeException("HTTP Error ${response.status}")
+                compositeHook.onFailure(context, exception)
+            } else {
                 compositeHook.onSuccess(context)
             }
+
             context.rootSpan?.let {
                 metricsRecorder.record(it)
             }
+
             Operations.clear()
         }
     }

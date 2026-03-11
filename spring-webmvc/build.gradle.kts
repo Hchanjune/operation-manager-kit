@@ -6,7 +6,7 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":core"))
+    api(project(":core"))
 
     compileOnly(platform("org.springframework.boot:spring-boot-dependencies:4.0.2"))
 
