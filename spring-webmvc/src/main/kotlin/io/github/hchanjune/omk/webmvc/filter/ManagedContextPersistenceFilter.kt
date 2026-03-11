@@ -60,6 +60,7 @@ class ManagedContextPersistenceFilter(
                 context.rootSpan?.let {
                     metricsRecorder.record(it)
                 }
+                filterChain.doFilter(request, response)
             }
         } finally {
             Operations.clear()

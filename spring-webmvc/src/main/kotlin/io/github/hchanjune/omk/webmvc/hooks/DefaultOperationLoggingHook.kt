@@ -128,10 +128,12 @@ class DefaultOperationLoggingHook(
 
             exception?.let {
                 val rc = rootCause(it)
-                fields += add("exception", "${it::class.simpleName}:${it.message}")
-                fields += add("rootCause", "${rc::class.simpleName}:${rc.message}")
+                fields += add("exception.type", it::class.simpleName)
+                fields += add("exception.detail", it.message)
+                fields += add("exception.rootCause", rc::class.simpleName)
+                fields += add("exception.message", rc.message)
                 fields += add(
-                    "rootCauseTopFrames",
+                    "exception.rootCauseTopFrames",
                     rc.stackTrace.take(8).joinToString("\\n") { e -> e.toString() }
                 )
             }
