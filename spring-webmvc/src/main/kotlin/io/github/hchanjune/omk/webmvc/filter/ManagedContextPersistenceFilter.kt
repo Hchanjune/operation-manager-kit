@@ -22,7 +22,6 @@ class ManagedContextPersistenceFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
-        var caughtException: Throwable? = null
         val context = contextProvider.provide().apply {
             this.injectProtocol("HTTP")
             this.injectType("API")
@@ -35,19 +34,13 @@ class ManagedContextPersistenceFilter(
         try {
             Operations.initialize(context)
             filterChain.doFilter(request, response)
+            Operations.complete()
+            compositeHook.onSuccess(context)
         } catch (exception: Throwable) {
-            caughtException = exception
+            Operations.complete()
+            compositeHook.onFailure(context, exception)
             throw exception
         } finally {
-            Operations.complete()
-            val finalException = caughtException
-                ?: if (response.status >= 400) RuntimeException("HTTP Error ${response.status}") else null
-
-            if (finalException != null) {
-                compositeHook.onFailure(context, finalException)
-            } else {
-                compositeHook.onSuccess(context)
-            }
 
             context.rootSpan?.let {
                 metricsRecorder.record(it)
