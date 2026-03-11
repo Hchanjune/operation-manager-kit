@@ -111,6 +111,7 @@ class DefaultOperationLoggingHook(
             append("{")
             val fields = mutableListOf<String>()
 
+            fields += add("status", if (exception != null) "FAILED" else "SUCCESS")
             fields += add("traceId", context.traceId)
             fields += add("causationId", context.causationId)
             fields += add("issuer", context.issuer)
