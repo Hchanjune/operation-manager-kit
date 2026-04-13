@@ -12,14 +12,15 @@ import java.time.Clock
 import java.time.Instant
 
 class ManagedContext(
-    val traceId: String,
-    val causationId: String = "",
-    private val issuerProvider: () -> String,
     private val clock: Clock = Clock.systemUTC(),
     private val spanIdProvider: SpanIdProvider
 ) {
 
-    val issuer: String get() = issuerProvider()
+    var traceId: String = "TraceId not injected yet."
+
+    var causationId: String = "CausationId not injected yet."
+
+    var issuer: String = "Issuer not injected yet."
 
     // HTTP, GRPC, KAFKA, LOCAL
     var protocol: ManagedProtocolType = ManagedProtocolType.UNSUPPORTED
@@ -70,6 +71,18 @@ class ManagedContext(
         if (this.startMillis == 0L) return
         this.endMillis = clock.millis()
         this.durationMs = endMillis - startMillis
+    }
+
+    fun injectTraceId(traceId: String) {
+        this.traceId = traceId
+    }
+
+    fun injectCausationId(causationId: String) {
+        this.causationId = causationId
+    }
+
+    fun injectIssuer(issuer: String) {
+        this.issuer = issuer
     }
 
     fun injectProtocol(protocol: String) {

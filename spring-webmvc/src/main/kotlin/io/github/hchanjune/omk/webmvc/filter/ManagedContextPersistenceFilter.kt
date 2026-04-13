@@ -3,7 +3,9 @@ package io.github.hchanjune.omk.webmvc.filter
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.metric.MetricsRecorder
+import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
+import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.webmvc.Operations
 import jakarta.servlet.DispatcherType
 import jakarta.servlet.FilterChain
@@ -13,6 +15,8 @@ import org.springframework.web.filter.OncePerRequestFilter
 
 class ManagedContextPersistenceFilter(
     private val contextProvider: ManagedContextProvider,
+    private val traceIdProvider: TraceIdProvider,
+    private val causationIdProvider: CausationIdProvider,
     private val metricsRecorder: MetricsRecorder,
     private val compositeHook: OperationHook
 ): OncePerRequestFilter() {
@@ -30,6 +34,8 @@ class ManagedContextPersistenceFilter(
     ) {
         val context: ManagedContext = request.getAttribute(KEY) as ManagedContext?
             ?: contextProvider.provide().apply {
+                this.injectTraceId(traceIdProvider.provideTraceId())
+                this.injectCausationId(causationIdProvider.provideCausationId())
                 this.injectProtocol("HTTP")
                 this.injectType("API")
                 this.injectHttpInfo(

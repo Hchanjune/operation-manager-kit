@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration
 
 @Configuration
 @ConditionalOnClass(Aspect::class)
-class AspectConfiguration {
+internal class AspectConfiguration {
 
     /**
      * ###### ManagedControllerAspect

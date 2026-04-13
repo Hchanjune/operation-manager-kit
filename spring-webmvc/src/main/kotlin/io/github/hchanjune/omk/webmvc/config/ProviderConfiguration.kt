@@ -5,20 +5,15 @@ import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
-import io.github.hchanjune.omk.webmvc.aspect.ManagedAnnotationAspect
 import io.github.hchanjune.omk.webmvc.provider.OperationCausationIdProvider
 import io.github.hchanjune.omk.webmvc.provider.OperationManagedContextProvider
 import io.github.hchanjune.omk.webmvc.provider.OperationSpanIdProvider
 import io.github.hchanjune.omk.webmvc.provider.OperationTraceIdProvider
 import io.github.hchanjune.omk.webmvc.provider.SpringSecurityIssuerProvider
-import org.aspectj.lang.annotation.Aspect
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 
 @Configuration
 internal class ProviderConfiguration {
@@ -69,15 +64,9 @@ internal class ProviderConfiguration {
      */
     @Bean
     fun managedContextProvider(
-        traceIdProvider: TraceIdProvider,
-        causationIdProvider: CausationIdProvider,
         spanIdProvider: SpanIdProvider,
-        issuerProvider: IssuerProvider,
-        ): ManagedContextProvider =
+    ): ManagedContextProvider =
         OperationManagedContextProvider(
-            traceIdProvider = traceIdProvider,
-            causationIdProvider = causationIdProvider,
-            issuerProvider = issuerProvider,
             spanIdProvider = spanIdProvider,
         )
 

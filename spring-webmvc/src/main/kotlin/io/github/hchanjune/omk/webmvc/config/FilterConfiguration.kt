@@ -2,11 +2,20 @@ package io.github.hchanjune.omk.webmvc.config
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.metric.MetricsRecorder
+import io.github.hchanjune.omk.core.provider.CausationIdProvider
+import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
+import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.webmvc.filter.ManagedContextPersistenceFilter
+import io.github.hchanjune.omk.webmvc.filter.SpringSecurityConfigurationFilter
+import org.springframework.beans.factory.config.BeanPostProcessor
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.security.config.annotation.web.builders.HttpSecurity
+import org.springframework.security.web.access.intercept.AuthorizationFilter
+import kotlin.jvm.java
 
 @Configuration
 class FilterConfiguration {
@@ -14,11 +23,15 @@ class FilterConfiguration {
     @Bean
     fun managedContextPersistenceFilter(
         contextProvider: ManagedContextProvider,
+        traceIdProvider: TraceIdProvider,
+        causationIdProvider: CausationIdProvider,
         metricsRecorder: MetricsRecorder,
-        compositeHook: OperationHook
+        compositeHook: OperationHook,
     ): FilterRegistrationBean<ManagedContextPersistenceFilter> =
         FilterRegistrationBean(
             ManagedContextPersistenceFilter(
+                traceIdProvider = traceIdProvider,
+                causationIdProvider = causationIdProvider,
                 contextProvider = contextProvider,
                 metricsRecorder = metricsRecorder,
                 compositeHook = compositeHook
@@ -27,6 +40,25 @@ class FilterConfiguration {
             setName("managedContextPersistenceFilter")
             addUrlPatterns("/*")
             order = -90
+    }
+
+    @Bean
+    @ConditionalOnClass(name = [
+        "org.springframework.security.core.context.SecurityContextHolder",
+        "org.springframework.security.web.SecurityFilterChain"
+    ])
+    fun securityIssuerInjector(
+        issuerProvider: IssuerProvider
+    ): BeanPostProcessor = object : BeanPostProcessor {
+        override fun postProcessBeforeInitialization(bean: Any, beanName: String): Any {
+            if (bean is HttpSecurity) {
+                bean.addFilterAfter(
+                    SpringSecurityConfigurationFilter(issuerProvider),
+                    AuthorizationFilter::class.java
+                )
+            }
+            return bean
+        }
     }
 
 }

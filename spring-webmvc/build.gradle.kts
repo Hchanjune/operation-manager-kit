@@ -20,6 +20,8 @@ dependencies {
     compileOnly("org.springframework:spring-aop")
     compileOnly("org.aspectj:aspectjrt")
     compileOnly("org.springframework.security:spring-security-core")
+    compileOnly("org.springframework.security:spring-security-web")
+    compileOnly("org.springframework.security:spring-security-config")
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")
     compileOnly("io.opentelemetry:opentelemetry-api")
 
