@@ -14,10 +14,12 @@ import java.time.Instant
 class ManagedContext(
     val traceId: String,
     val causationId: String = "",
-    val issuer: String,
+    private val issuerProvider: () -> String,
     private val clock: Clock = Clock.systemUTC(),
     private val spanIdProvider: SpanIdProvider
 ) {
+
+    val issuer: String get() = issuerProvider()
 
     // HTTP, GRPC, KAFKA, LOCAL
     var protocol: ManagedProtocolType = ManagedProtocolType.UNSUPPORTED

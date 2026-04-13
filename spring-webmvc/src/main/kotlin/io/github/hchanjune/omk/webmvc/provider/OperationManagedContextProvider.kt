@@ -17,7 +17,7 @@ class OperationManagedContextProvider(
         return ManagedContext(
             traceId = traceIdProvider.provideTraceId(),
             causationId = causationIdProvider.provideCausationId(),
-            issuer = issuerProvider.currentIssuer(),
+            issuerProvider = { issuerProvider.currentIssuer() },
             spanIdProvider = spanIdProvider,
         )
     }
