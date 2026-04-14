@@ -42,23 +42,6 @@ class FilterConfiguration {
             order = -90
     }
 
-    @Bean
-    @ConditionalOnClass(name = [
-        "org.springframework.security.core.context.SecurityContextHolder",
-        "org.springframework.security.web.SecurityFilterChain"
-    ])
-    fun securityIssuerInjector(
-        issuerProvider: IssuerProvider
-    ): BeanPostProcessor = object : BeanPostProcessor {
-        override fun postProcessBeforeInitialization(bean: Any, beanName: String): Any {
-            if (bean is HttpSecurity) {
-                bean.addFilterAfter(
-                    SpringSecurityConfigurationFilter(issuerProvider),
-                    AuthorizationFilter::class.java
-                )
-            }
-            return bean
-        }
-    }
+
 
 }
