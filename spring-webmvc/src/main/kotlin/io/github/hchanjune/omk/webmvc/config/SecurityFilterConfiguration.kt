@@ -8,7 +8,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
-import org.springframework.security.web.access.intercept.AuthorizationFilter
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 
 @Configuration
 @ConditionalOnClass(name = [
@@ -29,7 +29,7 @@ class SecurityFilterConfiguration(
                 logger.info((">>> HttpSecurity caught!"))
                 bean.addFilterAfter(
                     SpringSecurityConfigurationFilter(issuerProvider),
-                    AuthorizationFilter::class.java
+                    UsernamePasswordAuthenticationFilter::class.java
                 )
             }
             return bean
