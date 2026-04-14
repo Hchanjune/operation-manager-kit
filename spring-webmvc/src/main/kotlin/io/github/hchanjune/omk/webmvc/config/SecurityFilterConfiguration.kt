@@ -7,8 +7,8 @@ import org.springframework.beans.factory.config.BeanPostProcessor
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.security.config.annotation.web.builders.HttpSecurity
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.security.web.DefaultSecurityFilterChain
+import org.springframework.security.web.access.intercept.AuthorizationFilter
 
 @Configuration
 @ConditionalOnClass(name = [
@@ -23,14 +23,17 @@ class SecurityFilterConfiguration(
 
     @Bean
     fun securityIssuerInjector(): BeanPostProcessor = object : BeanPostProcessor {
-        override fun postProcessBeforeInitialization(bean: Any, beanName: String): Any {
-            logger.info (">>> BeanPostProcessor: ${bean::class.simpleName} ($beanName)")
-            if (bean is HttpSecurity) {
-                logger.info((">>> HttpSecurity caught!"))
-                bean.addFilterAfter(
-                    SpringSecurityConfigurationFilter(issuerProvider),
-                    UsernamePasswordAuthenticationFilter::class.java
-                )
+        override fun postProcessAfterInitialization(bean: Any, beanName: String): Any {
+            if (bean is DefaultSecurityFilterChain) {
+                val filters = bean.filters.toMutableList()
+                val index = filters.indexOfFirst { it is AuthorizationFilter }
+                if (index >= 0) {
+                    logger.info(">>> Injecting IssuerInjectionFilter into SecurityFilterChain ($beanName) at index $index")
+                    filters.add(index, SpringSecurityConfigurationFilter(issuerProvider))
+                    return DefaultSecurityFilterChain(bean.requestMatcher, filters)
+                } else {
+                    logger.warn(">>> AuthorizationFilter not found in SecurityFilterChain ($beanName)")
+                }
             }
             return bean
         }
