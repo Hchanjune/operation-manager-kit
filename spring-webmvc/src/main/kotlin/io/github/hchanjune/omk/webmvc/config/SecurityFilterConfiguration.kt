@@ -14,23 +14,28 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter
     "org.springframework.security.core.context.SecurityContextHolder",
     "org.springframework.security.web.SecurityFilterChain"
 ])
-class SecurityFilterConfiguration(
-    private val issuerProvider: IssuerProvider
-) {
+class SecurityFilterConfiguration {
 
-    @Bean
-    fun securityIssuerInjector(): BeanPostProcessor = object : BeanPostProcessor {
-        override fun postProcessAfterInitialization(bean: Any, beanName: String): Any {
-            if (bean is DefaultSecurityFilterChain) {
-                val filters = bean.filters.toMutableList()
-                val index = filters.indexOfFirst { it is AuthorizationFilter }
-                if (index >= 0) {
-                    filters.add(index, SpringSecurityConfigurationFilter(issuerProvider))
-                    return DefaultSecurityFilterChain(bean.requestMatcher, filters)
+    companion object {
+
+        @Bean
+        @JvmStatic
+        fun securityIssuerInjector(issuerProvider: IssuerProvider): BeanPostProcessor = object : BeanPostProcessor {
+            override fun postProcessAfterInitialization(bean: Any, beanName: String): Any {
+                if (bean is DefaultSecurityFilterChain) {
+                    val filters = bean.filters.toMutableList()
+                    val index = filters.indexOfFirst { it is AuthorizationFilter }
+                    if (index >= 0) {
+                        filters.add(index, SpringSecurityConfigurationFilter(issuerProvider))
+                        return DefaultSecurityFilterChain(bean.requestMatcher, filters)
+                    }
                 }
+                return bean
             }
-            return bean
         }
+
     }
+
+
 
 }
