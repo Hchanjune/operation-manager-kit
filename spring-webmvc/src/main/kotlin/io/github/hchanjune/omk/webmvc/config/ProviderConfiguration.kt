@@ -30,7 +30,9 @@ internal class ProviderConfiguration(
     @Bean
     @ConditionalOnMissingBean(TraceIdProvider::class)
     fun traceIdProvider(): TraceIdProvider =
-        OperationTraceIdProvider()
+        OperationTraceIdProvider(
+            mode = telemetryConfigurationProperties.propagation.mode
+        )
 
     /**
      * ###### CausationIdProvider
@@ -38,7 +40,9 @@ internal class ProviderConfiguration(
     @Bean
     @ConditionalOnMissingBean(CausationIdProvider::class)
     fun causationIdProvider(): CausationIdProvider =
-        OperationCausationIdProvider()
+        OperationCausationIdProvider(
+            mode = telemetryConfigurationProperties.propagation.mode
+        )
 
     /**
      * ###### SpanIdProvider
@@ -46,7 +50,9 @@ internal class ProviderConfiguration(
     @Bean
     @ConditionalOnMissingBean(SpanIdProvider::class)
     fun spanIdProvider(): SpanIdProvider =
-        OperationSpanIdProvider()
+        OperationSpanIdProvider(
+            mode = telemetryConfigurationProperties.propagation.mode
+        )
 
     /**
      * ###### IssuerProvider (SpringSecurity Enabled)

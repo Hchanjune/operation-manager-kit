@@ -50,8 +50,14 @@ class ManagedContextPersistenceFilter(
                     uri = request.requestURI,
                     method = request.method,
                 )
-            }.also {
-                request.setAttribute(KEY, it)
+            }.also { context ->
+                request.setAttribute(KEY, context)
+                propagationProvider.inject(
+                    traceId = context.traceId,
+                    spanId = context.rootSpan?.spanId ?: context.causationId
+                ) { name, value ->
+                    response.setHeader(name, value)
+                }
             }
 
         val firstDispatch = request.dispatcherType != DispatcherType.ERROR
@@ -68,12 +74,6 @@ class ManagedContextPersistenceFilter(
                     compositeHook.onFailure(context, exception)
                     throw exception
                 } finally {
-                    propagationProvider.inject(
-                        traceId = context.traceId,
-                        spanId = context.rootSpan?.spanId ?: context.causationId
-                    ) { name, value ->
-                        response.setHeader(name, value)
-                    }
                     context.rootSpan?.let {
                         metricsRecorder.record(it)
                     }
