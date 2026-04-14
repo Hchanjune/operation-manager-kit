@@ -4,9 +4,22 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties("operation-manager.webmvc.telemetry")
 data class TelemetryConfigureProperties(
-    var enabled: Boolean = true,
-    var includeBaggage: Boolean = false,
-    var baggageAllowList: Set<String> = emptySet(),
-    var traceparentHeader: String = "traceparent",
-    var causationHeader: String = "causation_id",
-)
+    var propagation: PropagationProperties = PropagationProperties(),
+) {
+
+    data class PropagationProperties(
+        var mode: PropagationMode = PropagationMode.W3C_STANDARD,
+        var customHeaders: CustomHeaders = CustomHeaders()
+    )
+
+    data class CustomHeaders(
+        var traceId: String = "X-Trace-Id",
+        var causationId: String = "X-Causation-Id"
+    )
+
+    enum class PropagationMode {
+        W3C_STANDARD,
+        CUSTOM
+    }
+
+}

@@ -2,7 +2,6 @@ package io.github.hchanjune.omk.webmvc.config
 
 import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.webmvc.filter.SpringSecurityConfigurationFilter
-import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.config.BeanPostProcessor
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.context.annotation.Bean
@@ -19,8 +18,6 @@ class SecurityFilterConfiguration(
     private val issuerProvider: IssuerProvider
 ) {
 
-    private val logger = LoggerFactory.getLogger(SecurityFilterConfiguration::class.java)
-
     @Bean
     fun securityIssuerInjector(): BeanPostProcessor = object : BeanPostProcessor {
         override fun postProcessAfterInitialization(bean: Any, beanName: String): Any {
@@ -28,11 +25,8 @@ class SecurityFilterConfiguration(
                 val filters = bean.filters.toMutableList()
                 val index = filters.indexOfFirst { it is AuthorizationFilter }
                 if (index >= 0) {
-                    logger.info(">>> Injecting IssuerInjectionFilter into SecurityFilterChain ($beanName) at index $index")
                     filters.add(index, SpringSecurityConfigurationFilter(issuerProvider))
                     return DefaultSecurityFilterChain(bean.requestMatcher, filters)
-                } else {
-                    logger.warn(">>> AuthorizationFilter not found in SecurityFilterChain ($beanName)")
                 }
             }
             return bean

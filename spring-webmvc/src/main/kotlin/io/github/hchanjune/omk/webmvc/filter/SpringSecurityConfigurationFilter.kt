@@ -12,14 +12,11 @@ class SpringSecurityConfigurationFilter(
     private val issuerProvider: IssuerProvider
 ): OncePerRequestFilter() {
 
-    private val logger = LoggerFactory.getLogger(javaClass)
-
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
-        logger.info((">>> IssuerInjection: ${issuerProvider.currentIssuer()}"))
         Operations.context.injectIssuer(issuerProvider.currentIssuer())
         filterChain.doFilter(request, response)
     }

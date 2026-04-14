@@ -8,6 +8,7 @@ import io.github.hchanjune.omk.webmvc.config.OperationConfiguration
 import io.github.hchanjune.omk.webmvc.config.HooksConfiguration
 import io.github.hchanjune.omk.webmvc.config.SecurityFilterConfiguration
 import io.github.hchanjune.omk.webmvc.config.properties.OperationManagerWebmvcAutoConfigProperties
+import io.github.hchanjune.omk.webmvc.config.properties.TelemetryConfigureProperties
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.AutoConfigureAfter
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
@@ -30,6 +31,6 @@ import org.springframework.context.annotation.Import
         "org.springframework.boot.micrometer.metrics.autoconfigure.CompositeMeterRegistryAutoConfiguration",
     ]
 )
-@EnableConfigurationProperties(OperationManagerWebmvcAutoConfigProperties::class)
+@EnableConfigurationProperties(OperationManagerWebmvcAutoConfigProperties::class, TelemetryConfigureProperties::class)
 @ConditionalOnClass(name = ["org.springframework.web.servlet.DispatcherServlet"])
 class OperationManagerWebMvcAutoConfiguration
