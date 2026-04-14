@@ -2,7 +2,9 @@ package io.github.hchanjune.omk.webmvc.config
 
 import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.webmvc.filter.SpringSecurityConfigurationFilter
+import org.springframework.beans.factory.BeanFactory
 import org.springframework.beans.factory.config.BeanPostProcessor
+import org.springframework.beans.factory.getBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -17,12 +19,12 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter
 class SecurityFilterConfiguration {
 
     companion object {
-
         @Bean
         @JvmStatic
-        fun securityIssuerInjector(issuerProvider: IssuerProvider): BeanPostProcessor = object : BeanPostProcessor {
+        fun securityIssuerInjector(beanFactory: BeanFactory): BeanPostProcessor = object : BeanPostProcessor {
             override fun postProcessAfterInitialization(bean: Any, beanName: String): Any {
                 if (bean is DefaultSecurityFilterChain) {
+                    val issuerProvider = beanFactory.getBean<IssuerProvider>()
                     val filters = bean.filters.toMutableList()
                     val index = filters.indexOfFirst { it is AuthorizationFilter }
                     if (index >= 0) {
@@ -33,7 +35,6 @@ class SecurityFilterConfiguration {
                 return bean
             }
         }
-
     }
 
 
