@@ -171,4 +171,8 @@ class ManagedContext(
         _hookRecords.add(HookRecord(hookName = hookName, success = false, error = error))
     }
 
+    private var metricsRecorded = false
+    fun isMetricsRecorded(): Boolean = metricsRecorded
+    fun markMetricsRecorded() { metricsRecorded = true }
+
 }

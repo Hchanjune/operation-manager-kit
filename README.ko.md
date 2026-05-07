@@ -49,13 +49,14 @@ dependencies {
 
 ### 1. 컴포넌트에 어노테이션 붙이기
 
-컨트롤러, 서비스, 리포지토리에 어노테이션을 붙이면 자동으로 컨텍스트가 채워집니다.
+권장 패턴은 서비스의 주요 비즈니스 로직 핸들러에 `@ManagedOperation`을 붙이고, `Operations { }` 블록의 결과를 직접 반환하는 것입니다. Kotlin의 타입 추론으로 반환 타입이 자동으로 결정되며, 명시적으로 선언하는 것도 가능합니다.
 
 ```kotlin
 import io.github.hchanjune.omk.core.annotations.ManagedController
 import io.github.hchanjune.omk.core.annotations.ManagedService
 import io.github.hchanjune.omk.core.annotations.ManagedRepository
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
+import io.github.hchanjune.omk.webmvc.Operations
 
 @ManagedController
 @RestController
@@ -63,7 +64,8 @@ class OrderController(private val orderService: OrderService) {
 
     @PostMapping("/orders")
     fun create(@RequestBody request: OrderRequest): ResponseEntity<OrderResponse> {
-        return ResponseEntity.ok(orderService.create(request))
+        val result = orderService.create(request)
+        return ResponseEntity.ok(result.data)
     }
 }
 
@@ -71,24 +73,54 @@ class OrderController(private val orderService: OrderService) {
 @Service
 class OrderService(private val orderRepository: OrderRepository) {
 
+    // 반환 타입이 OperationResult<OrderResponse>로 자동 추론됨
     @ManagedOperation(operation = "CreateOrder", useCase = "PlaceOrder")
-    fun create(request: OrderRequest): OrderResponse { ... }
+    fun create(request: OrderRequest) = Operations {
+        val order = orderRepository.save(Order.from(request))
+        OrderResponse.from(order)
+    }
+
+    // 명시적 반환 타입도 가능
+    @ManagedOperation(operation = "CancelOrder", useCase = "CancelOrder")
+    fun cancel(orderId: Long): OperationResult<Unit> = Operations {
+        orderRepository.cancel(orderId)
+    }
 }
 
 @ManagedRepository
 @Repository
 class OrderRepository {
     fun save(order: Order): Order { ... }
+    fun cancel(orderId: Long) { ... }
 }
 ```
 
 ### 2. Operations로 컨텍스트 접근
 
-관리 범위 내 어디서든 현재 요청 컨텍스트에 접근할 수 있습니다.
+`Operations.context`는 관리 범위 내 어디서든 전역으로 접근 가능합니다 — `Operations { }` 블록 안에서만 사용할 수 있는 것이 아닙니다. 동일한 managed trigger(HTTP 요청, Kafka 메시지, gRPC 호출, 또는 향후 추가될 프로토콜) 내에서 실행되는 모든 코드는 동일한 `ManagedContext` 인스턴스를 공유합니다.
 
 ```kotlin
-import io.github.hchanjune.omk.webmvc.Operations
+@Service
+class AuditService {
+    fun record() {
+        val ctx = Operations.context  // 관리 범위 내 어디서든 접근 가능
+        println(ctx.traceId)
+        println(ctx.issuer)
+    }
+}
+```
 
+컨텍스트 상태는 누적되며 접근 시점의 라이프사이클을 반영합니다. 어노테이션(`@ManagedController`, `@ManagedService`, `@ManagedOperation`)이 주입하는 값은 각 레이어에 진입할 때 채워집니다. 어노테이션이 처리되기 전에 `Operations.context`에 접근하면 해당 필드는 아직 비어있습니다.
+
+```kotlin
+// 진입점에서    → traceId ✓  issuer ✓  service ✗  operation ✗
+// 서비스에서    → traceId ✓  issuer ✓  service ✓  operation ✗
+// @ManagedOperation 메서드에서 → 모든 필드 ✓
+```
+
+`Operations { }` 블록은 컨텍스트와 함께 결과값도 캡처합니다:
+
+```kotlin
 val result = Operations { // this: ManagedContext
     println(traceId)
     println(issuer)
@@ -108,10 +140,11 @@ println(result.data) // "OK"
 |------------|------|------|
 | `@ManagedController` | 클래스 | 컨트롤러 클래스명을 컨텍스트의 entrypoint에 주입 |
 | `@ManagedService` | 클래스 | 서비스 클래스명을 컨텍스트의 service에 주입 |
-| `@ManagedRepository` | 클래스 | 리포지토리 메트릭 계측 예정 |
-| `@ManagedOperation` | 메서드 | `operation`, `useCase` 값을 컨텍스트에 주입 |
+| `@ManagedRepository` | 클래스 | 리포지토리의 모든 메서드를 DB 수준 메트릭 span으로 계측 |
+| `@ManagedOperation` | 메서드 | `operation`, `useCase` 값을 컨텍스트에 주입하고 루트 메트릭 span 생성 |
+| `@ManagedMetric` | 메서드 | 임의 메서드를 이름이 있는 자식 메트릭 span으로 계측 |
 
-> 모든 어노테이션은 클래스 수준의 저 카디널리티 식별자만 주입합니다. 메트릭 카디널리티 폭발을 방지하기 위해 메서드명은 의도적으로 제외됩니다.
+> `@ManagedController`, `@ManagedService`, `@ManagedRepository`는 클래스명을 식별자로 사용합니다. `@ManagedMetric`은 기본적으로 `ClassName.methodName`을 span 이름으로 사용하며 `name` 속성으로 재정의할 수 있습니다 — 메트릭 태그 폭발을 방지하기 위해 값은 저 카디널리티로 유지하세요.
 
 ---
 
@@ -124,9 +157,10 @@ println(result.data) // "OK"
 훅은 Spring의 `@Order` 어노테이션으로 순서가 결정됩니다. 내장 `DefaultOperationLoggingHook`은 **Order 50**으로 등록되며, 이를 기준점으로 삼습니다.
 
 ```
-Order < 50  →  전처리 훅  (컨텍스트 보강, 사전 처리)
+Order < 50  →  전처리 훅          (컨텍스트 보강, 사전 처리)
 Order 50    →  DefaultOperationLoggingHook  (보강된 컨텍스트를 로그로 출력)
-Order > 50  →  후처리 훅  (메트릭 기록, 알림 등)
+Order 60    →  MetricsOperationHook   (전체 span 트리를 Micrometer에 기록)
+Order > 60  →  커스텀 후처리 훅   (알림, 경보 등)
 ```
 
 로깅 훅보다 **앞에** 등록된 훅(Order < 50)의 실행 결과는 로그 출력에 포함됩니다.
@@ -164,7 +198,17 @@ class MyEnrichmentHook : OperationHook {
 
 내장 `DefaultOperationLoggingHook`은 pretty-print와 JSON 두 가지 로그 포맷을 지원하며, 설정으로 제어할 수 있습니다.
 
-**Pretty 출력 예시:**
+**설정 옵션:**
+
+| 프로퍼티 | 기본값 | 설명 |
+|----------|--------|------|
+| `pretty` | `false` | 사람이 읽기 쉬운 포맷으로 출력 |
+| `json` | `true` | JSON 포맷 출력 (프로덕션 권장) |
+| `spans` | `false` | pretty 출력에 span 트리 포함 |
+| `success-level` | `INFO` | 성공 시 로그 레벨 |
+| `failure-level` | `ERROR` | 실패 시 로그 레벨 |
+
+**Pretty 출력 예시 (`spans: true` 설정 시):**
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────
 │ ✅ Success
@@ -173,16 +217,76 @@ class MyEnrichmentHook : OperationHook {
 ├─ CausationId : 00f067aa0ba902b7
 ├─ Issuer      : john.doe
 ├─ Protocol    : HTTP
+├─ Type        : REST
 ├─ HTTP_URI    : /orders
 ├─ HTTP_METHOD : POST
 ├─ Entry Point : OrderController
 ├─ Service     : OrderService
 ├─ Operation   : CreateOrder
 ├─ UseCase     : PlaceOrder
-├─ Performance : 42Ms
+├─ Message     :
+├─ Response    :
+├─ Performance : 56Ms
+├─ Timestamp   : 2025-05-07T12:34:56.789Z
 ├─ Hooks       : MyEnrichmentHook=OK
+├─ Spans      :
+│    CreateOrder  [56ms]  SUCCESS
+│         └─ validateInventory  [9ms]  SUCCESS
+│         └─ OrderRepository.save  [18ms]  SUCCESS
+│         └─ OrderRepository.findByCustomerId  [7ms]  SUCCESS
 └───────────────────────────────────────────────────────────────────────────────────
 ```
+
+---
+
+## Span 메트릭
+
+어노테이션이 붙은 모든 메서드 경계는 **메트릭 span** — 결과, 태그, 중첩 구조를 가진 시간 측정 단위 — 으로 캡처됩니다. Span들은 `@ManagedOperation`을 루트로 하는 트리를 형성합니다.
+
+### Span 계층 구조
+
+```
+@ManagedOperation  ──  루트 span (operation + useCase 태그)
+    └── @ManagedMetric      ──  커스텀 자식 span (직접 계측할 임의 메서드)
+    └── @ManagedRepository  ──  DB 자식 span (리포지토리 메서드 호출마다 하나)
+```
+
+### 예시
+
+```kotlin
+@ManagedService
+@Service
+class OrderService(private val repo: OrderRepository) {
+
+    @ManagedOperation(operation = "CreateOrder", useCase = "PlaceOrder")
+    fun create(request: OrderRequest) = Operations {
+        validateInventory(request)          // @ManagedMetric 자식 span
+        repo.save(Order.from(request))      // @ManagedRepository 자식 span
+    }
+
+    @ManagedMetric(name = "validateInventory")
+    private fun validateInventory(request: OrderRequest) { ... }
+}
+
+@ManagedRepository
+@Repository
+class OrderRepository {
+    fun save(order: Order): Order { ... }   // DB span으로 자동 캡처
+}
+```
+
+Span들은 요청 처리 중에 수집되어, 요청이 완료될 때 `MetricsOperationHook`(Order 60)이 Micrometer에 일괄 기록합니다. 각 span은 `omk.span.duration`(타이머) 또는 `omk.span.count`(카운터)로 기록되며 다음 태그가 붙습니다:
+
+| 태그 | 출처 |
+|------|------|
+| `service` | `@ManagedService` 클래스명 |
+| `operation` | `@ManagedOperation.operation` |
+| `use_case` | `@ManagedOperation.useCase` |
+| `repository` | 리포지토리 클래스명 (DB span) |
+| `method` | 리포지토리 메서드명 (DB span) |
+| `span` | span 이름 (`@ManagedMetric` span) |
+| `status` | `success` 또는 `failure` |
+| `error_type` | 예외 클래스명 (실패 시) |
 
 ---
 
@@ -237,6 +341,7 @@ operation-manager:
       enabled: true
       pretty: false       # Pretty-print 포맷 (사람이 읽기 쉬운 형태)
       json: true          # JSON 포맷 (프로덕션 권장)
+      spans: false        # pretty 출력에 span 트리 포함 (기본값: false)
       success-level: INFO
       failure-level: ERROR
 
@@ -340,6 +445,51 @@ launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
 
 ---
 
+## 스레드 생명주기와 컨텍스트 공유
+
+메인 요청 스레드와 async/코루틴 스레드의 관계를 이해하면 컨텍스트 동작을 명확하게 파악할 수 있습니다.
+
+**컨텍스트가 공유되는 방식**
+
+`ManagedContext`는 힙에 존재하는 단일 객체입니다. 메인 스레드와 async/코루틴 스레드는 각자의 `ThreadLocal` 슬롯을 통해 같은 인스턴스의 참조를 보유합니다. 어느 스레드에서 컨텍스트를 수정해도 동일한 객체가 변경됩니다.
+
+```
+힙
+├── ManagedContext@1a2b3c  ←─────────────────────────┐
+│                                                      │
+ThreadLocal 슬롯                                       │
+├── main thread 슬롯  → ManagedContext@1a2b3c ─────────┤
+└── async thread 슬롯 → ManagedContext@1a2b3c ─────────┘
+                              (동일한 인스턴스)
+```
+
+**메인 스레드의 생명주기**
+
+메인 요청 스레드는 서블릿 필터가 관리하는 고정된 생명주기를 따릅니다.
+
+```
+요청 수신 → 컨텍스트 생성 → 비즈니스 로직 → 훅 실행 → clear() → 응답 반환
+```
+
+`clear()`는 메인 스레드의 `ThreadLocal` 슬롯에서 참조를 제거하며 요청 라이프사이클의 종료를 의미합니다.
+
+**Async/코루틴 스레드의 생명주기는 보장되지 않음**
+
+Async/코루틴 스레드는 독립적으로 실행됩니다. 메인 스레드가 `clear()`를 호출하기 전에 끝날 수도 있고, 그 이후에 끝날 수도 있습니다. 이로 인해 두 가지 결과가 발생합니다:
+
+- **`clear()` 이전에 완료**: 공유 인스턴스에 대한 write가 훅 실행 시점에 반영됨 → 로그 및 메트릭에 기록됨 ✓
+- **`clear()` 이후에 완료**: 메인 스레드의 슬롯은 이미 비워지고 훅도 이미 실행됨 → 공유 인스턴스에 대한 write는 조용히 무시됨 (에러 없음) ✗
+
+**Structured concurrency가 안정적으로 동작하는 이유**
+
+`coroutineScope`, `awaitAll`, `runBlocking` 같은 structured concurrency 연산자는 모든 자식 코루틴이 완료될 때까지 부모를 대기시킵니다. 이를 통해 메인 스레드가 훅 실행과 `clear()` 단계로 진행하기 전에 모든 write가 완료됨을 보장합니다.
+
+**Fire-and-forget이 컨텍스트 write에 신뢰할 수 없는 이유**
+
+`launch`와 `@Async` (fire-and-forget)는 즉시 반환하여 async 작업이 아직 실행 중인 상태에서 메인 스레드가 훅 실행과 `clear()`로 진행합니다. `clear()` 이후에 발생하는 write는 조용히 버려집니다 — 힙의 객체는 여전히 존재하지만(async 스레드가 참조를 보유), 아무도 그 변경을 처리하지 않습니다.
+
+---
+
 ## Spring Security 연동
 
 Spring Security가 클래스패스에 있으면, 보안 컨텍스트에서 자동으로 발급자를 추출합니다.
@@ -400,8 +550,9 @@ implementation("io.micrometer:micrometer-registry-prometheus")
 - [ ] Maven Central 배포
 - [ ] WebFlux 지원
 - [x] 비동기 컨텍스트 전파 (`@Async`는 `ManagedContextTaskDecorator`, 코루틴은 `ManagedContextElement`)
+- [x] Span 수준 메트릭 계측 (`@ManagedOperation`, `@ManagedMetric`, `@ManagedRepository` DB span)
+- [x] Micrometer 기반 `MetricsOperationHook` 및 전체 span 트리 기록
 - [ ] OpenTelemetry SDK 연동
-- [ ] `@ManagedRepository` 메트릭 계측 구현
 - [ ] 고트래픽 환경을 위한 샘플링 지원
 
 ---

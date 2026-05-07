@@ -49,13 +49,14 @@ dependencies {
 
 ### 1. Annotate your components
 
-Mark controllers, services, and repositories with the provided annotations.
+The recommended pattern is to place `@ManagedOperation` on the primary business logic handler in your service and return the result of `Operations { }` directly. Kotlin's type inference resolves the return type automatically, or you can declare it explicitly.
 
 ```kotlin
 import io.github.hchanjune.omk.core.annotations.ManagedController
 import io.github.hchanjune.omk.core.annotations.ManagedService
 import io.github.hchanjune.omk.core.annotations.ManagedRepository
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
+import io.github.hchanjune.omk.webmvc.Operations
 
 @ManagedController
 @RestController
@@ -63,7 +64,8 @@ class OrderController(private val orderService: OrderService) {
 
     @PostMapping("/orders")
     fun create(@RequestBody request: OrderRequest): ResponseEntity<OrderResponse> {
-        return ResponseEntity.ok(orderService.create(request))
+        val result = orderService.create(request)
+        return ResponseEntity.ok(result.data)
     }
 }
 
@@ -71,24 +73,54 @@ class OrderController(private val orderService: OrderService) {
 @Service
 class OrderService(private val orderRepository: OrderRepository) {
 
+    // Return type inferred as OperationResult<OrderResponse>
     @ManagedOperation(operation = "CreateOrder", useCase = "PlaceOrder")
-    fun create(request: OrderRequest): OrderResponse { ... }
+    fun create(request: OrderRequest) = Operations {
+        val order = orderRepository.save(Order.from(request))
+        OrderResponse.from(order)
+    }
+
+    // Explicit return type is also valid
+    @ManagedOperation(operation = "CancelOrder", useCase = "CancelOrder")
+    fun cancel(orderId: Long): OperationResult<Unit> = Operations {
+        orderRepository.cancel(orderId)
+    }
 }
 
 @ManagedRepository
 @Repository
 class OrderRepository {
     fun save(order: Order): Order { ... }
+    fun cancel(orderId: Long) { ... }
 }
 ```
 
 ### 2. Access context via Operations
 
-Access the current request context anywhere within the managed scope.
+`Operations.context` is accessible globally from anywhere within the managed scope — not just inside an `Operations { }` block. All code executing within the same managed trigger (HTTP request, Kafka message, gRPC call, or any future protocol) shares the same `ManagedContext` instance.
 
 ```kotlin
-import io.github.hchanjune.omk.webmvc.Operations
+@Service
+class AuditService {
+    fun record() {
+        val ctx = Operations.context  // accessible anywhere in the managed scope
+        println(ctx.traceId)
+        println(ctx.issuer)
+    }
+}
+```
 
+Context state is cumulative and reflects the lifecycle at the point of access. Values injected by annotations (`@ManagedController`, `@ManagedService`, `@ManagedOperation`) become available as each layer is entered. Accessing `Operations.context` before an annotation has been processed means that field is not yet populated.
+
+```kotlin
+// At entry point  → traceId ✓  issuer ✓  service ✗  operation ✗
+// In service      → traceId ✓  issuer ✓  service ✓  operation ✗
+// In @ManagedOperation → all fields ✓
+```
+
+The `Operations { }` block additionally captures the result alongside the context:
+
+```kotlin
 val result = Operations { // this: ManagedContext
     println(traceId)
     println(issuer)
@@ -108,10 +140,11 @@ println(result.data) // "OK"
 |------------|--------|---------|
 | `@ManagedController` | Class | Injects entrypoint (controller class name) into context |
 | `@ManagedService` | Class | Injects service name into context |
-| `@ManagedRepository` | Class | Marks repository for future metric instrumentation |
-| `@ManagedOperation` | Method | Injects `operation` and `useCase` into context |
+| `@ManagedRepository` | Class | Instruments all methods on a repository as DB-level metric spans |
+| `@ManagedOperation` | Method | Injects `operation` and `useCase` into context and opens a root-level metric span |
+| `@ManagedMetric` | Method | Instruments any method as a named child metric span |
 
-> All annotations inject low-cardinality class-level identifiers only — method names are intentionally excluded to prevent metric cardinality explosion.
+> `@ManagedController`, `@ManagedService`, and `@ManagedRepository` use the class name as the identifier. `@ManagedMetric` defaults to `ClassName.methodName` and can be overridden with the `name` attribute — keep the value low-cardinality to avoid metric tag explosion.
 
 ---
 
@@ -124,9 +157,10 @@ Hooks allow you to react to operation lifecycle events (success or failure).
 Hooks are ordered using Spring's `@Order` annotation. The built-in `DefaultOperationLoggingHook` is registered at **Order 50**, which serves as the reference point.
 
 ```
-Order < 50  →  Pre-logging hooks   (context enrichment, preprocessing)
+Order < 50  →  Pre-logging hooks      (context enrichment, preprocessing)
 Order 50    →  DefaultOperationLoggingHook  (logs the fully enriched context)
-Order > 50  →  Post-logging hooks  (metrics recording, notifications, etc.)
+Order 60    →  MetricsOperationHook   (records all span metrics to Micrometer)
+Order > 60  →  Custom post-logging hooks   (notifications, alerting, etc.)
 ```
 
 Hooks registered **before** the logging hook (Order < 50) will have their results included in the log output.
@@ -164,7 +198,17 @@ class MyEnrichmentHook : OperationHook {
 
 The built-in `DefaultOperationLoggingHook` supports both pretty-print and JSON log formats.
 
-**Pretty output:**
+**Options:**
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `pretty` | `false` | Human-readable formatted output |
+| `json` | `true` | JSON format, recommended for production |
+| `spans` | `false` | Append span tree to pretty output |
+| `success-level` | `INFO` | Log level for successful operations |
+| `failure-level` | `ERROR` | Log level for failed operations |
+
+**Pretty output (with `spans: true`):**
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────
 │ ✅ Success
@@ -173,16 +217,76 @@ The built-in `DefaultOperationLoggingHook` supports both pretty-print and JSON l
 ├─ CausationId : 00f067aa0ba902b7
 ├─ Issuer      : john.doe
 ├─ Protocol    : HTTP
+├─ Type        : REST
 ├─ HTTP_URI    : /orders
 ├─ HTTP_METHOD : POST
 ├─ Entry Point : OrderController
 ├─ Service     : OrderService
 ├─ Operation   : CreateOrder
 ├─ UseCase     : PlaceOrder
-├─ Performance : 42Ms
+├─ Message     :
+├─ Response    :
+├─ Performance : 56Ms
+├─ Timestamp   : 2025-05-07T12:34:56.789Z
 ├─ Hooks       : MyEnrichmentHook=OK
+├─ Spans      :
+│    CreateOrder  [56ms]  SUCCESS
+│         └─ validateInventory  [9ms]  SUCCESS
+│         └─ OrderRepository.save  [18ms]  SUCCESS
+│         └─ OrderRepository.findByCustomerId  [7ms]  SUCCESS
 └───────────────────────────────────────────────────────────────────────────────────
 ```
+
+---
+
+## Span Metrics
+
+Every annotated method boundary is captured as a **metric span** — a timed unit of work with outcome, tags, and nesting. Spans form a tree rooted at `@ManagedOperation`.
+
+### Span Hierarchy
+
+```
+@ManagedOperation  ──  root span (operation + useCase tags)
+    └── @ManagedMetric   ──  custom child span (any method you instrument)
+    └── @ManagedRepository  ──  DB child span (one per repository method call)
+```
+
+### Example
+
+```kotlin
+@ManagedService
+@Service
+class OrderService(private val repo: OrderRepository) {
+
+    @ManagedOperation(operation = "CreateOrder", useCase = "PlaceOrder")
+    fun create(request: OrderRequest) = Operations {
+        validateInventory(request)          // @ManagedMetric child span
+        repo.save(Order.from(request))      // @ManagedRepository child span
+    }
+
+    @ManagedMetric(name = "validateInventory")
+    private fun validateInventory(request: OrderRequest) { ... }
+}
+
+@ManagedRepository
+@Repository
+class OrderRepository {
+    fun save(order: Order): Order { ... }   // automatically captured as DB span
+}
+```
+
+Spans are collected during the request and flushed by `MetricsOperationHook` (Order 60) when the request completes. Each span is recorded to Micrometer as `omk.span.duration` (timer) or `omk.span.count` (counter) with the following tags:
+
+| Tag | Source |
+|-----|--------|
+| `service` | `@ManagedService` class name |
+| `operation` | `@ManagedOperation.operation` |
+| `use_case` | `@ManagedOperation.useCase` |
+| `repository` | Repository class name (DB spans) |
+| `method` | Repository method name (DB spans) |
+| `span` | Span name (`@ManagedMetric` spans) |
+| `status` | `success` or `failure` |
+| `error_type` | Exception class name (on failure) |
 
 ---
 
@@ -235,6 +339,7 @@ operation-manager:
       enabled: true
       pretty: false       # Pretty-print format (human-readable)
       json: true          # JSON format (recommended for production)
+      spans: false        # Append span tree to pretty output (default: false)
       success-level: INFO
       failure-level: ERROR
 
@@ -338,6 +443,51 @@ launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
 
 ---
 
+## Thread Lifecycle and Context Sharing
+
+Understanding the relationship between the main request thread and async/coroutine threads is important for reasoning about context behavior.
+
+**How context is shared**
+
+`ManagedContext` is a single heap object. Both the main thread and any async/coroutine thread hold a reference to the same instance via their own `ThreadLocal` slot. Writing to the context from any thread modifies the same object.
+
+```
+Heap
+├── ManagedContext@1a2b3c  ←─────────────────────────┐
+│                                                      │
+ThreadLocal slots                                      │
+├── main thread slot  → ManagedContext@1a2b3c ─────────┤
+└── async thread slot → ManagedContext@1a2b3c ─────────┘
+                              (same instance)
+```
+
+**Main thread lifecycle**
+
+The main request thread follows a fixed lifecycle managed by the servlet filter:
+
+```
+request in → context created → business logic → hooks fired → clear() → response out
+```
+
+`clear()` removes the reference from the main thread's `ThreadLocal` slot and marks the end of the request lifecycle.
+
+**Async and coroutine thread lifetime is not guaranteed**
+
+Async and coroutine threads run independently. They may finish before or after the main thread calls `clear()`. This creates two distinct outcomes:
+
+- **Finishes before `clear()`**: writes to the shared instance are visible when hooks fire → reflected in logs and metrics ✓
+- **Finishes after `clear()`**: the main thread's slot is already empty and hooks have already fired → writes to the shared instance are silently ignored, no error is thrown ✗
+
+**Why structured concurrency works reliably**
+
+Structured concurrency operators (`coroutineScope`, `awaitAll`, `runBlocking`) suspend the parent until all children complete. This guarantees that all writes to the shared context happen before the main thread proceeds to the hook and `clear()` phase.
+
+**Why fire-and-forget is unreliable for context writes**
+
+`launch` and `@Async` (fire-and-forget) return immediately, letting the main thread continue to hooks and `clear()` while async work may still be running. Any writes that happen after `clear()` are silently dropped — the object still exists in heap (the async thread holds a reference), but nobody processes those changes.
+
+---
+
 ## Spring Security Integration
 
 If Spring Security is on the classpath, the issuer is automatically resolved from the security context.
@@ -398,8 +548,9 @@ You can replace any default provider by registering a custom bean.
 - [ ] Maven Central publishing
 - [ ] WebFlux support
 - [x] Async context propagation (`@Async` via `ManagedContextTaskDecorator`, coroutines via `ManagedContextElement`)
+- [x] Span-level metric instrumentation (`@ManagedOperation`, `@ManagedMetric`, `@ManagedRepository` as DB spans)
+- [x] Micrometer-backed `MetricsOperationHook` with full span tree recording
 - [ ] OpenTelemetry SDK integration
-- [ ] `@ManagedRepository` metric instrumentation
 - [ ] Sampling support for high-throughput environments
 
 ---

@@ -1,6 +1,6 @@
 package io.github.hchanjune.omk.webmvc.aspect
 
-import io.github.hchanjune.omk.core.annotations.ManagedRepository
+import io.github.hchanjune.omk.core.annotations.ManagedMetric
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
 import io.github.hchanjune.omk.core.metric.MetricName
@@ -13,26 +13,26 @@ import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
 
 @Aspect
-class ManagedRepositoryAspect(
-    private val spanIdProvider: SpanIdProvider
+class ManagedMetricAspect (
+    private val spanIdProvider: SpanIdProvider,
 ) {
 
-    @Around("@within(managedRepository)")
-    fun aroundRepositoryMethod(
+    @Around("@annotation(managedMetric)")
+    fun aroundManagedMetric(
         joinPoint: ProceedingJoinPoint,
-        managedRepository: ManagedRepository
+        managedMetric: ManagedMetric
     ): Any? {
         if (!Operations.hasContext) return joinPoint.proceed()
 
         val context = Operations.context
-        val className = joinPoint.signature.declaringType.simpleName
-        val methodName = joinPoint.signature.name
-        val spanName = "$className.$methodName"
+        val spanName = managedMetric.name.ifBlank {
+            "${joinPoint.signature.declaringType.simpleName}.${joinPoint.signature.name}"
+        }
 
         val tags = MetricTags.Builder()
-            .put("repository", className)
-            .put("method", methodName)
+            .put("service", context.service)
             .put("operation", context.operation)
+            .put("span", spanName)
             .build()
 
         val span = context.push(
@@ -42,7 +42,7 @@ class ManagedRepositoryAspect(
             tags = tags,
             descriptor = MetricDescriptor(
                 operation = context.operation,
-                useCase = context.useCase
+                useCase = context.useCase,
             ),
             idProvider = spanIdProvider
         )
@@ -58,5 +58,6 @@ class ManagedRepositoryAspect(
             throw e
         }
     }
+
 
 }

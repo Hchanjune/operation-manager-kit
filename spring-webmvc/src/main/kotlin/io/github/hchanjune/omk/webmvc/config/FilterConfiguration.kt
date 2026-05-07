@@ -1,7 +1,6 @@
 package io.github.hchanjune.omk.webmvc.config
 
 import io.github.hchanjune.omk.core.OperationHook
-import io.github.hchanjune.omk.core.metric.MetricsRecorder
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
@@ -27,7 +26,6 @@ internal class FilterConfiguration {
         propagationProvider: TelemetryPropagationProvider,
         traceIdProvider: TraceIdProvider,
         causationIdProvider: CausationIdProvider,
-        metricsRecorder: MetricsRecorder,
         compositeHook: OperationHook,
     ): FilterRegistrationBean<ManagedContextPersistenceFilter> =
         FilterRegistrationBean(
@@ -36,7 +34,6 @@ internal class FilterConfiguration {
                 propagationProvider = propagationProvider,
                 traceIdProvider = traceIdProvider,
                 causationIdProvider = causationIdProvider,
-                metricsRecorder = metricsRecorder,
                 compositeHook = compositeHook
             )
         ).apply {

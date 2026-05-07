@@ -1,7 +1,9 @@
 package io.github.hchanjune.omk.webmvc.config
 
-import io.github.hchanjune.omk.webmvc.aspect.ManagedAnnotationAspect
+import io.github.hchanjune.omk.core.provider.SpanIdProvider
+import io.github.hchanjune.omk.webmvc.aspect.ManagedOperationAspect
 import io.github.hchanjune.omk.webmvc.aspect.ManagedControllerAspect
+import io.github.hchanjune.omk.webmvc.aspect.ManagedMetricAspect
 import io.github.hchanjune.omk.webmvc.aspect.ManagedRepositoryAspect
 import io.github.hchanjune.omk.webmvc.aspect.ManagedServiceAspect
 import org.aspectj.lang.annotation.Aspect
@@ -44,7 +46,7 @@ internal class AspectConfiguration {
         ManagedServiceAspect()
 
     /**
-     * ###### ManagedAnnotationAspect
+     * ###### ManagedOperationAspect
      */
     @Bean
     @ConditionalOnMissingBean
@@ -54,8 +56,25 @@ internal class AspectConfiguration {
         havingValue = "true",
         matchIfMissing = true
     )
-    fun managedAnnotationAspect(): ManagedAnnotationAspect =
-        ManagedAnnotationAspect()
+    fun managedOperationAspect(spanIdProvider: SpanIdProvider): ManagedOperationAspect =
+        ManagedOperationAspect(spanIdProvider)
+
+    /**
+     * ###### ManagedMetricAspect
+     */
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+        prefix = "operation-manager.webmvc.context-aspect",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    fun managedMetricAspect(
+        spanIdProvider: SpanIdProvider,
+    ): ManagedMetricAspect =
+        ManagedMetricAspect(spanIdProvider)
 
     /**
      * ###### ManagedRepositoryAspect
@@ -68,7 +87,7 @@ internal class AspectConfiguration {
         havingValue = "true",
         matchIfMissing = true
     )
-    fun managedRepositoryAspect(): ManagedRepositoryAspect =
-        ManagedRepositoryAspect()
+    fun managedRepositoryAspect(spanIdProvider: SpanIdProvider): ManagedRepositoryAspect =
+        ManagedRepositoryAspect(spanIdProvider)
 
 }

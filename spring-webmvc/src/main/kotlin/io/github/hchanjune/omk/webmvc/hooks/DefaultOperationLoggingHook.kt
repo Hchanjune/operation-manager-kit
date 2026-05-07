@@ -1,6 +1,7 @@
 package io.github.hchanjune.omk.webmvc.hooks
 
 import io.github.hchanjune.omk.core.context.ManagedContext
+import io.github.hchanjune.omk.core.metric.MetricSpan
 import io.github.hchanjune.omk.webmvc.config.properties.DefaultOperationLoggingProperties
 import org.slf4j.Logger
 import kotlin.text.iterator
@@ -70,6 +71,13 @@ class DefaultOperationLoggingHook(
 
             if (context.hookRecords.isNotEmpty()) {
             appendLine("├─ Hooks       : ${context.hookRecords.joinToString(", ") { r -> "${r.hookName}=${if (r.success) "OK" else "FAIL"}" }}")
+            }
+
+            if (props.spans) {
+                context.rootSpan?.let { root ->
+                    appendLine("├─ Spans      :")
+                    appendSpanTree(root, 0)
+                }
             }
 
             appendLine("└───────────────────────────────────────────────────────────────────────────────────")
@@ -152,6 +160,17 @@ class DefaultOperationLoggingHook(
             field("timestamp", context.timestamp.toString())
             append("}")
         }
+    }
+
+    private fun StringBuilder.appendSpanTree(span: MetricSpan, depth: Int) {
+        val outcome = span.outcome
+        val duration = span.durationMs?.let { "${it}ms" } ?: "?"
+        val status = outcome?.status?.name ?: "?"
+        val error = outcome?.errorType?.let { " ($it)" } ?: ""
+        val connector = if (depth == 0) "" else "└─ "
+        val indent = "│    " + "     ".repeat(depth)
+        appendLine("$indent$connector${span.name.value}  [$duration]  $status$error")
+        span.children.forEach { child -> appendSpanTree(child, depth + 1) }
     }
 
     private fun rootCause(t: Throwable): Throwable {

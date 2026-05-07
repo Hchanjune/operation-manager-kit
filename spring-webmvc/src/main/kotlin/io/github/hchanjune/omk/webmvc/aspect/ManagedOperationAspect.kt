@@ -1,6 +1,6 @@
 package io.github.hchanjune.omk.webmvc.aspect
 
-import io.github.hchanjune.omk.core.annotations.ManagedRepository
+import io.github.hchanjune.omk.core.annotations.ManagedOperation
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
 import io.github.hchanjune.omk.core.metric.MetricName
@@ -11,28 +11,38 @@ import io.github.hchanjune.omk.webmvc.Operations
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
+import org.springframework.core.Ordered
+import org.springframework.core.annotation.Order
 
 @Aspect
-class ManagedRepositoryAspect(
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
+class ManagedOperationAspect(
     private val spanIdProvider: SpanIdProvider
 ) {
 
-    @Around("@within(managedRepository)")
-    fun aroundRepositoryMethod(
+    @Around("@annotation(operationAnnotation)")
+    fun aroundOperation(
         joinPoint: ProceedingJoinPoint,
-        managedRepository: ManagedRepository
+        operationAnnotation: ManagedOperation
     ): Any? {
         if (!Operations.hasContext) return joinPoint.proceed()
 
         val context = Operations.context
+
+        context.injectAnnotationInfo(
+            operation = operationAnnotation.operation,
+            useCase = operationAnnotation.useCase
+        )
+
         val className = joinPoint.signature.declaringType.simpleName
-        val methodName = joinPoint.signature.name
-        val spanName = "$className.$methodName"
+        val spanName = operationAnnotation.operation.ifBlank {
+            "$className.${joinPoint.signature.name}"
+        }
 
         val tags = MetricTags.Builder()
-            .put("repository", className)
-            .put("method", methodName)
-            .put("operation", context.operation)
+            .put("service", context.service)
+            .put("operation", operationAnnotation.operation)
+            .put("use_case", operationAnnotation.useCase)
             .build()
 
         val span = context.push(
@@ -41,8 +51,8 @@ class ManagedRepositoryAspect(
             policy = MetricPolicy.defaults(),
             tags = tags,
             descriptor = MetricDescriptor(
-                operation = context.operation,
-                useCase = context.useCase
+                operation = operationAnnotation.operation,
+                useCase = operationAnnotation.useCase
             ),
             idProvider = spanIdProvider
         )

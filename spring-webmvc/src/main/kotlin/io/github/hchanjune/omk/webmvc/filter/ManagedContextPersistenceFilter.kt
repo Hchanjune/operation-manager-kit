@@ -2,7 +2,6 @@ package io.github.hchanjune.omk.webmvc.filter
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.context.ManagedContext
-import io.github.hchanjune.omk.core.metric.MetricsRecorder
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
@@ -19,7 +18,6 @@ class ManagedContextPersistenceFilter(
     private val propagationProvider: TelemetryPropagationProvider,
     private val traceIdProvider: TraceIdProvider,
     private val causationIdProvider: CausationIdProvider,
-    private val metricsRecorder: MetricsRecorder,
     private val compositeHook: OperationHook
 ): OncePerRequestFilter() {
 
@@ -67,10 +65,6 @@ class ManagedContextPersistenceFilter(
                     Operations.complete()
                     compositeHook.onFailure(context, exception)
                     throw exception
-                } finally {
-                    context.rootSpan?.let {
-                        metricsRecorder.record(it)
-                    }
                 }
             } else {
                 val exception = request.getAttribute("jakarta.servlet.error.exception") as? Throwable
@@ -78,9 +72,6 @@ class ManagedContextPersistenceFilter(
                 Operations.applyContext(context)
                 Operations.complete()
                 compositeHook.onFailure(context, exception)
-                context.rootSpan?.let {
-                    metricsRecorder.record(it)
-                }
                 filterChain.doFilter(request, response)
             }
         } finally {

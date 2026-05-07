@@ -1,9 +1,11 @@
 package io.github.hchanjune.omk.webmvc.config
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.metric.MetricsRecorder
 import io.github.hchanjune.omk.webmvc.config.properties.DefaultOperationLoggingProperties
 import io.github.hchanjune.omk.webmvc.hooks.CompositeOperationHook
 import io.github.hchanjune.omk.webmvc.hooks.DefaultOperationLoggingHook
+import io.github.hchanjune.omk.webmvc.hooks.MetricsOperationHook
 import io.github.hchanjune.omk.webmvc.hooks.OperationLoggingHook
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
@@ -57,5 +59,19 @@ internal class HooksConfiguration {
             jsonLogger = LoggerFactory.getLogger("OperationManager.JSON"),
             props = props
         )
+
+    /**
+     * ###### MetricsHook
+     */
+    @Bean
+    @ConditionalOnProperty(
+        prefix = "operation-manager.webmvc.micrometer",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    @Order(60)
+    fun metricsOperationHook(metricsRecorder: MetricsRecorder): OperationHook =
+        MetricsOperationHook(metricsRecorder)
 
 }
