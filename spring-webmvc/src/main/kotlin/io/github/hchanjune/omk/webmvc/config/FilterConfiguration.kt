@@ -7,14 +7,21 @@ import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.webmvc.filter.ManagedContextPersistenceFilter
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 @Configuration
-class FilterConfiguration {
+internal class FilterConfiguration {
 
     @Bean
+    @ConditionalOnProperty(
+        prefix = "operation-manager.webmvc.context-filter",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true
+    )
     fun managedContextPersistenceFilter(
         contextProvider: ManagedContextProvider,
         propagationProvider: TelemetryPropagationProvider,

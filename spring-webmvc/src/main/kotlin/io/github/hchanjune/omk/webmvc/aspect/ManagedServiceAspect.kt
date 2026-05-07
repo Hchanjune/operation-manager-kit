@@ -11,12 +11,11 @@ class ManagedServiceAspect {
 
     @Before("@within(managedService)")
     fun injectService(joinPoint: JoinPoint, managedService: ManagedService) {
-        val signature = joinPoint.signature
-
-        val serviceKey = "${signature.declaringType.simpleName}#${signature.name}"
-
+        val context = Operations.context
+        val className = joinPoint.signature.declaringType.simpleName
+        if (context.service == className) return
         Operations.context.injectService(
-            service = serviceKey
+            service = className
         )
     }
 

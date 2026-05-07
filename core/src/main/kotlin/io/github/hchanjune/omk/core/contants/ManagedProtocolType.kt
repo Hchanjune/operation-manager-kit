@@ -9,10 +9,9 @@ enum class ManagedProtocolType {
     UNSUPPORTED;
 
     companion object {
-        fun from(value: String): ManagedProtocolType {
-            return entries.firstOrNull {
-                it.name.equals(value, ignoreCase = true)
-            } ?: UNSUPPORTED
-        }
+        private val INDEX = entries.associateBy { it.name.uppercase() }
+
+        fun from(value: String): ManagedProtocolType =
+            INDEX[value.uppercase()] ?: UNSUPPORTED
     }
 }

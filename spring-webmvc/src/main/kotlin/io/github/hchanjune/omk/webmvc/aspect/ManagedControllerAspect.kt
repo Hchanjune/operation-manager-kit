@@ -11,12 +11,11 @@ class ManagedControllerAspect {
 
     @Before("@within(managedController)")
     fun injectEntryPoint(joinPoint: JoinPoint, managedController: ManagedController) {
-        val signature = joinPoint.signature
-
-        val entrypointKey = "${signature.declaringType.simpleName}#${signature.name}"
-
+        val context = Operations.context
+        val className = joinPoint.signature.declaringType.simpleName
+        if (context.entrypoint == className) return
         Operations.context.injectEntryPoint(
-            entrypoint = entrypointKey
+            entrypoint = className
         )
     }
 

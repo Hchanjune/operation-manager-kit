@@ -1,6 +1,7 @@
 package io.github.hchanjune.omk.webmvc.config.auto
 
 import io.github.hchanjune.omk.webmvc.config.AspectConfiguration
+import io.github.hchanjune.omk.webmvc.config.AsyncConfiguration
 import io.github.hchanjune.omk.webmvc.config.FilterConfiguration
 import io.github.hchanjune.omk.webmvc.config.ProviderConfiguration
 import io.github.hchanjune.omk.webmvc.config.MetricsConfiguration
@@ -24,6 +25,7 @@ import org.springframework.context.annotation.Import
     FilterConfiguration::class,
     SecurityFilterConfiguration::class,
     AspectConfiguration::class,
+    AsyncConfiguration::class,
 )
 @AutoConfigureAfter(
     name = [

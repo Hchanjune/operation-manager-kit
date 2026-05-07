@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Primary
 import org.springframework.core.annotation.AnnotationAwareOrderComparator
 import org.springframework.core.annotation.Order
 
+
 @Configuration
 @EnableConfigurationProperties(DefaultOperationLoggingProperties::class)
 internal class HooksConfiguration {
@@ -26,16 +27,13 @@ internal class HooksConfiguration {
     @Bean
     @Primary
     fun operationCompositeHook(
-        provider: ObjectProvider<List<OperationHook>>
+        provider: ObjectProvider<OperationHook>
     ): OperationHook {
-
-        val listeners = (provider.ifAvailable ?: emptyList())
-            .filterNot { it is CompositeOperationHook }
-
-        val ordered = listeners.toMutableList().apply {
-            AnnotationAwareOrderComparator.sort(this)
-        }
-
+        val ordered = provider.stream()
+            .filter { it !is CompositeOperationHook }
+            .toList()
+            .toMutableList()
+            .apply { AnnotationAwareOrderComparator.sort(this) }
         return CompositeOperationHook(ordered)
     }
 

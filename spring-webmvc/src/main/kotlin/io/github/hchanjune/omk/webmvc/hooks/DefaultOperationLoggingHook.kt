@@ -68,6 +68,10 @@ class DefaultOperationLoggingHook(
             appendLine("├─ Stacktrace  : ${it.stackTrace.take(20).joinToString("\n") { e -> e.toString() }}")
             }
 
+            if (context.hookRecords.isNotEmpty()) {
+            appendLine("├─ Hooks       : ${context.hookRecords.joinToString(", ") { r -> "${r.hookName}=${if (r.success) "OK" else "FAIL"}" }}")
+            }
+
             appendLine("└───────────────────────────────────────────────────────────────────────────────────")
             appendLine(" ")
         }
@@ -95,52 +99,57 @@ class DefaultOperationLoggingHook(
         fun trunc(s: String, max: Int = 2000): String =
             if (s.length <= max) s else s.take(max) + "…(truncated)"
 
-        fun add(key: String, value: Any?): String {
-            if (value == null) return ""
-            val s = trunc(value.toString())
-            if (s.isBlank()) return ""
-            return "\"$key\":\"${esc(s)}\""
-        }
-
-        fun addNum(key: String, value: Number?): String {
-            if (value == null) return ""
-            return "\"$key\":$value"
-        }
-
         return buildString {
             append("{")
-            val fields = mutableListOf<String>()
+            var first = true
 
-            fields += add("status", if (exception != null) "FAILED" else "SUCCESS")
-            fields += add("traceId", context.traceId)
-            fields += add("causationId", context.causationId)
-            fields += add("issuer", context.issuer)
-            fields += add("protocol", context.protocol)
-            fields += add("method", context.method)
-            fields += add("uri", context.uri)
-            fields += add("entrypoint", context.entrypoint)
-            fields += add("service", context.service)
-            fields += add("operation", context.operation)
-            fields += add("useCase", context.useCase)
-            fields += addNum("durationMs", context.durationMs)
-            fields += add("message", context.message)
-            fields += add("response", context.response)
+            fun field(key: String, value: Any?) {
+                if (value == null) return
+                val s = trunc(value.toString())
+                if (s.isBlank()) return
+                if (!first) append(",")
+                append("\"$key\":\"${esc(s)}\"")
+                first = false
+            }
+
+            fun fieldNum(key: String, value: Number?) {
+                if (value == null) return
+                if (!first) append(",")
+                append("\"$key\":$value")
+                first = false
+            }
+
+            field("status", if (exception != null) "FAILED" else "SUCCESS")
+            field("traceId", context.traceId)
+            field("causationId", context.causationId)
+            field("issuer", context.issuer)
+            field("protocol", context.protocol)
+            field("method", context.method)
+            field("uri", context.uri)
+            field("entrypoint", context.entrypoint)
+            field("service", context.service)
+            field("operation", context.operation)
+            field("useCase", context.useCase)
+            fieldNum("durationMs", context.durationMs)
+            field("message", context.message)
+            field("response", context.response)
 
             exception?.let {
                 val rc = rootCause(it)
-                fields += add("exception.type", it::class.simpleName)
-                fields += add("exception.detail", it.message)
-                fields += add("exception.rootCause", rc::class.simpleName)
-                fields += add("exception.message", rc.message)
-                fields += add(
-                    "exception.rootCauseTopFrames",
-                    rc.stackTrace.take(8).joinToString("\\n") { e -> e.toString() }
-                )
+                field("exception.type", it::class.simpleName)
+                field("exception.detail", it.message)
+                field("exception.rootCause", rc::class.simpleName)
+                field("exception.message", rc.message)
+                field("exception.rootCauseTopFrames", rc.stackTrace.take(8).joinToString("\\n") { e -> e.toString() })
             }
 
-            fields += add("timestamp", context.timestamp.toString())
+            if (context.hookRecords.isNotEmpty()) {
+                field("hooks", context.hookRecords.joinToString(",", "[", "]") { r ->
+                    "{\"hook\":\"${r.hookName}\",\"result\":\"${if (r.success) "OK" else "FAIL"}\"}"
+                })
+            }
 
-            append(fields.filter { it.isNotBlank() }.joinToString(","))
+            field("timestamp", context.timestamp.toString())
             append("}")
         }
     }

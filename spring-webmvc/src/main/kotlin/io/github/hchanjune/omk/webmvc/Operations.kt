@@ -13,6 +13,7 @@ object Operations: ManagedContextHolder {
 
     override val context: ManagedContext
         get() = contextHolder.get()
+            ?: error("No ManagedContext found. Operations.context must be called within a managed request scope by omk.")
 
     override val hasContext: Boolean
         get() = contextHolder.get() != null

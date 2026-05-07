@@ -12,12 +12,13 @@ class MetricSpan(
     val descriptor: MetricDescriptor,
     private val clock: Clock = Clock.systemUTC()
 ) {
-    private var timing: MetricTiming = MetricTiming.started(clock)
+    private val timing: MetricTiming = MetricTiming.started(clock)
 
     var parent: MetricSpan? = null
         private set
 
     private val _children = mutableListOf<MetricSpan>()
+    private val _childSpanIds = HashSet<String>()
     val children: List<MetricSpan> get() = _children
 
     val startTime: Long? get() = timing.startedAtEpochMilli
@@ -31,7 +32,7 @@ class MetricSpan(
         check(child.parent == null) {
             "Span [${child.spanId}] already has a parent [${child.parent?.spanId}]"
         }
-        if (_children.any { it.spanId == child.spanId }) return
+        if (!_childSpanIds.add(child.spanId)) return
         child.parent = this
         _children.add(child)
     }
@@ -41,7 +42,7 @@ class MetricSpan(
     fun end(outcome: MetricOutcome) = finish(outcome)
 
     private fun finish(outcome: MetricOutcome) {
-        this.timing = this.timing.end(clock)
+        this.timing.end(clock)
         this.outcome = outcome
     }
 

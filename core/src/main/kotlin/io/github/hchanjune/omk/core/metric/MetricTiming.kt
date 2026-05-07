@@ -19,37 +19,18 @@ import java.time.Clock
  * - This implementation uses epoch milliseconds for simplicity.
  * - More precise time sources (e.g., nanoTime) can be introduced later if needed.
  */
-data class MetricTiming(
-    /**
-     * Start timestamp in epoch milliseconds.
-     */
-    val startedAtEpochMilli: Long? = null,
-    /**
-     * End timestamp in epoch milliseconds.
-     */
-    val endedAtEpochMilli: Long? = null,
-) {
-    /**
-     * Marks the start time of this measurement scope.
-     */
-    fun start(clock: Clock): MetricTiming = copy(startedAtEpochMilli = clock.millis())
+class MetricTiming(clock: Clock) {
+    val startedAtEpochMilli: Long = clock.millis()
+    private var endedAtEpochMilli: Long? = null
 
-    /**
-     * Marks the end time of this measurement scope.
-     */
-    fun end(clock: Clock): MetricTiming = copy(endedAtEpochMilli = clock.millis())
+    fun end(clock: Clock) {
+        endedAtEpochMilli = clock.millis()
+    }
 
-    /**
-     * Returns the elapsed duration in milliseconds,
-     * or null if the scope has not been completed.
-     */
     fun durationMillis(): Long? =
-        if (startedAtEpochMilli != null && endedAtEpochMilli != null) endedAtEpochMilli - startedAtEpochMilli else null
+        endedAtEpochMilli?.let { it - startedAtEpochMilli }
 
-    /**
-     * Creates a timing scope already started at the current time.
-     */
     companion object {
-        fun started(clock: Clock = Clock.systemUTC()): MetricTiming = MetricTiming(startedAtEpochMilli = clock.millis())
+        fun started(clock: Clock = Clock.systemUTC()): MetricTiming = MetricTiming(clock)
     }
 }

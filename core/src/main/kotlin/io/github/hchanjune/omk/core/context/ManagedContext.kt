@@ -154,4 +154,21 @@ class ManagedContext(
     fun pop(): MetricSpan? = if (spanStack.isNotEmpty()) spanStack.removeFirst() else null
     fun isFinished(): Boolean = spanStack.isEmpty()
 
+    data class HookRecord(
+        val hookName: String,
+        val success: Boolean,
+        val error: Throwable? = null
+    )
+
+    private val _hookRecords = mutableListOf<HookRecord>()
+    val hookRecords: List<HookRecord> get() = _hookRecords
+
+    fun recordHookSuccess(hookName: String) {
+        _hookRecords.add(HookRecord(hookName = hookName, success = true))
+    }
+
+    fun recordHookFailure(hookName: String, error: Throwable) {
+        _hookRecords.add(HookRecord(hookName = hookName, success = false, error = error))
+    }
+
 }
