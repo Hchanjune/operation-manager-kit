@@ -138,13 +138,13 @@ println(result.data) // "OK"
 
 | 어노테이션 | 대상 | 역할 |
 |------------|------|------|
-| `@ManagedController` | 클래스 | 컨트롤러 클래스명을 컨텍스트의 entrypoint에 주입 |
+| `@ManagedController` | 클래스 | 핸들러 메서드마다 ENTRY 레이어 루트 span 생성; entrypoint를 컨텍스트에 주입 |
 | `@ManagedService` | 클래스 | 서비스 클래스명을 컨텍스트의 service에 주입 |
-| `@ManagedRepository` | 클래스 | 리포지토리의 모든 메서드를 DB 수준 메트릭 span으로 계측 |
-| `@ManagedOperation` | 메서드 | `operation`, `useCase` 값을 컨텍스트에 주입하고 루트 메트릭 span 생성 |
-| `@ManagedMetric` | 메서드 | 임의 메서드를 이름이 있는 자식 메트릭 span으로 계측 |
+| `@ManagedRepository` | 클래스 | 리포지토리의 모든 메서드를 DB 레이어 자식 span으로 계측 |
+| `@ManagedOperation` | 메서드 | `operation`, `useCase` 값을 컨텍스트에 주입; APPLICATION 레이어 span 생성 |
+| `@ManagedMetric` | 메서드 | 임의 메서드를 이름이 있는 APPLICATION 레이어 자식 span으로 계측 |
 
-> `@ManagedController`, `@ManagedService`, `@ManagedRepository`는 클래스명을 식별자로 사용합니다. `@ManagedMetric`은 기본적으로 `ClassName.methodName`을 span 이름으로 사용하며 `name` 속성으로 재정의할 수 있습니다 — 메트릭 태그 폭발을 방지하기 위해 값은 저 카디널리티로 유지하세요.
+> `@ManagedController`는 핸들러 메서드 호출마다 하나의 span을 생성하며 span 트리의 루트가 됩니다. 향후 추가될 프로토콜 모듈(`spring-kafka`, `spring-grpc`)도 동일한 패턴으로 각자의 entry-point 어노테이션을 제공합니다. `@ManagedMetric`은 기본적으로 `ClassName.methodName`을 span 이름으로 사용하며 `name` 속성으로 재정의할 수 있습니다 — 메트릭 태그 폭발을 방지하기 위해 저 카디널리티 값을 유지하세요.
 
 ---
 
@@ -227,13 +227,14 @@ class MyEnrichmentHook : OperationHook {
 ├─ Message     :
 ├─ Response    :
 ├─ Performance : 56Ms
-├─ Timestamp   : 2025-05-07T12:34:56.789Z
+├─ Timestamp   : 2025-05-07T12:34:56.733Z
 ├─ Hooks       : MyEnrichmentHook=OK
 ├─ Spans      :
-│    CreateOrder  [56ms]  SUCCESS
-│         └─ validateInventory  [9ms]  SUCCESS
-│         └─ OrderRepository.save  [18ms]  SUCCESS
-│         └─ OrderRepository.findByCustomerId  [7ms]  SUCCESS
+│    [ENT] 12:34:56.733  [nio-8080-exec-1]  OrderController.create        [56ms]   SUCCESS
+│         └─ [APP] 12:34:56.741  [nio-8080-exec-1]  CreateOrder           [48ms]   SUCCESS
+│                   └─ [APP] 12:34:56.742  [nio-8080-exec-1]  validateInventory  [9ms]   SUCCESS
+│                   └─ [DB ] 12:34:56.751  [nio-8080-exec-1]  OrderRepository.save  [18ms]  SUCCESS
+│                   └─ [DB ] 12:34:56.769  [nio-8080-exec-1]  OrderRepository.findByCustomerId  [7ms]  SUCCESS
 └───────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -241,27 +242,41 @@ class MyEnrichmentHook : OperationHook {
 
 ## Span 메트릭
 
-어노테이션이 붙은 모든 메서드 경계는 **메트릭 span** — 결과, 태그, 중첩 구조를 가진 시간 측정 단위 — 으로 캡처됩니다. Span들은 `@ManagedOperation`을 루트로 하는 트리를 형성합니다.
+어노테이션이 붙은 모든 메서드 경계는 **메트릭 span** — 결과, 태그, 중첩 구조를 가진 시간 측정 단위 — 으로 캡처됩니다. Span들은 entry point를 루트로 하는 트리를 형성합니다.
 
 ### Span 계층 구조
 
 ```
-@ManagedOperation  ──  루트 span (operation + useCase 태그)
-    └── @ManagedMetric      ──  커스텀 자식 span (직접 계측할 임의 메서드)
-    └── @ManagedRepository  ──  DB 자식 span (리포지토리 메서드 호출마다 하나)
+@ManagedController  ──  [ENT] 루트 span  (핸들러 메서드마다)
+    └── @ManagedOperation  ──  [APP] 자식 span  (operation + useCase 태그)
+            └── @ManagedMetric      ──  [APP] 자식 span  (임의 메서드)
+            └── @ManagedRepository  ──  [DB]  자식 span  (리포지토리 메서드마다)
 ```
+
+`@ManagedController`가 없는 경우(직접 서비스 호출, 향후 Kafka 리스너 등) `@ManagedOperation`이 루트 span이 됩니다.
 
 ### 예시
 
 ```kotlin
+@ManagedController
+@RestController
+class OrderController(private val orderService: OrderService) {
+
+    @PostMapping("/orders")
+    fun create(@RequestBody request: OrderRequest): ResponseEntity<OrderResponse> {
+        val result = orderService.create(request)   // [ENT] span이 하위 전체를 감쌈
+        return ResponseEntity.ok(result.data)
+    }
+}
+
 @ManagedService
 @Service
 class OrderService(private val repo: OrderRepository) {
 
     @ManagedOperation(operation = "CreateOrder", useCase = "PlaceOrder")
     fun create(request: OrderRequest) = Operations {
-        validateInventory(request)          // @ManagedMetric 자식 span
-        repo.save(Order.from(request))      // @ManagedRepository 자식 span
+        validateInventory(request)          // @ManagedMetric [APP] span
+        repo.save(Order.from(request))      // @ManagedRepository [DB] span
     }
 
     @ManagedMetric(name = "validateInventory")
@@ -271,22 +286,24 @@ class OrderService(private val repo: OrderRepository) {
 @ManagedRepository
 @Repository
 class OrderRepository {
-    fun save(order: Order): Order { ... }   // DB span으로 자동 캡처
+    fun save(order: Order): Order { ... }
 }
 ```
 
 Span들은 요청 처리 중에 수집되어, 요청이 완료될 때 `MetricsOperationHook`(Order 60)이 Micrometer에 일괄 기록합니다. 각 span은 `omk.span.duration`(타이머) 또는 `omk.span.count`(카운터)로 기록되며 다음 태그가 붙습니다:
 
-| 태그 | 출처 |
-|------|------|
-| `service` | `@ManagedService` 클래스명 |
-| `operation` | `@ManagedOperation.operation` |
-| `use_case` | `@ManagedOperation.useCase` |
-| `repository` | 리포지토리 클래스명 (DB span) |
-| `method` | 리포지토리 메서드명 (DB span) |
-| `span` | span 이름 (`@ManagedMetric` span) |
-| `status` | `success` 또는 `failure` |
-| `error_type` | 예외 클래스명 (실패 시) |
+| 태그 | 출처 | 레이어 |
+|------|------|--------|
+| `entrypoint` | 컨트롤러 클래스명 | ENT |
+| `method` | 컨트롤러 메서드명 | ENT |
+| `service` | `@ManagedService` 클래스명 | APP |
+| `operation` | `@ManagedOperation.operation` | APP |
+| `use_case` | `@ManagedOperation.useCase` | APP |
+| `span` | span 이름 | APP (`@ManagedMetric`) |
+| `repository` | 리포지토리 클래스명 | DB |
+| `method` | 리포지토리 메서드명 | DB |
+| `status` | `success` 또는 `failure` | 전체 |
+| `error_type` | 예외 클래스명 (실패 시) | 전체 |
 
 ---
 
@@ -552,6 +569,7 @@ implementation("io.micrometer:micrometer-registry-prometheus")
 - [x] 비동기 컨텍스트 전파 (`@Async`는 `ManagedContextTaskDecorator`, 코루틴은 `ManagedContextElement`)
 - [x] Span 수준 메트릭 계측 (`@ManagedOperation`, `@ManagedMetric`, `@ManagedRepository` DB span)
 - [x] Micrometer 기반 `MetricsOperationHook` 및 전체 span 트리 기록
+- [x] `@ManagedController`의 ENTRY 레이어 루트 span; span 트리에 레이어/타임스탬프/스레드명 표시
 - [ ] OpenTelemetry SDK 연동
 - [ ] 고트래픽 환경을 위한 샘플링 지원
 

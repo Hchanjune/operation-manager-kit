@@ -28,8 +28,8 @@ internal class AspectConfiguration {
         havingValue = "true",
         matchIfMissing = true
     )
-    fun managedControllerAspect(): ManagedControllerAspect =
-        ManagedControllerAspect()
+    fun managedControllerAspect(spanIdProvider: SpanIdProvider): ManagedControllerAspect =
+        ManagedControllerAspect(spanIdProvider)
 
     /**
      * ###### ManagedServiceAspect

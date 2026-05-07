@@ -12,6 +12,7 @@ class MetricSpan(
     val descriptor: MetricDescriptor,
     private val clock: Clock = Clock.systemUTC()
 ) {
+    val threadName: String = Thread.currentThread().name
     private val timing: MetricTiming = MetricTiming.started(clock)
 
     var parent: MetricSpan? = null

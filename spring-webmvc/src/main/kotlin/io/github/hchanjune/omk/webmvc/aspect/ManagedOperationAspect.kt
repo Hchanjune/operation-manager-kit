@@ -3,6 +3,7 @@ package io.github.hchanjune.omk.webmvc.aspect
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
+import io.github.hchanjune.omk.core.metric.MetricLayer
 import io.github.hchanjune.omk.core.metric.MetricName
 import io.github.hchanjune.omk.core.metric.MetricPolicy
 import io.github.hchanjune.omk.core.metric.MetricTags
@@ -36,7 +37,7 @@ class ManagedOperationAspect(
 
         val className = joinPoint.signature.declaringType.simpleName
         val spanName = operationAnnotation.operation.ifBlank {
-            "$className.${joinPoint.signature.name}"
+            "$className.${joinPoint.signature.name.substringBefore('-')}"
         }
 
         val tags = MetricTags.Builder()
@@ -52,7 +53,8 @@ class ManagedOperationAspect(
             tags = tags,
             descriptor = MetricDescriptor(
                 operation = operationAnnotation.operation,
-                useCase = operationAnnotation.useCase
+                useCase = operationAnnotation.useCase,
+                layer = MetricLayer.APPLICATION
             ),
             idProvider = spanIdProvider
         )

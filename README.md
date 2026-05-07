@@ -138,13 +138,13 @@ println(result.data) // "OK"
 
 | Annotation | Target | Purpose |
 |------------|--------|---------|
-| `@ManagedController` | Class | Injects entrypoint (controller class name) into context |
+| `@ManagedController` | Class | Opens an ENTRY-layer root span per handler method; injects entrypoint into context |
 | `@ManagedService` | Class | Injects service name into context |
-| `@ManagedRepository` | Class | Instruments all methods on a repository as DB-level metric spans |
-| `@ManagedOperation` | Method | Injects `operation` and `useCase` into context and opens a root-level metric span |
-| `@ManagedMetric` | Method | Instruments any method as a named child metric span |
+| `@ManagedRepository` | Class | Instruments all methods on a repository as DB-layer child spans |
+| `@ManagedOperation` | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span |
+| `@ManagedMetric` | Method | Instruments any method as a named APPLICATION-layer child span |
 
-> `@ManagedController`, `@ManagedService`, and `@ManagedRepository` use the class name as the identifier. `@ManagedMetric` defaults to `ClassName.methodName` and can be overridden with the `name` attribute — keep the value low-cardinality to avoid metric tag explosion.
+> `@ManagedController` creates one span per handler method invocation — it is the designated root of the span tree for HTTP requests. Future protocol modules (`spring-kafka`, `spring-grpc`) will follow the same pattern with their own entry-point annotations. `@ManagedMetric` defaults to `ClassName.methodName` and can be overridden with the `name` attribute — keep it low-cardinality to avoid metric tag explosion.
 
 ---
 
@@ -227,13 +227,14 @@ The built-in `DefaultOperationLoggingHook` supports both pretty-print and JSON l
 ├─ Message     :
 ├─ Response    :
 ├─ Performance : 56Ms
-├─ Timestamp   : 2025-05-07T12:34:56.789Z
+├─ Timestamp   : 2025-05-07T12:34:56.733Z
 ├─ Hooks       : MyEnrichmentHook=OK
 ├─ Spans      :
-│    CreateOrder  [56ms]  SUCCESS
-│         └─ validateInventory  [9ms]  SUCCESS
-│         └─ OrderRepository.save  [18ms]  SUCCESS
-│         └─ OrderRepository.findByCustomerId  [7ms]  SUCCESS
+│    [ENT] 12:34:56.733  [nio-8080-exec-1]  OrderController.create        [56ms]   SUCCESS
+│         └─ [APP] 12:34:56.741  [nio-8080-exec-1]  CreateOrder           [48ms]   SUCCESS
+│                   └─ [APP] 12:34:56.742  [nio-8080-exec-1]  validateInventory  [9ms]   SUCCESS
+│                   └─ [DB ] 12:34:56.751  [nio-8080-exec-1]  OrderRepository.save  [18ms]  SUCCESS
+│                   └─ [DB ] 12:34:56.769  [nio-8080-exec-1]  OrderRepository.findByCustomerId  [7ms]  SUCCESS
 └───────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -241,27 +242,41 @@ The built-in `DefaultOperationLoggingHook` supports both pretty-print and JSON l
 
 ## Span Metrics
 
-Every annotated method boundary is captured as a **metric span** — a timed unit of work with outcome, tags, and nesting. Spans form a tree rooted at `@ManagedOperation`.
+Every annotated method boundary is captured as a **metric span** — a timed unit of work with outcome, tags, and nesting. Spans form a tree rooted at the entry point.
 
 ### Span Hierarchy
 
 ```
-@ManagedOperation  ──  root span (operation + useCase tags)
-    └── @ManagedMetric   ──  custom child span (any method you instrument)
-    └── @ManagedRepository  ──  DB child span (one per repository method call)
+@ManagedController  ──  [ENT] root span  (per handler method)
+    └── @ManagedOperation  ──  [APP] child span  (operation + useCase tags)
+            └── @ManagedMetric      ──  [APP] child span  (any method)
+            └── @ManagedRepository  ──  [DB]  child span  (per repository method)
 ```
+
+If `@ManagedController` is not present (e.g. a direct service call or a future Kafka listener), `@ManagedOperation` becomes the root span automatically.
 
 ### Example
 
 ```kotlin
+@ManagedController
+@RestController
+class OrderController(private val orderService: OrderService) {
+
+    @PostMapping("/orders")
+    fun create(@RequestBody request: OrderRequest): ResponseEntity<OrderResponse> {
+        val result = orderService.create(request)   // [ENT] span wraps everything below
+        return ResponseEntity.ok(result.data)
+    }
+}
+
 @ManagedService
 @Service
 class OrderService(private val repo: OrderRepository) {
 
     @ManagedOperation(operation = "CreateOrder", useCase = "PlaceOrder")
     fun create(request: OrderRequest) = Operations {
-        validateInventory(request)          // @ManagedMetric child span
-        repo.save(Order.from(request))      // @ManagedRepository child span
+        validateInventory(request)          // [APP] span via @ManagedMetric
+        repo.save(Order.from(request))      // [DB]  span via @ManagedRepository
     }
 
     @ManagedMetric(name = "validateInventory")
@@ -271,22 +286,24 @@ class OrderService(private val repo: OrderRepository) {
 @ManagedRepository
 @Repository
 class OrderRepository {
-    fun save(order: Order): Order { ... }   // automatically captured as DB span
+    fun save(order: Order): Order { ... }
 }
 ```
 
 Spans are collected during the request and flushed by `MetricsOperationHook` (Order 60) when the request completes. Each span is recorded to Micrometer as `omk.span.duration` (timer) or `omk.span.count` (counter) with the following tags:
 
-| Tag | Source |
-|-----|--------|
-| `service` | `@ManagedService` class name |
-| `operation` | `@ManagedOperation.operation` |
-| `use_case` | `@ManagedOperation.useCase` |
-| `repository` | Repository class name (DB spans) |
-| `method` | Repository method name (DB spans) |
-| `span` | Span name (`@ManagedMetric` spans) |
-| `status` | `success` or `failure` |
-| `error_type` | Exception class name (on failure) |
+| Tag | Source | Layer |
+|-----|--------|-------|
+| `entrypoint` | Controller class name | ENT |
+| `method` | Controller method name | ENT |
+| `service` | `@ManagedService` class name | APP |
+| `operation` | `@ManagedOperation.operation` | APP |
+| `use_case` | `@ManagedOperation.useCase` | APP |
+| `span` | Span name | APP (`@ManagedMetric`) |
+| `repository` | Repository class name | DB |
+| `method` | Repository method name | DB |
+| `status` | `success` or `failure` | all |
+| `error_type` | Exception class name (on failure) | all |
 
 ---
 
@@ -550,6 +567,7 @@ You can replace any default provider by registering a custom bean.
 - [x] Async context propagation (`@Async` via `ManagedContextTaskDecorator`, coroutines via `ManagedContextElement`)
 - [x] Span-level metric instrumentation (`@ManagedOperation`, `@ManagedMetric`, `@ManagedRepository` as DB spans)
 - [x] Micrometer-backed `MetricsOperationHook` with full span tree recording
+- [x] `@ManagedController` as ENTRY-layer root span; layer/timestamp/thread visible in span tree
 - [ ] OpenTelemetry SDK integration
 - [ ] Sampling support for high-throughput environments
 

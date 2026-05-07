@@ -1,9 +1,13 @@
 package io.github.hchanjune.omk.webmvc.hooks
 
 import io.github.hchanjune.omk.core.context.ManagedContext
+import io.github.hchanjune.omk.core.metric.MetricLayer
 import io.github.hchanjune.omk.core.metric.MetricSpan
 import io.github.hchanjune.omk.webmvc.config.properties.DefaultOperationLoggingProperties
 import org.slf4j.Logger
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import kotlin.text.iterator
 
 class DefaultOperationLoggingHook(
@@ -169,8 +173,15 @@ class DefaultOperationLoggingHook(
         val error = outcome?.errorType?.let { " ($it)" } ?: ""
         val connector = if (depth == 0) "" else "└─ "
         val indent = "│    " + "     ".repeat(depth)
-        appendLine("$indent$connector${span.name.value}  [$duration]  $status$error")
+        val layer = "[${span.descriptor.layer.label}]"
+        val timestamp = span.startTime?.let { TIME_FMT.format(Instant.ofEpochMilli(it)) } ?: "?        "
+        val thread = "[${span.threadName}]"
+        appendLine("$indent$connector$layer $timestamp  $thread  ${span.name.value}  [$duration]  $status$error")
         span.children.forEach { child -> appendSpanTree(child, depth + 1) }
+    }
+
+    companion object {
+        private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneOffset.UTC)
     }
 
     private fun rootCause(t: Throwable): Throwable {

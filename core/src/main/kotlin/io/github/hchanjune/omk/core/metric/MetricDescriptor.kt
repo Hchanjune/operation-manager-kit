@@ -4,4 +4,5 @@ data class MetricDescriptor(
     val operation: String = "",
     val useCase: String = "",
     val event: String = "",
+    val layer: MetricLayer = MetricLayer.APPLICATION,
 )
