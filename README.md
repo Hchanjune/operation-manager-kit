@@ -143,8 +143,9 @@ println(result.data) // "OK"
 | `@ManagedRepository` | Class | Instruments all methods on a repository as DB-layer child spans |
 | `@ManagedOperation` | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span |
 | `@ManagedMetric` | Method | Instruments any method as a named APPLICATION-layer child span |
+| `@ManagedEventHandler` | Method | Opens an ENTRY-layer span for messaging handlers; auto-extracts trace context from event arguments; sets `executionScope` to `EVENT` |
 
-> `@ManagedController` creates one span per handler method invocation — it is the designated root of the span tree for HTTP requests. Future protocol modules (`spring-kafka`, `spring-grpc`) will follow the same pattern with their own entry-point annotations. `@ManagedMetric` defaults to `ClassName.methodName` and can be overridden with the `name` attribute — keep it low-cardinality to avoid metric tag explosion.
+> `@ManagedController` creates one span per handler method invocation — it is the designated root of the span tree for HTTP requests. `@ManagedEventHandler` serves the same role for messaging-based entry points (Kafka, RabbitMQ, etc.). `@ManagedMetric` defaults to `ClassName.methodName` and can be overridden with the `name` attribute — keep it low-cardinality to avoid metric tag explosion.
 
 ---
 
@@ -247,13 +248,14 @@ Every annotated method boundary is captured as a **metric span** — a timed uni
 ### Span Hierarchy
 
 ```
-@ManagedController  ──  [ENT] root span  (per handler method)
+@ManagedController    ──  [ENT] root span  (HTTP entry point, per handler method)
+@ManagedEventHandler  ──  [ENT] root span  (messaging entry point, executionScope = EVENT)
     └── @ManagedOperation  ──  [APP] child span  (operation + useCase tags)
             └── @ManagedMetric      ──  [APP] child span  (any method)
             └── @ManagedRepository  ──  [DB]  child span  (per repository method)
 ```
 
-If `@ManagedController` is not present (e.g. a direct service call or a future Kafka listener), `@ManagedOperation` becomes the root span automatically.
+If neither `@ManagedController` nor `@ManagedEventHandler` is present (e.g. a direct service call), `@ManagedOperation` becomes the root span automatically.
 
 ### Example
 
@@ -362,10 +364,12 @@ operation-manager:
 
     async-propagation:
       enabled: true       # Enable/disable @Async context propagation (default: true)
+      hook-enabled: false # Execute hooks when async task/coroutine completes (default: false)
 
     telemetry:
       propagation:
         mode: W3C_STANDARD  # W3C_STANDARD | CUSTOM
+        generate-when-missing: true  # generate traceId/causationId if not in incoming headers (default: true)
         custom-headers:
           trace-id: X-Trace-Id
           causation-id: X-Causation-Id
@@ -375,25 +379,59 @@ operation-manager:
 
 ## `@Async` Context Propagation
 
-When `@EnableAsync` is active, `ManagedContextTaskDecorator` is automatically registered and applied to the default `ThreadPoolTaskExecutor`. The managed context (trace ID, issuer, operation metadata) is propagated to async threads without any additional configuration.
+When `@EnableAsync` is active, `ManagedContextTaskDecorator` is automatically registered and applied to the default `ThreadPoolTaskExecutor`. When an `@Async` method is called, the context is **forked** — the async thread receives an independent copy, not a reference to the same object.
 
-```kotlin
-@Service
-class NotificationService {
+### What is propagated (forked)
 
-    @Async
-    fun sendEmail(to: String) {
-        val traceId = Operations.context.traceId  // inherited from the calling thread
-        log.info("[{}] Sending email to {}", traceId, to)
-    }
-}
+| Field | Behavior |
+|-------|----------|
+| `traceId`, `causationId`, `issuer` | Inherited — for log correlation across threads |
+| `protocol`, `type`, `uri`, `method`, `entrypoint`, `service`, `operation`, `useCase` | Inherited — for consistent tagging |
+| `executionScope` | Set to `ASYNC` in the forked context |
+| Span tree, timing, hook records | **Independent** — not shared with the parent |
+
+### Async span tree
+
+When the async thread starts, an `async.execution` root span is automatically created. Any `@ManagedOperation`, `@ManagedMetric`, or `@ManagedRepository` calls inside the async method become child spans of this root — forming an independent span tree separate from the main request.
+
+```
+Main thread span tree:          Async thread span tree:
+[ENT] OrderController           [ENT] async.execution
+  └─ [APP] CreateOrder            └─ [APP] SendNotification
+       └─ [DB] save                    └─ [DB] logRepository.insert
 ```
 
-**What is propagated:** `traceId`, `issuer`, `entrypoint`, `service`, `operation`, `useCase`, and all other context fields.
+### Hook execution
 
-**What is not propagated:** Hook execution and logging lifecycle. Hooks run on the main request thread when the HTTP request completes. Async tasks that outlive the request are outside the hook lifecycle by design — `@Async` is a side-effect mechanism, not a continuation of the main request flow.
+By default, hooks do **not** run in async contexts. You can enable them globally via configuration or per-request in business logic.
 
-To disable:
+**Global default:**
+
+```yaml
+operation-manager:
+  webmvc:
+    async-propagation:
+      enabled: true
+      hook-enabled: true  # run hooks when async task completes (default: false)
+```
+
+**Per-request control:**
+
+The `isAsyncHookEnabled` flag is inherited when the context is forked. Toggle it before the async call to control which tasks get hook execution:
+
+```kotlin
+// Enable hooks for async tasks in this request
+Operations.context.enableAsyncHook()
+asyncService.doTrackedWork()  // hooks fire on completion
+
+// Disable for fire-and-forget tasks
+Operations.context.disableAsyncHook()
+asyncService.fireAndForget()  // no hooks
+```
+
+> Hooks fire on the async thread when the task completes, independently of the main thread. Async metrics are recorded separately and do not appear in the main request's span tree.
+
+To disable context propagation entirely:
 
 ```yaml
 operation-manager:
@@ -402,106 +440,191 @@ operation-manager:
       enabled: false
 ```
 
-> If you have a custom `AsyncConfigurer` or a custom `ThreadPoolTaskExecutor`, inject `ManagedContextTaskDecorator` and apply it manually.
+> If you have a custom `AsyncConfigurer` or `ThreadPoolTaskExecutor`, inject `ManagedContextTaskDecorator` and apply it manually.
 
 ---
 
 ## Kotlin Coroutine Context Propagation
 
-When `kotlinx-coroutines-core` is on the classpath, `ManagedContextElement` can be used to propagate the managed context across coroutine suspension points and thread switches.
+When `kotlinx-coroutines-core` is on the classpath, `ManagedContextElement` propagates the managed context across suspension points and thread switches.
 
-Unlike `TaskDecorator` which only captures context at task submission, `ManagedContextElement` hooks into the coroutine dispatcher — restoring the `ThreadLocal` context on every thread the coroutine runs on, including after every suspension point.
+`ManagedContextElement` implements `CopyableThreadContextElement`. When a child coroutine is launched, `copyForChild()` is called automatically — each child receives its own **forked** context with an independent span tree.
 
 ```kotlin
 launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
+    // Forked context: traceId inherited, independent span tree
     withContext(Dispatchers.Default) {
         Operations.context.traceId  // available after every suspension point
+        Operations.context.executionScope  // ASYNC
     }
 }
 ```
 
-### Behavior by usage pattern
+### Context isolation per coroutine
 
-**Structured concurrency — context and spans propagate**
-
-When child coroutines are awaited before the request completes, their work is visible when hooks run.
+Each child coroutine gets its own independent context. Parallel coroutines do not share or interfere with each other's span trees.
 
 ```kotlin
-@ManagedService
-@Service
-class OrderService {
-
-    @ManagedOperation(operation = "PlaceOrder")
-    suspend fun place(request: OrderRequest) = coroutineScope {
-        val inventory = async { checkInventory(request) }
-        val payment   = async { reservePayment(request) }
-        awaitAll(inventory, payment)
-        // request completes here → hooks fire → spans are visible
+coroutineScope {
+    async {
+        // Forked context A — independent span tree rooted at async.execution
+        checkInventory(request)
+    }
+    async {
+        // Forked context B — independent span tree rooted at async.execution
+        reservePayment(request)
     }
 }
 ```
 
-**Fire-and-forget (`launch`) — same limitation as `@Async`**
+### Hook execution
 
-If the coroutine outlives the request, hooks have already fired by the time it completes. Context fields (traceId, issuer) are still accessible for direct logging, but hook-based logging and span recording are outside the request lifecycle.
+The same configuration as `@Async` applies. Hooks fire automatically via `invokeOnCompletion` when the coroutine's `Job` completes — no DSL wrapper required.
 
 ```kotlin
+// Enable hooks for coroutines launched in this request
+Operations.context.enableAsyncHook()
+
 launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
-    sendNotification()  // may run after response is already sent
+    processEvent()  // hooks fire on coroutine completion
 }
 ```
 
 ### Summary
 
-| Pattern | `Operations.context` access | Span propagation | Hook execution |
-|---------|----------------------------|------------------|----------------|
-| Structured (`async`/`coroutineScope`) | ✓ | ✓ | ✓ |
-| Fire-and-forget (`launch`) | ✓ | ✗ | ✗ |
+| | Context access | Span tree | Hook execution |
+|--|--|--|--|
+| Main request thread | ✓ | ✓ Main tree | ✓ Always (servlet filter) |
+| `@Async` thread | ✓ Forked (`executionScope=ASYNC`) | ✓ Independent | Optional — config or `enableAsyncHook()` |
+| Coroutine child | ✓ Forked (`executionScope=ASYNC`) | ✓ Independent | Optional — config or `enableAsyncHook()` |
+| Event handler (`@ManagedEventHandler`) | ✓ New (`executionScope=EVENT`) | ✓ Independent | ✓ Always |
 
 ---
 
-## Thread Lifecycle and Context Sharing
+## Event-Driven Context Propagation (`@ManagedEventHandler`)
 
-Understanding the relationship between the main request thread and async/coroutine threads is important for reasoning about context behavior.
+Annotate a messaging handler method with `@ManagedEventHandler` to start an ENTRY-layer span and set `executionScope` to `EVENT`. No servlet filter is involved — the aspect manages the full context lifecycle.
 
-**How context is shared**
+### Automatic context extraction
 
-`ManagedContext` is a single heap object. Both the main thread and any async/coroutine thread hold a reference to the same instance via their own `ThreadLocal` slot. Writing to the context from any thread modifies the same object.
+OMK extracts trace metadata from method arguments using the following priority chain:
+
+| Priority | Source | Condition |
+|----------|--------|-----------|
+| 1st | `@ManagedEvent*` field annotations | Parameter class has fields annotated with `@ManagedEventTraceId`, `@ManagedEventCausationId`, `@ManagedEventIssuer`, or `@ManagedEventType` |
+| 2nd | Kafka `ConsumerRecord` headers | Argument is a `ConsumerRecord` — W3C `traceparent` parsed first (`00-{traceId}-{spanId}-{flags}`), then `X-Trace-Id` / `X-Causation-Id` |
+| 3rd | Spring `Message<*>` headers | Argument implements `org.springframework.messaging.Message` — reads `MessageHeaders` |
+| 4th | Duck typing | Reflection scans for fields or getters named `traceId`, `causationId`, `issuer`, `eventType` |
+| 5th | `generate-when-missing` | If no context found: generate new IDs (default `true`) or inject empty strings (`false`) |
+
+### Annotation-based extraction (highest priority)
+
+Tag fields in your event or domain object with `@ManagedEvent*` annotations:
+
+```kotlin
+import io.github.hchanjune.omk.core.annotations.*
+
+data class OrderCreatedEvent(
+    @ManagedEventTraceId     val traceId: String,
+    @ManagedEventCausationId val causationId: String,
+    @ManagedEventIssuer      val issuer: String,
+    @ManagedEventType        val eventType: String = "OrderCreated",
+    val orderId: Long
+)
+
+@Component
+class OrderEventHandler {
+
+    @ManagedEventHandler
+    @KafkaListener(topics = ["order.created"])
+    fun handle(event: OrderCreatedEvent) {
+        // Operations.context is available — executionScope = EVENT
+        // traceId, causationId, issuer, eventType injected from annotated fields
+    }
+}
+```
+
+### Kafka `ConsumerRecord` (zero annotation needed)
+
+If the handler receives a raw `ConsumerRecord`, OMK reads headers automatically — no annotation required.
+
+```kotlin
+@Component
+class OrderEventHandler {
+
+    @ManagedEventHandler
+    @KafkaListener(topics = ["order.created"])
+    fun handle(record: ConsumerRecord<String, String>) {
+        // Reads W3C traceparent header; falls back to X-Trace-Id / X-Causation-Id
+        // eventType is set to the topic name
+    }
+}
+```
+
+### Manual initialization (Outbox / Inbox pattern)
+
+When events are consumed via a polling mechanism (e.g., Transactional Outbox / Inbox), trace metadata lives in a database column rather than in message headers. In this case, call `Operations.initializeForEvent()` manually before invoking the annotated method.
+
+```kotlin
+@Component
+class OutboxProcessor {
+
+    fun processOne(inbox: EventInbox) {
+        Operations.initializeForEvent(
+            EventMetadata(
+                traceId     = inbox.traceId,
+                causationId = inbox.causationId,
+                issuer      = inbox.issuer,
+                eventType   = inbox.eventType
+            )
+        )
+        try {
+            eventHandler.handle(inbox.toEvent())
+        } finally {
+            Operations.clear()
+        }
+    }
+}
+```
+
+> When a context already exists at the time the annotated method is invoked (`contextOwner = false`), the aspect skips auto-extraction and context initialization. It still opens an ENTRY-layer span, records metrics, and fires hooks — lifecycle ownership stays with the caller.
+
+### Span tree
 
 ```
-Heap
-├── ManagedContext@1a2b3c  ←─────────────────────────┐
-│                                                      │
-ThreadLocal slots                                      │
-├── main thread slot  → ManagedContext@1a2b3c ─────────┤
-└── async thread slot → ManagedContext@1a2b3c ─────────┘
-                              (same instance)
+@ManagedEventHandler  ──  [ENT] root span  (executionScope = EVENT)
+    └── @ManagedOperation  ──  [APP] child span
+            └── @ManagedMetric      ──  [APP] child span
+            └── @ManagedRepository  ──  [DB]  child span
 ```
 
-**Main thread lifecycle**
+---
 
-The main request thread follows a fixed lifecycle managed by the servlet filter:
+## Thread Lifecycle and Context Isolation
+
+Async boundaries produce **forked** contexts, not shared references.
+
+**Main thread lifecycle (HTTP)**
 
 ```
 request in → context created → business logic → hooks fired → clear() → response out
 ```
 
-`clear()` removes the reference from the main thread's `ThreadLocal` slot and marks the end of the request lifecycle.
+**Async/coroutine lifecycle**
 
-**Async and coroutine thread lifetime is not guaranteed**
+```
+Main thread:   [context A] ──── business logic ──── hooks ──── clear()
+                      │ forkAsync()
+Async thread:          └─── [context B: executionScope=ASYNC] ──── async work ──── (hooks if enabled) ──── clear()
+```
 
-Async and coroutine threads run independently. They may finish before or after the main thread calls `clear()`. This creates two distinct outcomes:
+**Event handler lifecycle**
 
-- **Finishes before `clear()`**: writes to the shared instance are visible when hooks fire → reflected in logs and metrics ✓
-- **Finishes after `clear()`**: the main thread's slot is already empty and hooks have already fired → writes to the shared instance are silently ignored, no error is thrown ✗
+```
+message in → context created (executionScope=EVENT) → handler logic → hooks fired → clear()
+```
 
-**Why structured concurrency works reliably**
-
-Structured concurrency operators (`coroutineScope`, `awaitAll`, `runBlocking`) suspend the parent until all children complete. This guarantees that all writes to the shared context happen before the main thread proceeds to the hook and `clear()` phase.
-
-**Why fire-and-forget is unreliable for context writes**
-
-`launch` and `@Async` (fire-and-forget) return immediately, letting the main thread continue to hooks and `clear()` while async work may still be running. Any writes that happen after `clear()` are silently dropped — the object still exists in heap (the async thread holds a reference), but nobody processes those changes.
+The two async contexts share `traceId` and `causationId` for log correlation but have completely independent span trees, timing, and hook lifecycles. There is no concurrent mutation of shared state — each thread operates on its own context instance.
 
 ---
 
@@ -556,7 +679,7 @@ You can replace any default provider by registering a custom bean.
 - **Thread-local context**: `ManagedContext` is stored in `ThreadLocal`. `@Async` propagation is handled automatically via `ManagedContextTaskDecorator`. Kotlin coroutines require explicit propagation via `ManagedContextElement`. In fire-and-forget patterns (`launch`), hooks and span recording are outside the request lifecycle by design.
 - **Spring AOP self-invocation**: AOP aspects do not intercept internal method calls within the same class.
 - **Streaming responses**: The `traceparent` response header is set after request processing. For streaming or async responses, the header may not be delivered.
-- **`Operations.context` scope**: Calling `Operations.context` outside a managed request scope throws an `IllegalStateException` with a descriptive message.
+- **`Operations.context` scope**: Calling `Operations.context` outside a managed request scope (HTTP request, event handler, or manual `Operations.initializeForEvent()`) throws an `IllegalStateException` with a descriptive message.
 
 ---
 
@@ -568,6 +691,7 @@ You can replace any default provider by registering a custom bean.
 - [x] Span-level metric instrumentation (`@ManagedOperation`, `@ManagedMetric`, `@ManagedRepository` as DB spans)
 - [x] Micrometer-backed `MetricsOperationHook` with full span tree recording
 - [x] `@ManagedController` as ENTRY-layer root span; layer/timestamp/thread visible in span tree
+- [x] Messaging context propagation (`@ManagedEventHandler` for Kafka, Spring Messaging, etc.; auto-extraction priority chain; manual `Operations.initializeForEvent()`)
 - [ ] OpenTelemetry SDK integration
 - [ ] Sampling support for high-throughput environments
 

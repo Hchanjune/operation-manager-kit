@@ -9,7 +9,8 @@ data class TelemetryConfigureProperties(
 
     data class PropagationProperties(
         var mode: PropagationMode = PropagationMode.W3C_STANDARD,
-        var customHeaders: CustomHeaders = CustomHeaders()
+        var customHeaders: CustomHeaders = CustomHeaders(),
+        var generateWhenMissing: Boolean = true
     )
 
     data class CustomHeaders(

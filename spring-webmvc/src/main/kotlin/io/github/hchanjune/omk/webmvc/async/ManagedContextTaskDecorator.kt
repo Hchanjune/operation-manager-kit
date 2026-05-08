@@ -5,12 +5,27 @@ import org.springframework.core.task.TaskDecorator
 
 class ManagedContextTaskDecorator: TaskDecorator {
     override fun decorate(runnable: Runnable): Runnable {
-        if(!Operations.hasContext) return runnable
-        val context = Operations.context
+        if (!Operations.hasContext) return runnable
+        val childContext = Operations.context.forkAsync()
         return Runnable {
-            Operations.applyContext(context)
+            Operations.applyContext(childContext)
+            childContext.start()
             try {
                 runnable.run()
+                val hook = Operations.hook
+                if (hook != null && childContext.isAsyncHookEnabled) {
+                    childContext.rootSpan?.end()
+                    Operations.complete()
+                    hook.onSuccess(childContext)
+                }
+            } catch (e: Throwable) {
+                val hook = Operations.hook
+                if (hook != null && childContext.isAsyncHookEnabled) {
+                    childContext.rootSpan?.end(e)
+                    Operations.complete()
+                    hook.onFailure(childContext, e)
+                }
+                throw e
             } finally {
                 Operations.clear()
             }

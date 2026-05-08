@@ -11,7 +11,7 @@ plugins {
 
 allprojects {
     group = "com.github.Hchanjune.operation-manager-kit"
-    version = "0.6.9"
+    version = "0.7.0"
 
     repositories {
         mavenCentral()

@@ -1,8 +1,10 @@
 package io.github.hchanjune.omk.core.context
 
+import io.github.hchanjune.omk.core.contants.ExecutionScope
 import io.github.hchanjune.omk.core.contants.ManagedProtocolType
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
+import io.github.hchanjune.omk.core.metric.MetricLayer
 import io.github.hchanjune.omk.core.metric.MetricName
 import io.github.hchanjune.omk.core.metric.MetricPolicy
 import io.github.hchanjune.omk.core.metric.MetricSpan
@@ -21,6 +23,19 @@ class ManagedContext(
     var causationId: String = "CausationId not injected yet."
 
     var issuer: String = "Issuer not injected yet."
+
+    var executionScope: ExecutionScope = ExecutionScope.PRIMARY
+        private set
+
+    val isAsync: Boolean get() = executionScope == ExecutionScope.ASYNC
+    val isEvent: Boolean get() = executionScope == ExecutionScope.EVENT
+
+    var isAsyncHookEnabled: Boolean = false
+        private set
+
+    fun enableAsyncHook() { isAsyncHookEnabled = true }
+    fun disableAsyncHook() { isAsyncHookEnabled = false }
+    fun markAsEvent() { executionScope = ExecutionScope.EVENT }
 
     // HTTP, GRPC, KAFKA, LOCAL
     var protocol: ManagedProtocolType = ManagedProtocolType.UNSUPPORTED
@@ -153,6 +168,32 @@ class ManagedContext(
     fun peek(): MetricSpan? = spanStack.firstOrNull()
     fun pop(): MetricSpan? = if (spanStack.isNotEmpty()) spanStack.removeFirst() else null
     fun isFinished(): Boolean = spanStack.isEmpty()
+
+    fun forkAsync(): ManagedContext {
+        val child = ManagedContext(clock, spanIdProvider)
+        child.traceId = this.traceId
+        child.causationId = this.causationId
+        child.issuer = this.issuer
+        child.protocol = this.protocol
+        child.type = this.type
+        child.uri = this.uri
+        child.method = this.method
+        child.entrypoint = this.entrypoint
+        child.service = this.service
+        child.operation = this.operation
+        child.useCase = this.useCase
+        child.executionScope = ExecutionScope.ASYNC
+        child.isAsyncHookEnabled = this.isAsyncHookEnabled
+        child.push(
+            name = MetricName("async.execution"),
+            kind = MetricKind.TIMER,
+            policy = MetricPolicy.defaults(),
+            tags = MetricTags.empty(),
+            descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+            idProvider = spanIdProvider
+        )
+        return child
+    }
 
     data class HookRecord(
         val hookName: String,

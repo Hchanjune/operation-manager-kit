@@ -143,8 +143,9 @@ println(result.data) // "OK"
 | `@ManagedRepository` | 클래스 | 리포지토리의 모든 메서드를 DB 레이어 자식 span으로 계측 |
 | `@ManagedOperation` | 메서드 | `operation`, `useCase` 값을 컨텍스트에 주입; APPLICATION 레이어 span 생성 |
 | `@ManagedMetric` | 메서드 | 임의 메서드를 이름이 있는 APPLICATION 레이어 자식 span으로 계측 |
+| `@ManagedEventHandler` | 메서드 | 메시징 핸들러에 ENTRY 레이어 span 생성; 이벤트 인자에서 트레이스 컨텍스트 자동 추출; `executionScope`를 `EVENT`로 설정 |
 
-> `@ManagedController`는 핸들러 메서드 호출마다 하나의 span을 생성하며 span 트리의 루트가 됩니다. 향후 추가될 프로토콜 모듈(`spring-kafka`, `spring-grpc`)도 동일한 패턴으로 각자의 entry-point 어노테이션을 제공합니다. `@ManagedMetric`은 기본적으로 `ClassName.methodName`을 span 이름으로 사용하며 `name` 속성으로 재정의할 수 있습니다 — 메트릭 태그 폭발을 방지하기 위해 저 카디널리티 값을 유지하세요.
+> `@ManagedController`는 핸들러 메서드 호출마다 하나의 span을 생성하며 HTTP 요청의 span 트리 루트가 됩니다. `@ManagedEventHandler`는 Kafka, RabbitMQ 등 메시징 기반 진입점에서 동일한 역할을 합니다. `@ManagedMetric`은 기본적으로 `ClassName.methodName`을 span 이름으로 사용하며 `name` 속성으로 재정의할 수 있습니다 — 메트릭 태그 폭발을 방지하기 위해 저 카디널리티 값을 유지하세요.
 
 ---
 
@@ -247,13 +248,14 @@ class MyEnrichmentHook : OperationHook {
 ### Span 계층 구조
 
 ```
-@ManagedController  ──  [ENT] 루트 span  (핸들러 메서드마다)
+@ManagedController    ──  [ENT] 루트 span  (HTTP 진입점, 핸들러 메서드마다)
+@ManagedEventHandler  ──  [ENT] 루트 span  (메시징 진입점, executionScope = EVENT)
     └── @ManagedOperation  ──  [APP] 자식 span  (operation + useCase 태그)
             └── @ManagedMetric      ──  [APP] 자식 span  (임의 메서드)
             └── @ManagedRepository  ──  [DB]  자식 span  (리포지토리 메서드마다)
 ```
 
-`@ManagedController`가 없는 경우(직접 서비스 호출, 향후 Kafka 리스너 등) `@ManagedOperation`이 루트 span이 됩니다.
+`@ManagedController`와 `@ManagedEventHandler` 모두 없는 경우(직접 서비스 호출 등) `@ManagedOperation`이 루트 span이 됩니다.
 
 ### 예시
 
@@ -364,10 +366,12 @@ operation-manager:
 
     async-propagation:
       enabled: true       # @Async 컨텍스트 전파 활성화 (기본값: true)
+      hook-enabled: false # 비동기 태스크/코루틴 완료 시 훅 실행 (기본값: false)
 
     telemetry:
       propagation:
         mode: W3C_STANDARD  # W3C_STANDARD | CUSTOM
+        generate-when-missing: true  # 인입 헤더에 traceId/causationId가 없을 때 자동 생성 (기본값: true)
         custom-headers:
           trace-id: X-Trace-Id
           causation-id: X-Causation-Id
@@ -377,25 +381,59 @@ operation-manager:
 
 ## `@Async` 컨텍스트 전파
 
-`@EnableAsync`가 활성화된 경우, `ManagedContextTaskDecorator`가 자동으로 등록되어 기본 `ThreadPoolTaskExecutor`에 적용됩니다. 별도 설정 없이 관리 컨텍스트(트레이스 ID, 발급자, 오퍼레이션 메타데이터)가 async 스레드로 전파됩니다.
+`@EnableAsync`가 활성화된 경우, `ManagedContextTaskDecorator`가 자동으로 등록되어 기본 `ThreadPoolTaskExecutor`에 적용됩니다. `@Async` 메서드가 호출될 때, 컨텍스트는 **포크(fork)** 됩니다 — async 스레드는 동일한 객체의 참조가 아닌 독립적인 복사본을 받습니다.
 
-```kotlin
-@Service
-class NotificationService {
+### 전파되는 것 (포크됨)
 
-    @Async
-    fun sendEmail(to: String) {
-        val traceId = Operations.context.traceId  // 호출 스레드로부터 상속
-        log.info("[{}] {} 로 메일 발송", traceId, to)
-    }
-}
+| 필드 | 동작 |
+|------|------|
+| `traceId`, `causationId`, `issuer` | 상속 — 스레드 간 로그 상관관계를 위해 |
+| `protocol`, `type`, `uri`, `method`, `entrypoint`, `service`, `operation`, `useCase` | 상속 — 일관된 태깅을 위해 |
+| `executionScope` | 포크된 컨텍스트에서 `ASYNC`로 설정 |
+| Span 트리, 타이밍, 훅 레코드 | **독립** — 부모와 공유되지 않음 |
+
+### Async span 트리
+
+async 스레드가 시작되면 `async.execution` 루트 span이 자동으로 생성됩니다. async 메서드 내의 `@ManagedOperation`, `@ManagedMetric`, `@ManagedRepository` 호출은 이 루트의 자식 span이 됩니다 — 메인 요청과 완전히 독립적인 span 트리를 형성합니다.
+
+```
+메인 스레드 span 트리:          Async 스레드 span 트리:
+[ENT] OrderController           [ENT] async.execution
+  └─ [APP] CreateOrder            └─ [APP] SendNotification
+       └─ [DB] save                    └─ [DB] logRepository.insert
 ```
 
-**전파되는 것:** `traceId`, `issuer`, `entrypoint`, `service`, `operation`, `useCase` 및 모든 컨텍스트 필드.
+### 훅 실행
 
-**전파되지 않는 것:** 훅 실행 및 로깅 라이프사이클. 훅은 HTTP 요청이 완료될 때 메인 스레드에서 실행됩니다. 요청보다 오래 살아있는 async 태스크는 설계상 훅 라이프사이클 밖에 있습니다 — `@Async`는 메인 요청 흐름의 연속이 아닌 사이드이펙트 처리 메커니즘이기 때문입니다.
+기본적으로 훅은 async 컨텍스트에서 실행되지 **않습니다**. 설정으로 전역 기본값을 활성화하거나, 비즈니스 로직에서 요청 단위로 제어할 수 있습니다.
 
-비활성화하려면:
+**전역 기본값:**
+
+```yaml
+operation-manager:
+  webmvc:
+    async-propagation:
+      enabled: true
+      hook-enabled: true  # async 태스크 완료 시 훅 실행 (기본값: false)
+```
+
+**요청 단위 제어:**
+
+컨텍스트가 포크될 때 `isAsyncHookEnabled` 플래그가 상속됩니다. async 호출 전에 이 값을 토글하여 어떤 태스크에서 훅을 실행할지 제어합니다:
+
+```kotlin
+// 이 요청의 async 태스크에서 훅 활성화
+Operations.context.enableAsyncHook()
+asyncService.doTrackedWork()  // 완료 시 훅 실행
+
+// fire-and-forget 태스크는 비활성화
+Operations.context.disableAsyncHook()
+asyncService.fireAndForget()  // 훅 없음
+```
+
+> 훅은 태스크가 완료될 때 async 스레드에서 실행되며, 메인 스레드와 독립적으로 동작합니다. Async 메트릭은 별도로 기록되며 메인 요청의 span 트리에는 나타나지 않습니다.
+
+컨텍스트 전파를 완전히 비활성화하려면:
 
 ```yaml
 operation-manager:
@@ -410,100 +448,185 @@ operation-manager:
 
 ## Kotlin 코루틴 컨텍스트 전파
 
-`kotlinx-coroutines-core`가 클래스패스에 있으면, `ManagedContextElement`를 사용하여 코루틴 suspension point와 스레드 전환 사이에서 관리 컨텍스트를 전파할 수 있습니다.
+`kotlinx-coroutines-core`가 클래스패스에 있으면, `ManagedContextElement`가 suspension point와 스레드 전환 사이에서 관리 컨텍스트를 전파합니다.
 
-`TaskDecorator`가 태스크 제출 시점에만 컨텍스트를 캡처하는 것과 달리, `ManagedContextElement`는 코루틴 dispatcher에 훅으로 연결됩니다 — 모든 suspension point 이후를 포함해 코루틴이 실행되는 모든 스레드에서 `ThreadLocal` 컨텍스트를 자동으로 복원합니다.
+`ManagedContextElement`는 `CopyableThreadContextElement`를 구현합니다. 자식 코루틴이 시작될 때 `copyForChild()`가 자동으로 호출되어, 각 자식이 독립적인 span 트리를 가진 **포크된** 컨텍스트를 받습니다.
 
 ```kotlin
 launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
+    // 포크된 컨텍스트: traceId 상속, 독립적인 span 트리
     withContext(Dispatchers.Default) {
-        Operations.context.traceId  // 모든 suspension point에서 접근 가능
+        Operations.context.traceId  // 모든 suspension point 이후 접근 가능
+        Operations.context.executionScope  // ASYNC
     }
 }
 ```
 
-### 사용 패턴별 동작
+### 코루틴별 컨텍스트 격리
 
-**Structured concurrency — 컨텍스트와 span이 전파됨**
-
-자식 코루틴이 요청 완료 전에 await되는 경우, 훅 실행 시점에 해당 작업 결과가 반영됩니다.
+각 자식 코루틴은 독립적인 컨텍스트를 가집니다. 병렬 코루틴은 서로의 span 트리를 공유하거나 간섭하지 않습니다.
 
 ```kotlin
-@ManagedService
-@Service
-class OrderService {
-
-    @ManagedOperation(operation = "PlaceOrder")
-    suspend fun place(request: OrderRequest) = coroutineScope {
-        val inventory = async { checkInventory(request) }
-        val payment   = async { reservePayment(request) }
-        awaitAll(inventory, payment)
-        // 여기서 요청 완료 → 훅 실행 → span 반영됨
+coroutineScope {
+    async {
+        // 포크된 컨텍스트 A — async.execution을 루트로 하는 독립적인 span 트리
+        checkInventory(request)
+    }
+    async {
+        // 포크된 컨텍스트 B — async.execution을 루트로 하는 독립적인 span 트리
+        reservePayment(request)
     }
 }
 ```
 
-**Fire-and-forget (`launch`) — `@Async`와 동일한 제한**
+### 훅 실행
 
-코루틴이 요청보다 오래 살아있으면, 완료 시점에 이미 훅이 실행된 이후입니다. 컨텍스트 필드(traceId, issuer)는 직접 로깅에 사용할 수 있지만, 훅 기반 로깅과 span 기록은 요청 라이프사이클 밖에서 이루어집니다.
+`@Async`와 동일한 설정이 적용됩니다. 훅은 코루틴의 `Job`이 완료될 때 `invokeOnCompletion`을 통해 자동으로 실행됩니다 — DSL 래퍼가 필요 없습니다.
 
 ```kotlin
+// 이 요청에서 시작되는 코루틴에 훅 활성화
+Operations.context.enableAsyncHook()
+
 launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
-    sendNotification()  // 응답이 이미 전송된 후에도 실행될 수 있음
+    processEvent()  // 코루틴 완료 시 훅 실행
 }
 ```
 
 ### 요약
 
-| 패턴 | `Operations.context` 접근 | Span 전파 | 훅 실행 |
-|------|--------------------------|-----------|---------|
-| Structured (`async`/`coroutineScope`) | ✓ | ✓ | ✓ |
-| Fire-and-forget (`launch`) | ✓ | ✗ | ✗ |
+| | 컨텍스트 접근 | Span 트리 | 훅 실행 |
+|--|--|--|--|
+| 메인 요청 스레드 | ✓ | ✓ 메인 트리 | ✓ 항상 (서블릿 필터) |
+| `@Async` 스레드 | ✓ 포크 (`executionScope=ASYNC`) | ✓ 독립 | 선택적 — 설정 또는 `enableAsyncHook()` |
+| 코루틴 자식 | ✓ 포크 (`executionScope=ASYNC`) | ✓ 독립 | 선택적 — 설정 또는 `enableAsyncHook()` |
+| 이벤트 핸들러 (`@ManagedEventHandler`) | ✓ 신규 (`executionScope=EVENT`) | ✓ 독립 | ✓ 항상 |
 
 ---
 
-## 스레드 생명주기와 컨텍스트 공유
+## 이벤트 드리븐 컨텍스트 전파 (`@ManagedEventHandler`)
 
-메인 요청 스레드와 async/코루틴 스레드의 관계를 이해하면 컨텍스트 동작을 명확하게 파악할 수 있습니다.
+메시징 핸들러 메서드에 `@ManagedEventHandler`를 붙이면 ENTRY 레이어 span이 시작되고 `executionScope`가 `EVENT`로 설정됩니다. 서블릿 필터는 관여하지 않으며 Aspect가 컨텍스트 전체 생명주기를 관리합니다.
 
-**컨텍스트가 공유되는 방식**
+### 자동 컨텍스트 추출
 
-`ManagedContext`는 힙에 존재하는 단일 객체입니다. 메인 스레드와 async/코루틴 스레드는 각자의 `ThreadLocal` 슬롯을 통해 같은 인스턴스의 참조를 보유합니다. 어느 스레드에서 컨텍스트를 수정해도 동일한 객체가 변경됩니다.
+OMK는 메서드 인자에서 다음 우선순위로 트레이스 메타데이터를 추출합니다:
+
+| 우선순위 | 소스 | 조건 |
+|----------|------|------|
+| 1순위 | `@ManagedEvent*` 필드 어노테이션 | 인자 클래스의 필드에 `@ManagedEventTraceId`, `@ManagedEventCausationId`, `@ManagedEventIssuer`, `@ManagedEventType` 중 하나라도 있는 경우 |
+| 2순위 | Kafka `ConsumerRecord` 헤더 | 인자가 `ConsumerRecord`인 경우 — W3C `traceparent` 우선 파싱(`00-{traceId}-{spanId}-{flags}`), 없으면 `X-Trace-Id` / `X-Causation-Id` |
+| 3순위 | Spring `Message<*>` 헤더 | 인자가 `org.springframework.messaging.Message`를 구현하는 경우 — `MessageHeaders` 탐색 |
+| 4순위 | 덕 타이핑 | 리플렉션으로 `traceId`, `causationId`, `issuer`, `eventType` 필드 또는 getter 탐색 |
+| 5순위 | `generate-when-missing` | 컨텍스트를 찾지 못한 경우: 새 ID 생성(기본값 `true`) 또는 빈 문자열 주입(`false`) |
+
+### 어노테이션 기반 추출 (최우선)
+
+이벤트 또는 도메인 객체의 필드에 `@ManagedEvent*` 어노테이션을 붙입니다:
+
+```kotlin
+import io.github.hchanjune.omk.core.annotations.*
+
+data class OrderCreatedEvent(
+    @ManagedEventTraceId     val traceId: String,
+    @ManagedEventCausationId val causationId: String,
+    @ManagedEventIssuer      val issuer: String,
+    @ManagedEventType        val eventType: String = "OrderCreated",
+    val orderId: Long
+)
+
+@Component
+class OrderEventHandler {
+
+    @ManagedEventHandler
+    @KafkaListener(topics = ["order.created"])
+    fun handle(event: OrderCreatedEvent) {
+        // Operations.context 사용 가능 — executionScope = EVENT
+        // 어노테이션이 붙은 필드에서 traceId, causationId, issuer, eventType 자동 주입
+    }
+}
+```
+
+### Kafka `ConsumerRecord` (어노테이션 불필요)
+
+핸들러가 `ConsumerRecord`를 직접 수신하는 경우 OMK가 헤더를 자동으로 읽습니다.
+
+```kotlin
+@Component
+class OrderEventHandler {
+
+    @ManagedEventHandler
+    @KafkaListener(topics = ["order.created"])
+    fun handle(record: ConsumerRecord<String, String>) {
+        // W3C traceparent 헤더 읽음; 없으면 X-Trace-Id / X-Causation-Id로 폴백
+        // eventType = 토픽 이름
+    }
+}
+```
+
+### 수동 초기화 (Outbox / Inbox 패턴)
+
+폴링 방식(예: Transactional Outbox / Inbox)으로 이벤트를 소비하는 경우, 트레이스 메타데이터는 메시지 헤더가 아닌 DB 컬럼에 저장됩니다. 이 경우 어노테이션이 붙은 메서드를 호출하기 전에 수동으로 `Operations.initializeForEvent()`를 호출합니다.
+
+```kotlin
+@Component
+class OutboxProcessor {
+
+    fun processOne(inbox: EventInbox) {
+        Operations.initializeForEvent(
+            EventMetadata(
+                traceId     = inbox.traceId,
+                causationId = inbox.causationId,
+                issuer      = inbox.issuer,
+                eventType   = inbox.eventType
+            )
+        )
+        try {
+            eventHandler.handle(inbox.toEvent())
+        } finally {
+            Operations.clear()
+        }
+    }
+}
+```
+
+> 어노테이션이 붙은 메서드가 호출될 시점에 컨텍스트가 이미 존재하는 경우(`contextOwner = false`), Aspect는 자동 추출과 컨텍스트 초기화를 건너뜁니다. 그러나 ENTRY 레이어 span 생성, 메트릭 기록, 훅 실행은 여전히 수행됩니다 — 라이프사이클 소유권은 호출자에게 있습니다.
+
+### Span 트리
 
 ```
-힙
-├── ManagedContext@1a2b3c  ←─────────────────────────┐
-│                                                      │
-ThreadLocal 슬롯                                       │
-├── main thread 슬롯  → ManagedContext@1a2b3c ─────────┤
-└── async thread 슬롯 → ManagedContext@1a2b3c ─────────┘
-                              (동일한 인스턴스)
+@ManagedEventHandler  ──  [ENT] 루트 span  (executionScope = EVENT)
+    └── @ManagedOperation  ──  [APP] 자식 span
+            └── @ManagedMetric      ──  [APP] 자식 span
+            └── @ManagedRepository  ──  [DB]  자식 span
 ```
 
-**메인 스레드의 생명주기**
+---
 
-메인 요청 스레드는 서블릿 필터가 관리하는 고정된 생명주기를 따릅니다.
+## 스레드 생명주기와 컨텍스트 격리
+
+async 경계는 공유 참조가 아닌 **포크된** 컨텍스트를 생성합니다.
+
+**메인 스레드 생명주기 (HTTP)**
 
 ```
 요청 수신 → 컨텍스트 생성 → 비즈니스 로직 → 훅 실행 → clear() → 응답 반환
 ```
 
-`clear()`는 메인 스레드의 `ThreadLocal` 슬롯에서 참조를 제거하며 요청 라이프사이클의 종료를 의미합니다.
+**Async/코루틴 생명주기**
 
-**Async/코루틴 스레드의 생명주기는 보장되지 않음**
+```
+메인 스레드:   [컨텍스트 A] ──── 비즈니스 로직 ──── 훅 실행 ──── clear()
+                      │ forkAsync()
+Async 스레드:          └─── [컨텍스트 B: executionScope=ASYNC] ──── async 작업 ──── (훅, 활성화 시) ──── clear()
+```
 
-Async/코루틴 스레드는 독립적으로 실행됩니다. 메인 스레드가 `clear()`를 호출하기 전에 끝날 수도 있고, 그 이후에 끝날 수도 있습니다. 이로 인해 두 가지 결과가 발생합니다:
+**이벤트 핸들러 생명주기**
 
-- **`clear()` 이전에 완료**: 공유 인스턴스에 대한 write가 훅 실행 시점에 반영됨 → 로그 및 메트릭에 기록됨 ✓
-- **`clear()` 이후에 완료**: 메인 스레드의 슬롯은 이미 비워지고 훅도 이미 실행됨 → 공유 인스턴스에 대한 write는 조용히 무시됨 (에러 없음) ✗
+```
+메시지 수신 → 컨텍스트 생성 (executionScope=EVENT) → 핸들러 로직 → 훅 실행 → clear()
+```
 
-**Structured concurrency가 안정적으로 동작하는 이유**
-
-`coroutineScope`, `awaitAll`, `runBlocking` 같은 structured concurrency 연산자는 모든 자식 코루틴이 완료될 때까지 부모를 대기시킵니다. 이를 통해 메인 스레드가 훅 실행과 `clear()` 단계로 진행하기 전에 모든 write가 완료됨을 보장합니다.
-
-**Fire-and-forget이 컨텍스트 write에 신뢰할 수 없는 이유**
-
-`launch`와 `@Async` (fire-and-forget)는 즉시 반환하여 async 작업이 아직 실행 중인 상태에서 메인 스레드가 훅 실행과 `clear()`로 진행합니다. `clear()` 이후에 발생하는 write는 조용히 버려집니다 — 힙의 객체는 여전히 존재하지만(async 스레드가 참조를 보유), 아무도 그 변경을 처리하지 않습니다.
+두 async 컨텍스트는 로그 상관관계를 위해 `traceId`와 `causationId`를 공유하지만, span 트리, 타이밍, 훅 라이프사이클은 완전히 독립적입니다. 공유 상태에 대한 동시 변경이 없습니다 — 각 스레드는 자신만의 컨텍스트 인스턴스에서 동작합니다.
 
 ---
 
@@ -555,10 +678,10 @@ implementation("io.micrometer:micrometer-registry-prometheus")
 
 ## 주의사항 및 제한
 
-- **스레드 로컬 컨텍스트**: `ManagedContext`는 `ThreadLocal`에 저장됩니다. `@Async` 전파는 `ManagedContextTaskDecorator`를 통해 자동으로 처리됩니다. Kotlin 코루틴은 `ManagedContextElement`를 통한 명시적 전파가 필요합니다. Fire-and-forget 패턴(`launch`)에서는 설계상 훅과 span 기록이 요청 라이프사이클 밖에서 이루어집니다.
+- **스레드 로컬 컨텍스트**: `ManagedContext`는 `ThreadLocal`에 저장됩니다. `@Async` 전파는 `ManagedContextTaskDecorator`를 통해 자동으로 포크됩니다. Kotlin 코루틴은 `ManagedContextElement`를 통한 명시적 전파가 필요합니다. 포크된 async 컨텍스트는 독립적인 span 트리와 생명주기를 가지며, 훅 실행은 설정이나 `enableAsyncHook()`으로 제어합니다.
 - **Spring AOP 자기 호출**: 동일 클래스 내부의 메서드 호출은 AOP Aspect가 인터셉트하지 않습니다.
 - **스트리밍 응답**: `traceparent` 응답 헤더는 요청 처리 완료 후 설정됩니다. 스트리밍 또는 비동기 응답에서는 헤더가 전달되지 않을 수 있습니다.
-- **`Operations.context` 범위**: 관리 범위 밖에서 `Operations.context`를 호출하면 명확한 메시지와 함께 `IllegalStateException`이 발생합니다.
+- **`Operations.context` 범위**: 관리 범위(HTTP 요청, 이벤트 핸들러, 또는 수동 `Operations.initializeForEvent()`) 밖에서 `Operations.context`를 호출하면 명확한 메시지와 함께 `IllegalStateException`이 발생합니다.
 
 ---
 
@@ -570,6 +693,7 @@ implementation("io.micrometer:micrometer-registry-prometheus")
 - [x] Span 수준 메트릭 계측 (`@ManagedOperation`, `@ManagedMetric`, `@ManagedRepository` DB span)
 - [x] Micrometer 기반 `MetricsOperationHook` 및 전체 span 트리 기록
 - [x] `@ManagedController`의 ENTRY 레이어 루트 span; span 트리에 레이어/타임스탬프/스레드명 표시
+- [x] 메시징 컨텍스트 전파 (`@ManagedEventHandler` — Kafka, Spring Messaging 등; 자동 추출 우선순위 체인; 수동 `Operations.initializeForEvent()`)
 - [ ] OpenTelemetry SDK 연동
 - [ ] 고트래픽 환경을 위한 샘플링 지원
 

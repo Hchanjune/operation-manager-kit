@@ -1,6 +1,7 @@
 package io.github.hchanjune.omk.webmvc.config
 
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
+import io.github.hchanjune.omk.webmvc.aspect.ManagedEventHandlerAspect
 import io.github.hchanjune.omk.webmvc.aspect.ManagedOperationAspect
 import io.github.hchanjune.omk.webmvc.aspect.ManagedControllerAspect
 import io.github.hchanjune.omk.webmvc.aspect.ManagedMetricAspect
@@ -16,6 +17,22 @@ import org.springframework.context.annotation.Configuration
 @Configuration
 @ConditionalOnClass(Aspect::class)
 internal class AspectConfiguration {
+
+    /**
+     * ###### ManagedEventHandlerAspect
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+        prefix = "operation-manager.webmvc.context-aspect",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    fun managedEventHandlerAspect(
+        spanIdProvider: SpanIdProvider,
+    ): ManagedEventHandlerAspect =
+        ManagedEventHandlerAspect(spanIdProvider = spanIdProvider)
 
     /**
      * ###### ManagedControllerAspect

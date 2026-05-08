@@ -7,9 +7,14 @@ data class OperationManagerWebmvcAutoConfigProperties(
     var contextFilter: Toggle = Toggle(),
     var contextAspect: Toggle = Toggle(),
     var micrometer: Toggle = Toggle(),
-    var asyncPropagation: Toggle = Toggle(),
+    var asyncPropagation: AsyncPropagation = AsyncPropagation(),
 ) {
     data class Toggle(
         var enabled: Boolean = true
+    )
+
+    data class AsyncPropagation(
+        var enabled: Boolean = true,
+        var hookEnabled: Boolean = false
     )
 }

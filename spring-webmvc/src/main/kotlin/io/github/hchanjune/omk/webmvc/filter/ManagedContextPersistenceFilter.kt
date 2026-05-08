@@ -18,7 +18,8 @@ class ManagedContextPersistenceFilter(
     private val propagationProvider: TelemetryPropagationProvider,
     private val traceIdProvider: TraceIdProvider,
     private val causationIdProvider: CausationIdProvider,
-    private val compositeHook: OperationHook
+    private val compositeHook: OperationHook,
+    private val generateWhenMissing: Boolean = true
 ): OncePerRequestFilter() {
 
     companion object {
@@ -34,14 +35,10 @@ class ManagedContextPersistenceFilter(
     ) {
         val context: ManagedContext = request.getAttribute(KEY) as ManagedContext?
             ?: contextProvider.provide().apply {
-                this.injectTraceId(
-                    propagationProvider.extractTraceId { request.getHeader(it) }
-                        ?: traceIdProvider.provideTraceId()
-                )
-                this.injectCausationId(
-                    propagationProvider.extractParentId { request.getHeader(it) }
-                        ?: causationIdProvider.provideCausationId()
-                )
+                val extractedTraceId = propagationProvider.extractTraceId { request.getHeader(it) }
+                val extractedCausationId = propagationProvider.extractParentId { request.getHeader(it) }
+                this.injectTraceId(extractedTraceId ?: if (generateWhenMissing) traceIdProvider.provideTraceId() else "")
+                this.injectCausationId(extractedCausationId ?: if (generateWhenMissing) causationIdProvider.provideCausationId() else "")
                 this.injectProtocol("HTTP")
                 this.injectType("API")
                 this.injectHttpInfo(

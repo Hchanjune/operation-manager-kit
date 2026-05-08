@@ -5,6 +5,7 @@ import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
+import io.github.hchanjune.omk.webmvc.config.properties.TelemetryConfigureProperties
 import io.github.hchanjune.omk.webmvc.filter.ManagedContextPersistenceFilter
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.web.servlet.FilterRegistrationBean
@@ -27,6 +28,7 @@ internal class FilterConfiguration {
         traceIdProvider: TraceIdProvider,
         causationIdProvider: CausationIdProvider,
         compositeHook: OperationHook,
+        telemetryProperties: TelemetryConfigureProperties,
     ): FilterRegistrationBean<ManagedContextPersistenceFilter> =
         FilterRegistrationBean(
             ManagedContextPersistenceFilter(
@@ -34,7 +36,8 @@ internal class FilterConfiguration {
                 propagationProvider = propagationProvider,
                 traceIdProvider = traceIdProvider,
                 causationIdProvider = causationIdProvider,
-                compositeHook = compositeHook
+                compositeHook = compositeHook,
+                generateWhenMissing = telemetryProperties.propagation.generateWhenMissing
             )
         ).apply {
             setName("managedContextPersistenceFilter")
