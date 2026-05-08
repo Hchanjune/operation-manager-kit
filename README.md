@@ -563,23 +563,62 @@ class OrderEventHandler {
 
 ### Manual initialization (Outbox / Inbox pattern)
 
-When events are consumed via a polling mechanism (e.g., Transactional Outbox / Inbox), trace metadata lives in a database column rather than in message headers. In this case, call `Operations.initializeForEvent()` manually before invoking the annotated method.
+With the Transactional Outbox / Inbox pattern, events are stored in a database table before being processed. Trace metadata (`traceId`, `causationId`, etc.) lives in DB columns alongside the event payload — not in Kafka headers. The `@ManagedEventHandler` aspect cannot extract this metadata from the method argument, so you initialize the context manually.
+
+#### How it works
+
+When `Operations.initializeForEvent()` is called **before** the annotated handler method, the aspect detects an existing context (`contextOwner = false`) and skips auto-extraction. It still opens an ENTRY-layer span and records metrics — but **lifecycle ownership (hooks + clear) stays with the caller**.
+
+This means the polling method is responsible for:
+1. Calling `Operations.initializeForEvent()` with inbox metadata
+2. Calling `handle()` **through the Spring proxy** (to allow the aspect to intercept — see note below)
+3. Calling `Operations.complete()` after the handler returns
+4. Firing `Operations.hook?.onSuccess()` / `Operations.hook?.onFailure()` explicitly
+5. Calling `Operations.clear()` in `finally`
+
+#### Complete `AbstractEventHandler` pattern
 
 ```kotlin
-@Component
-class OutboxProcessor {
+abstract class AbstractEventHandler<E : Event> : EventHandler<E>, ApplicationContextAware {
 
-    fun processOne(inbox: EventInbox) {
+    private lateinit var applicationContext: ApplicationContext
+    private lateinit var inboxStore: EventInboxStore
+    private lateinit var eventSerializer: EventSerializer
+
+    override fun setApplicationContext(ctx: ApplicationContext) {
+        applicationContext = ctx
+        inboxStore = ctx.getBean<EventInboxStore>()
+        eventSerializer = ctx.getBean<EventSerializer>()
+    }
+
+    @Scheduled(fixedDelay = 500)
+    open fun pollAndProcess() {
+        inboxStore.findAllByEventTypeAndStatus(eventType, EventInboxStatus.RECEIVED, limit = 100)
+            .filter { inboxStore.tryAcquire(it.eventId) }
+            .forEach { processOne(it) }
+    }
+
+    protected fun processOne(record: EventInbox) {
         Operations.initializeForEvent(
             EventMetadata(
-                traceId     = inbox.traceId,
-                causationId = inbox.causationId,
-                issuer      = inbox.issuer,
-                eventType   = inbox.eventType
+                traceId     = record.traceId,
+                causationId = record.causationId,
+                issuer      = record.issuer,
+                eventType   = record.eventType
             )
         )
+        val context = Operations.context
         try {
-            eventHandler.handle(inbox.toEvent())
+            val event = eventSerializer.deserialize(record.payload, eventClass.java)
+            // Call through the Spring proxy so @ManagedEventHandler aspect fires
+            applicationContext.getBean(this::class.java).handle(event)
+            Operations.complete()
+            Operations.hook?.onSuccess(context)
+            inboxStore.markCompleted(record.eventId)
+        } catch (e: Exception) {
+            Operations.complete()
+            Operations.hook?.onFailure(context, e)
+            inboxStore.markFailed(record.eventId, e.message ?: "")
         } finally {
             Operations.clear()
         }
@@ -587,7 +626,28 @@ class OutboxProcessor {
 }
 ```
 
-> When a context already exists at the time the annotated method is invoked (`contextOwner = false`), the aspect skips auto-extraction and context initialization. It still opens an ENTRY-layer span, records metrics, and fires hooks — lifecycle ownership stays with the caller.
+#### Concrete handler
+
+```kotlin
+@Component
+class OrderCreatedEventHandler : AbstractEventHandler<OrderCreatedEvent>() {
+
+    override val eventType: String = "order.created"
+    override val eventClass: KClass<OrderCreatedEvent> = OrderCreatedEvent::class
+
+    @ManagedEventHandler
+    override fun handle(event: OrderCreatedEvent) {
+        // Operations.context is available here — executionScope = EVENT
+        // traceId, causationId, issuer injected from the inbox record
+    }
+}
+```
+
+#### Why `applicationContext.getBean(this::class.java)`?
+
+`processOne()` calls `handle()` internally. Spring AOP works through proxies — calling `this.handle()` bypasses the proxy and the `@ManagedEventHandler` aspect never fires. Fetching the bean from the application context returns the proxy, so the aspect intercepts the call correctly.
+
+> `contextOwner = false` means the aspect manages only the span (open on entry, close on exit). It does **not** call `Operations.complete()`, fire hooks, or call `Operations.clear()`. The polling method owns those steps.
 
 ### Span tree
 
@@ -655,6 +715,106 @@ implementation("io.micrometer:micrometer-registry-prometheus")
 ```
 
 Metrics will be exposed at `/actuator/prometheus`.
+
+> Prometheus is **pull-based** — the library does not push metrics. Prometheus scrapes `/actuator/prometheus` on its own schedule. Ensure the endpoint is reachable from your Prometheus instance.
+
+---
+
+## Spring Logback Integration
+
+OMK emits all operation results through two dedicated loggers:
+
+| Logger name | Content |
+|-------------|---------|
+| `OperationManager.Pretty` | Human-readable box format (development) |
+| `OperationManager.JSON` | Structured JSON (production / log aggregation) |
+
+Because `OperationManager.JSON` produces a consistent JSON object per operation — containing `traceId`, `causationId`, `protocol`, `status`, `durationMs`, and more — **Loki + Grafana is the recommended production stack**. Loki can extract JSON fields as labels and stream filters, enabling dashboards and alerts built directly on operation metadata without a separate APM tool.
+
+Route the two loggers independently in `logback-spring.xml`.
+
+### Console only (development)
+
+```xml
+<logger name="OperationManager.Pretty" level="INFO" additivity="false">
+    <appender-ref ref="CONSOLE"/>
+</logger>
+
+<logger name="OperationManager.JSON" level="OFF" additivity="false"/>
+```
+
+### Loki — Option A: Promtail (recommended)
+
+Write the JSON logger to a dedicated file and let Promtail tail and forward it to Loki. Promtail buffers on disk and retries on Loki downtime — no log loss risk.
+
+```xml
+<!-- logback-spring.xml -->
+<appender name="OMK_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/omk-operations.log</file>
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+        <fileNamePattern>logs/omk-operations.%d{yyyy-MM-dd}.log</fileNamePattern>
+        <maxHistory>7</maxHistory>
+    </rollingPolicy>
+    <encoder>
+        <pattern>%message%n</pattern>
+    </encoder>
+</appender>
+
+<logger name="OperationManager.Pretty" level="INFO" additivity="false">
+    <appender-ref ref="CONSOLE"/>
+</logger>
+
+<logger name="OperationManager.JSON" level="INFO" additivity="false">
+    <appender-ref ref="OMK_FILE"/>
+</logger>
+```
+
+Point Promtail at `logs/omk-operations*.log` to complete the pipeline.
+
+### Loki — Option B: `loki-logback-appender` (direct push)
+
+The app pushes JSON logs directly to Loki over HTTP. No Promtail or sidecar required — simpler setup, but logs may be lost if Loki is temporarily unavailable.
+
+```kotlin
+// build.gradle.kts
+implementation("com.github.loki4j:loki-logback-appender:1.5.x")
+```
+
+```xml
+<!-- logback-spring.xml -->
+<appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+    <http>
+        <url>http://loki:3100/loki/api/v1/push</url>
+    </http>
+    <format>
+        <label>
+            <pattern>app=${APP_NAME},env=${ENV},level=%level</pattern>
+        </label>
+        <message>
+            <pattern>%message</pattern>
+        </message>
+        <sortByTime>true</sortByTime>
+    </format>
+</appender>
+
+<logger name="OperationManager.Pretty" level="INFO" additivity="false">
+    <appender-ref ref="CONSOLE"/>
+</logger>
+
+<logger name="OperationManager.JSON" level="INFO" additivity="false">
+    <appender-ref ref="LOKI"/>
+</logger>
+```
+
+> `additivity="false"` is required on both loggers. Without it, log events bubble up to the root logger and appear in the console or file appender as well.
+
+### Recommended setup per environment
+
+| Environment | Pretty | JSON |
+|-------------|--------|------|
+| Local / dev | `CONSOLE` | `OFF` |
+| Staging | `CONSOLE` | `LOKI` (either option) |
+| Production | `OFF` | `LOKI` (Promtail recommended) |
 
 ---
 

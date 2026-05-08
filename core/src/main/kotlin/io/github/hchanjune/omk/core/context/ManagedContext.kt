@@ -18,11 +18,11 @@ class ManagedContext(
     private val spanIdProvider: SpanIdProvider
 ) {
 
-    var traceId: String = "TraceId not injected yet."
+    var traceId: String = ""
 
-    var causationId: String = "CausationId not injected yet."
+    var causationId: String = ""
 
-    var issuer: String = "Issuer not injected yet."
+    var issuer: String = ""
 
     var executionScope: ExecutionScope = ExecutionScope.PRIMARY
         private set
@@ -42,25 +42,25 @@ class ManagedContext(
         private set
     // API, WEBHOOK, COMMAND, EVENT, BATCH, SCHEDULED
 
-    var type: String = "Type not injected yet."
+    var type: String = ""
         private set
 
-    var uri: String = "Http URI not injected yet."
+    var uri: String = ""
         private set
 
-    var method: String = "Http Method not injected yet."
+    var method: String = ""
         private set
 
-    var entrypoint: String = "Entrypoint not injected yet."
+    var entrypoint: String = ""
         private set
 
-    var service: String = "Service not injected yet."
+    var service: String = ""
         private set
 
-    var operation: String = "Operation not injected yet."
+    var operation: String = ""
         private set
 
-    var useCase: String = "UseCase not injected yet."
+    var useCase: String = ""
         private set
 
     var response: String = ""

@@ -565,23 +565,62 @@ class OrderEventHandler {
 
 ### 수동 초기화 (Outbox / Inbox 패턴)
 
-폴링 방식(예: Transactional Outbox / Inbox)으로 이벤트를 소비하는 경우, 트레이스 메타데이터는 메시지 헤더가 아닌 DB 컬럼에 저장됩니다. 이 경우 어노테이션이 붙은 메서드를 호출하기 전에 수동으로 `Operations.initializeForEvent()`를 호출합니다.
+Transactional Outbox / Inbox 패턴에서는 이벤트가 DB 테이블에 저장된 후 처리됩니다. 트레이스 메타데이터(`traceId`, `causationId` 등)는 Kafka 헤더가 아닌 DB 컬럼에 저장되어 있어 `@ManagedEventHandler` Aspect가 메서드 인자에서 자동으로 추출할 수 없습니다. 따라서 컨텍스트를 수동으로 초기화해야 합니다.
+
+#### 동작 원리
+
+`Operations.initializeForEvent()`를 어노테이션이 붙은 핸들러 메서드보다 **먼저** 호출하면, Aspect는 이미 컨텍스트가 존재함을 감지(`contextOwner = false`)하고 자동 추출을 건너뜁니다. ENTRY 레이어 span 생성과 메트릭 기록은 여전히 수행하지만, **라이프사이클(훅 실행 + clear)은 호출자가 책임**집니다.
+
+따라서 폴링 메서드가 직접 처리해야 하는 것:
+1. inbox 메타데이터로 `Operations.initializeForEvent()` 호출
+2. **Spring 프록시를 통해** `handle()` 호출 (Aspect 인터셉트를 위해 — 아래 설명 참고)
+3. 핸들러 반환 후 `Operations.complete()` 호출
+4. `Operations.hook?.onSuccess()` / `Operations.hook?.onFailure()` 명시적 실행
+5. `finally`에서 `Operations.clear()` 호출
+
+#### 완전한 `AbstractEventHandler` 패턴
 
 ```kotlin
-@Component
-class OutboxProcessor {
+abstract class AbstractEventHandler<E : Event> : EventHandler<E>, ApplicationContextAware {
 
-    fun processOne(inbox: EventInbox) {
+    private lateinit var applicationContext: ApplicationContext
+    private lateinit var inboxStore: EventInboxStore
+    private lateinit var eventSerializer: EventSerializer
+
+    override fun setApplicationContext(ctx: ApplicationContext) {
+        applicationContext = ctx
+        inboxStore = ctx.getBean<EventInboxStore>()
+        eventSerializer = ctx.getBean<EventSerializer>()
+    }
+
+    @Scheduled(fixedDelay = 500)
+    open fun pollAndProcess() {
+        inboxStore.findAllByEventTypeAndStatus(eventType, EventInboxStatus.RECEIVED, limit = 100)
+            .filter { inboxStore.tryAcquire(it.eventId) }
+            .forEach { processOne(it) }
+    }
+
+    protected fun processOne(record: EventInbox) {
         Operations.initializeForEvent(
             EventMetadata(
-                traceId     = inbox.traceId,
-                causationId = inbox.causationId,
-                issuer      = inbox.issuer,
-                eventType   = inbox.eventType
+                traceId     = record.traceId,
+                causationId = record.causationId,
+                issuer      = record.issuer,
+                eventType   = record.eventType
             )
         )
+        val context = Operations.context
         try {
-            eventHandler.handle(inbox.toEvent())
+            val event = eventSerializer.deserialize(record.payload, eventClass.java)
+            // Spring 프록시를 통해 호출해야 @ManagedEventHandler Aspect가 동작함
+            applicationContext.getBean(this::class.java).handle(event)
+            Operations.complete()
+            Operations.hook?.onSuccess(context)
+            inboxStore.markCompleted(record.eventId)
+        } catch (e: Exception) {
+            Operations.complete()
+            Operations.hook?.onFailure(context, e)
+            inboxStore.markFailed(record.eventId, e.message ?: "")
         } finally {
             Operations.clear()
         }
@@ -589,7 +628,28 @@ class OutboxProcessor {
 }
 ```
 
-> 어노테이션이 붙은 메서드가 호출될 시점에 컨텍스트가 이미 존재하는 경우(`contextOwner = false`), Aspect는 자동 추출과 컨텍스트 초기화를 건너뜁니다. 그러나 ENTRY 레이어 span 생성, 메트릭 기록, 훅 실행은 여전히 수행됩니다 — 라이프사이클 소유권은 호출자에게 있습니다.
+#### 구체적인 핸들러
+
+```kotlin
+@Component
+class OrderCreatedEventHandler : AbstractEventHandler<OrderCreatedEvent>() {
+
+    override val eventType: String = "order.created"
+    override val eventClass: KClass<OrderCreatedEvent> = OrderCreatedEvent::class
+
+    @ManagedEventHandler
+    override fun handle(event: OrderCreatedEvent) {
+        // Operations.context 사용 가능 — executionScope = EVENT
+        // traceId, causationId, issuer는 inbox 레코드에서 주입됨
+    }
+}
+```
+
+#### `applicationContext.getBean(this::class.java)`가 필요한 이유
+
+`processOne()`은 `handle()`을 내부에서 호출합니다. Spring AOP는 프록시를 통해 동작하기 때문에, `this.handle()`로 직접 호출하면 프록시를 우회해 `@ManagedEventHandler` Aspect가 실행되지 않습니다. ApplicationContext에서 빈을 꺼내면 프록시 참조가 반환되어 Aspect가 정상적으로 인터셉트합니다.
+
+> `contextOwner = false` 상태에서 Aspect는 span 관리만 담당합니다(`Operations.complete()`, 훅 실행, `Operations.clear()` 미실행). 이 세 가지는 반드시 폴링 메서드에서 직접 처리해야 합니다.
 
 ### Span 트리
 
@@ -657,6 +717,106 @@ implementation("io.micrometer:micrometer-registry-prometheus")
 ```
 
 메트릭은 `/actuator/prometheus`에서 노출됩니다.
+
+> Prometheus는 **pull 방식**입니다. 라이브러리가 메트릭을 밀어 보내는 게 아니라, Prometheus가 주기적으로 `/actuator/prometheus` 엔드포인트를 scrape합니다. 해당 엔드포인트가 Prometheus 인스턴스에서 접근 가능한지 확인하세요.
+
+---
+
+## Spring Logback 연동
+
+OMK는 오퍼레이션 결과를 두 개의 전용 로거로 출력합니다:
+
+| 로거 이름 | 내용 |
+|-----------|------|
+| `OperationManager.Pretty` | 사람이 읽기 좋은 박스 포맷 (개발용) |
+| `OperationManager.JSON` | 구조화된 JSON (프로덕션 / 로그 수집) |
+
+`OperationManager.JSON`은 오퍼레이션마다 `traceId`, `causationId`, `protocol`, `status`, `durationMs` 등을 포함한 일관된 JSON을 생성합니다. 이 구조와 가장 잘 맞는 프로덕션 스택은 **Loki + Grafana**입니다 — JSON 필드를 라벨과 스트림 필터로 추출해 별도의 APM 없이 오퍼레이션 메타데이터 기반의 대시보드와 알림을 구성할 수 있습니다.
+
+두 로거는 `logback-spring.xml`에서 독립적으로 라우팅합니다.
+
+### 콘솔 전용 (개발)
+
+```xml
+<logger name="OperationManager.Pretty" level="INFO" additivity="false">
+    <appender-ref ref="CONSOLE"/>
+</logger>
+
+<logger name="OperationManager.JSON" level="OFF" additivity="false"/>
+```
+
+### Loki — Option A: Promtail (권장)
+
+JSON 로거를 전용 파일에 쓰고, Promtail이 파일을 tail하여 Loki로 전송합니다. Promtail은 디스크에 버퍼링하고 Loki 장애 시 재전송하므로 로그 유실 위험이 없습니다.
+
+```xml
+<!-- logback-spring.xml -->
+<appender name="OMK_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/omk-operations.log</file>
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+        <fileNamePattern>logs/omk-operations.%d{yyyy-MM-dd}.log</fileNamePattern>
+        <maxHistory>7</maxHistory>
+    </rollingPolicy>
+    <encoder>
+        <pattern>%message%n</pattern>
+    </encoder>
+</appender>
+
+<logger name="OperationManager.Pretty" level="INFO" additivity="false">
+    <appender-ref ref="CONSOLE"/>
+</logger>
+
+<logger name="OperationManager.JSON" level="INFO" additivity="false">
+    <appender-ref ref="OMK_FILE"/>
+</logger>
+```
+
+Promtail을 `logs/omk-operations*.log`로 지정하면 파이프라인이 완성됩니다.
+
+### Loki — Option B: `loki-logback-appender` (직접 push)
+
+앱에서 Loki로 JSON 로그를 HTTP로 직접 전송합니다. Promtail이나 사이드카 없이 간단하게 구성할 수 있지만, Loki가 일시적으로 불가능한 경우 로그가 유실될 수 있습니다.
+
+```kotlin
+// build.gradle.kts
+implementation("com.github.loki4j:loki-logback-appender:1.5.x")
+```
+
+```xml
+<!-- logback-spring.xml -->
+<appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+    <http>
+        <url>http://loki:3100/loki/api/v1/push</url>
+    </http>
+    <format>
+        <label>
+            <pattern>app=${APP_NAME},env=${ENV},level=%level</pattern>
+        </label>
+        <message>
+            <pattern>%message</pattern>
+        </message>
+        <sortByTime>true</sortByTime>
+    </format>
+</appender>
+
+<logger name="OperationManager.Pretty" level="INFO" additivity="false">
+    <appender-ref ref="CONSOLE"/>
+</logger>
+
+<logger name="OperationManager.JSON" level="INFO" additivity="false">
+    <appender-ref ref="LOKI"/>
+</logger>
+```
+
+> `additivity="false"`는 두 로거 모두 필수입니다. 없으면 로그 이벤트가 root logger로 전파되어 콘솔/파일 appender에도 중복 출력됩니다.
+
+### 환경별 권장 설정
+
+| 환경 | Pretty | JSON |
+|------|--------|------|
+| 로컬 / 개발 | `CONSOLE` | `OFF` |
+| 스테이징 | `CONSOLE` | `LOKI` (두 방식 모두 가능) |
+| 프로덕션 | `OFF` | `LOKI` (Promtail 권장) |
 
 ---
 

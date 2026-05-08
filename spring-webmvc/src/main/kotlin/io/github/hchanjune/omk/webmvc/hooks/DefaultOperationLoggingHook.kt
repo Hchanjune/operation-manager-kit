@@ -44,6 +44,10 @@ class DefaultOperationLoggingHook(
     }
 
     private fun prettyContext(context: ManagedContext, exception: Throwable?): String {
+        fun StringBuilder.row(label: String, value: String) {
+            if (value.isNotBlank()) appendLine("├─ $label : $value")
+        }
+
         return buildString {
             appendLine(" ")
             appendLine("┌───────────────────────────────────────────────────────────────────────────────────")
@@ -53,18 +57,15 @@ class DefaultOperationLoggingHook(
             appendLine("├─ CausationId : ${context.causationId}")
             appendLine("├─ Issuer      : ${context.issuer}")
             appendLine("├─ Protocol    : ${context.protocol}")
-            appendLine("├─ Type        : ${context.type}")
-            appendLine("├─ HTTP_URI    : ${context.uri}")
-            appendLine("├─ HTTP_METHOD : ${context.method}")
-            appendLine("├─ Entry Point : ${context.entrypoint}")
-            appendLine("├─ Service     : ${context.service}")
-            //appendLine("├─ Function    : ${context.function}")
-            appendLine("├─ Operation   : ${context.operation}")
-            appendLine("├─ UseCase     : ${context.useCase}")
-            //appendLine("├─ Event       : ${context.event}")
-            //appendLine("├─ Attributes  : ${context.attributes}")
+            row("Type        ", context.type)
+            row("HTTP_URI    ", context.uri)
+            row("HTTP_METHOD ", context.method)
+            row("Entry Point ", context.entrypoint)
+            row("Service     ", context.service)
+            row("Operation   ", context.operation)
+            row("UseCase     ", context.useCase)
             appendLine("├─ Message     : ${context.message}")
-            appendLine("├─ Response    : ${context.response}")
+            row("Response    ", context.response)
             appendLine("├─ Performance : ${context.durationMs}Ms")
             appendLine("├─ Timestamp   : ${context.timestamp}")
 
@@ -118,7 +119,6 @@ class DefaultOperationLoggingHook(
             fun field(key: String, value: Any?) {
                 if (value == null) return
                 val s = trunc(value.toString())
-                if (s.isBlank()) return
                 if (!first) append(",")
                 append("\"$key\":\"${esc(s)}\"")
                 first = false
