@@ -24,6 +24,7 @@ class MetricTiming(clock: Clock) {
     private var endedAtEpochMilli: Long? = null
 
     fun end(clock: Clock) {
+        if (endedAtEpochMilli != null) return
         endedAtEpochMilli = clock.millis()
     }
 

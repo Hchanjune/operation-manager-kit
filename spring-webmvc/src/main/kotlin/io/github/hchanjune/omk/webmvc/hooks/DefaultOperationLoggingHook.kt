@@ -17,29 +17,23 @@ class DefaultOperationLoggingHook(
 ) : OperationLoggingHook {
 
     override fun onSuccess(context: ManagedContext) {
-        if (props.pretty) log(logger = prettyLogger, level = props.successLevel, args = prettyContext(context, null))
-        if (props.json) log(logger = jsonLogger, level = props.successLevel, args = jsonContext(context, null))
+        if (props.pretty) log(prettyLogger, props.successLevel) { prettyContext(context, null) }
+        if (props.json)   log(jsonLogger,   props.successLevel) { jsonContext(context, null) }
     }
 
     override fun onFailure(context: ManagedContext, exception: Throwable) {
-        if (props.pretty) log(logger = prettyLogger, level = props.failureLevel, args = prettyContext(context, exception))
-        if (props.json) log(logger = jsonLogger, level = props.failureLevel, args = jsonContext(context, exception))
+        if (props.pretty) log(prettyLogger, props.failureLevel) { prettyContext(context, exception) }
+        if (props.json)   log(jsonLogger,   props.failureLevel) { jsonContext(context, exception) }
     }
 
-    private fun log(
-        logger: Logger,
-        level: LogLevel,
-        args: String,
-    ) {
-        if (level == LogLevel.NONE) return
-
+    private fun log(logger: Logger, level: LogLevel, message: () -> String) {
         when (level) {
-            LogLevel.TRACE -> if (logger.isTraceEnabled) logger.trace(args)
-            LogLevel.DEBUG -> if (logger.isDebugEnabled) logger.debug(args)
-            LogLevel.INFO  -> if (logger.isInfoEnabled)  logger.info(args)
-            LogLevel.WARN  -> if (logger.isWarnEnabled)  logger.warn(args)
-            LogLevel.ERROR -> if (logger.isErrorEnabled) logger.error(args)
-            else -> Unit
+            LogLevel.TRACE -> if (logger.isTraceEnabled) logger.trace(message())
+            LogLevel.DEBUG -> if (logger.isDebugEnabled) logger.debug(message())
+            LogLevel.INFO  -> if (logger.isInfoEnabled)  logger.info(message())
+            LogLevel.WARN  -> if (logger.isWarnEnabled)  logger.warn(message())
+            LogLevel.ERROR -> if (logger.isErrorEnabled) logger.error(message())
+            LogLevel.NONE  -> Unit
         }
     }
 
@@ -71,7 +65,11 @@ class DefaultOperationLoggingHook(
 
             exception?.let {
             appendLine("├─ Exception   : ${it::class.simpleName}: ${it.message}")
-            appendLine("├─ Stacktrace  : ${it.stackTrace.take(20).joinToString("\n") { e -> e.toString() }}")
+            val frames = it.stackTrace.take(20)
+            if (frames.isNotEmpty()) {
+                appendLine("├─ Stacktrace  : ${frames[0]}")
+                frames.drop(1).forEach { e -> appendLine("│               $e") }
+            }
             }
 
             if (context.hookRecords.isNotEmpty()) {
@@ -152,13 +150,16 @@ class DefaultOperationLoggingHook(
                 field("exception.detail", it.message)
                 field("exception.rootCause", rc::class.simpleName)
                 field("exception.message", rc.message)
-                field("exception.rootCauseTopFrames", rc.stackTrace.take(8).joinToString("\\n") { e -> e.toString() })
+                field("exception.rootCauseTopFrames", rc.stackTrace.take(8).joinToString("\n") { e -> e.toString() })
             }
 
             if (context.hookRecords.isNotEmpty()) {
-                field("hooks", context.hookRecords.joinToString(",", "[", "]") { r ->
-                    "{\"hook\":\"${r.hookName}\",\"result\":\"${if (r.success) "OK" else "FAIL"}\"}"
+                if (!first) append(",")
+                append("\"hooks\":")
+                append(context.hookRecords.joinToString(",", "[", "]") { r ->
+                    "{\"hook\":\"${esc(r.hookName)}\",\"result\":\"${if (r.success) "OK" else "FAIL"}\"}"
                 })
+                first = false
             }
 
             field("timestamp", context.timestamp.toString())

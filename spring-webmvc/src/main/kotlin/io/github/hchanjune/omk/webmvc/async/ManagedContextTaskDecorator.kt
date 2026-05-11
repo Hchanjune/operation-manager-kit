@@ -15,6 +15,7 @@ class ManagedContextTaskDecorator: TaskDecorator {
                 val hook = Operations.hook
                 if (hook != null && childContext.isAsyncHookEnabled) {
                     childContext.rootSpan?.end()
+                    childContext.pop()
                     Operations.complete()
                     hook.onSuccess(childContext)
                 }
@@ -22,6 +23,7 @@ class ManagedContextTaskDecorator: TaskDecorator {
                 val hook = Operations.hook
                 if (hook != null && childContext.isAsyncHookEnabled) {
                     childContext.rootSpan?.end(e)
+                    childContext.pop()
                     Operations.complete()
                     hook.onFailure(childContext, e)
                 }

@@ -12,8 +12,11 @@ import io.github.hchanjune.omk.webmvc.Operations
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
+import org.springframework.core.Ordered
+import org.springframework.core.annotation.Order
 
 @Aspect
+@Order(Ordered.HIGHEST_PRECEDENCE + 15)
 class ManagedRepositoryAspect(
     private val spanIdProvider: SpanIdProvider
 ) {

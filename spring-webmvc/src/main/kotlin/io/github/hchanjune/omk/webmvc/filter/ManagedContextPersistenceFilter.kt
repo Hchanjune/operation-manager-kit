@@ -68,8 +68,8 @@ class ManagedContextPersistenceFilter(
                     ?: RuntimeException("Unknown Servlet Error (Status: ${response.status})")
                 Operations.applyContext(context)
                 Operations.complete()
-                compositeHook.onFailure(context, exception)
                 filterChain.doFilter(request, response)
+                compositeHook.onFailure(context, exception)
             }
         } finally {
             propagationProvider.inject(

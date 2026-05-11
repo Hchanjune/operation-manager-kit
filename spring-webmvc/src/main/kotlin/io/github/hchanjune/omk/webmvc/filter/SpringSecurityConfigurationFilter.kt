@@ -17,7 +17,9 @@ class SpringSecurityConfigurationFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
-        Operations.context.injectIssuer(issuerProvider.currentIssuer())
+        if (Operations.hasContext) {
+            Operations.context.injectIssuer(issuerProvider.currentIssuer())
+        }
         filterChain.doFilter(request, response)
     }
 }

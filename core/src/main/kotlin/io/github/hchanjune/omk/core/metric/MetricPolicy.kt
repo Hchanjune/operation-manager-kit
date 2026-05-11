@@ -63,13 +63,17 @@ data class MetricPolicy(
             entries = entries.filter { it.key in allowedKeys }
         }
 
-        val normalized = entries
-            .map { (k, v) -> k to sanitize(v) }
-            .filter { (_, v) -> v.isNotBlank() }
-            .take(maxTagCount)
-            .toMap()
-
-        return MetricTags.Builder(normalized.toMutableMap()).build()
+        val builder = MetricTags.Builder()
+        var count = 0
+        for ((k, v) in entries) {
+            if (count >= maxTagCount) break
+            val sanitized = sanitize(v)
+            if (sanitized.isNotBlank()) {
+                builder.put(k, sanitized)
+                count++
+            }
+        }
+        return builder.build()
     }
 
     /**

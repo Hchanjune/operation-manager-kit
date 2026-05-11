@@ -89,63 +89,92 @@ class ManagedEventHandlerAspect(
         return EventMetadata(null, null, null, null)
     }
 
+    private enum class AnnotatedFieldRole { TRACE_ID, CAUSATION_ID, ISSUER, EVENT_TYPE }
+    private data class AnnotatedField(val field: java.lang.reflect.Field, val role: AnnotatedFieldRole)
+
+    private val annotationFieldCache = java.util.concurrent.ConcurrentHashMap<Class<*>, List<AnnotatedField>>()
+
+    private fun resolveAnnotatedFields(cls: Class<*>): List<AnnotatedField> =
+        annotationFieldCache.getOrPut(cls) {
+            val result = mutableListOf<AnnotatedField>()
+            var cur: Class<*>? = cls
+            while (cur != null && cur != Any::class.java) {
+                for (field in cur.declaredFields) {
+                    val role = when {
+                        field.isAnnotationPresent(ManagedEventTraceId::class.java)    -> AnnotatedFieldRole.TRACE_ID
+                        field.isAnnotationPresent(ManagedEventCausationId::class.java) -> AnnotatedFieldRole.CAUSATION_ID
+                        field.isAnnotationPresent(ManagedEventIssuer::class.java)     -> AnnotatedFieldRole.ISSUER
+                        field.isAnnotationPresent(ManagedEventType::class.java)       -> AnnotatedFieldRole.EVENT_TYPE
+                        else -> null
+                    }
+                    if (role != null) {
+                        field.isAccessible = true
+                        result.add(AnnotatedField(field, role))
+                    }
+                }
+                cur = cur.superclass
+            }
+            result
+        }
+
     private fun tryExtractFromAnnotations(arg: Any): EventMetadata? {
         return runCatching {
+            val fields = resolveAnnotatedFields(arg::class.java)
+            if (fields.isEmpty()) return@runCatching null
+
             var traceId: String? = null
             var causationId: String? = null
             var issuer: String? = null
             var eventType: String? = null
-            var found = false
 
-            var cls: Class<*>? = arg::class.java
-            while (cls != null && cls != Any::class.java) {
-                for (field in cls.declaredFields) {
-                    field.isAccessible = true
-                    when {
-                        field.isAnnotationPresent(ManagedEventTraceId::class.java) -> {
-                            traceId = field.get(arg) as? String
-                            found = true
-                        }
-                        field.isAnnotationPresent(ManagedEventCausationId::class.java) -> {
-                            causationId = field.get(arg) as? String
-                            found = true
-                        }
-                        field.isAnnotationPresent(ManagedEventIssuer::class.java) -> {
-                            issuer = field.get(arg) as? String
-                            found = true
-                        }
-                        field.isAnnotationPresent(ManagedEventType::class.java) -> {
-                            eventType = field.get(arg) as? String
-                            found = true
-                        }
-                    }
+            for ((field, role) in fields) {
+                when (role) {
+                    AnnotatedFieldRole.TRACE_ID    -> traceId    = field.get(arg) as? String
+                    AnnotatedFieldRole.CAUSATION_ID -> causationId = field.get(arg) as? String
+                    AnnotatedFieldRole.ISSUER       -> issuer      = field.get(arg) as? String
+                    AnnotatedFieldRole.EVENT_TYPE   -> eventType   = field.get(arg) as? String
                 }
-                cls = cls.superclass
             }
 
-            if (!found) null
-            else EventMetadata(traceId, causationId, issuer, eventType)
+            EventMetadata(traceId, causationId, issuer, eventType)
         }.getOrNull()
     }
+
+    private data class ConsumerRecordMethods(
+        val topic: java.lang.reflect.Method,
+        val headers: java.lang.reflect.Method,
+        val lastHeader: java.lang.reflect.Method,
+        val headerValue: java.lang.reflect.Method,
+    )
+    private val consumerRecordMethodCache = java.util.concurrent.ConcurrentHashMap<Class<*>, ConsumerRecordMethods>()
 
     private fun tryExtractFromConsumerRecord(arg: Any): EventMetadata? {
         if (arg::class.qualifiedName != "org.apache.kafka.clients.consumer.ConsumerRecord") return null
         return runCatching {
             val cls = arg::class.java
-            val topic = cls.getMethod("topic").invoke(arg) as? String
-            val headers = cls.getMethod("headers").invoke(arg) ?: return@runCatching null
-            val lastHeader = headers::class.java.getMethod("lastHeader", String::class.java)
+            val methods = consumerRecordMethodCache.getOrPut(cls) {
+                val topicMethod = cls.getMethod("topic")
+                val headersMethod = cls.getMethod("headers")
+                val headersClass = headersMethod.returnType
+                val lastHeaderMethod = headersClass.getMethod("lastHeader", String::class.java)
+                val headerClass = Class.forName("org.apache.kafka.common.header.Header")
+                val headerValueMethod = headerClass.getMethod("value")
+                ConsumerRecordMethods(topicMethod, headersMethod, lastHeaderMethod, headerValueMethod)
+            }
+
+            val topic = methods.topic.invoke(arg) as? String
+            val headers = methods.headers.invoke(arg) ?: return@runCatching null
 
             fun readHeader(name: String): String? = runCatching {
-                val h = lastHeader.invoke(headers, name) ?: return@runCatching null
-                String(h::class.java.getMethod("value").invoke(h) as ByteArray)
+                val h = methods.lastHeader.invoke(headers, name) ?: return@runCatching null
+                String(methods.headerValue.invoke(h) as ByteArray)
             }.getOrNull()
 
             // W3C traceparent: 00-{traceId}-{causationId}-{flags}
             val traceparent = readHeader("traceparent")
             if (traceparent != null) {
                 val parts = traceparent.split("-")
-                if (parts.size >= 3) {
+                if (parts.size >= 4) {
                     return@runCatching EventMetadata(
                         traceId = parts[1],
                         causationId = parts[2],
@@ -164,17 +193,45 @@ class ManagedEventHandlerAspect(
         }.getOrNull()
     }
 
+    private data class MessageMethods(
+        val getHeaders: java.lang.reflect.Method,
+        val get: java.lang.reflect.Method,
+    )
+    private val messageMethodCache = java.util.concurrent.ConcurrentHashMap<Class<*>, MessageMethods?>()
+
     private fun tryExtractFromMessage(arg: Any): EventMetadata? {
-        if (arg::class.java.interfaces.none { it.name == "org.springframework.messaging.Message" }) return null
+        val cls = arg::class.java
+        if (cls.interfaces.none { it.name == "org.springframework.messaging.Message" }) return null
         return runCatching {
-            val headers = arg::class.java.getMethod("getHeaders").invoke(arg)
-            val get = headers::class.java.getMethod("get", Any::class.java)
+            val methods = messageMethodCache.getOrPut(cls) {
+                runCatching {
+                    val getHeadersMethod = cls.getMethod("getHeaders")
+                    val headersClass = getHeadersMethod.returnType
+                    val getMethod = headersClass.getMethod("get", Any::class.java)
+                    MessageMethods(getHeadersMethod, getMethod)
+                }.getOrNull()
+            } ?: return@runCatching null
+            val headers = methods.getHeaders.invoke(arg)
+            val get = methods.get
 
             fun readHeader(vararg names: String): String? =
                 names.firstNotNullOfOrNull { runCatching { get.invoke(headers, it) as? String }.getOrNull() }
 
+            val traceparent = readHeader("traceparent")
+            if (traceparent != null) {
+                val parts = traceparent.split("-")
+                if (parts.size >= 4) {
+                    return@runCatching EventMetadata(
+                        traceId = parts[1],
+                        causationId = parts[2],
+                        issuer = readHeader("X-Issuer", "issuer"),
+                        eventType = readHeader("eventType", "event-type")
+                    )
+                }
+            }
+
             EventMetadata(
-                traceId = readHeader("traceparent", "X-Trace-Id", "traceId"),
+                traceId = readHeader("X-Trace-Id", "traceId"),
                 causationId = readHeader("X-Causation-Id", "causationId"),
                 issuer = readHeader("X-Issuer", "issuer"),
                 eventType = readHeader("eventType", "event-type")

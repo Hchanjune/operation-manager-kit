@@ -11,6 +11,8 @@ class CompositeOperationHook(
     private val log = LoggerFactory.getLogger("OperationManager")
 
     override fun onSuccess(context: ManagedContext) {
+        if (context.isHooksExecuted()) return
+        context.markHooksExecuted()
         hooks.forEach { hook ->
             val name = hook::class.simpleName ?: "UnknownHook"
             try {
@@ -25,6 +27,8 @@ class CompositeOperationHook(
     }
 
     override fun onFailure(context: ManagedContext, exception: Throwable) {
+        if (context.isHooksExecuted()) return
+        context.markHooksExecuted()
         hooks.forEach { hook ->
             val name = hook::class.simpleName ?: "UnknownHook"
             try {

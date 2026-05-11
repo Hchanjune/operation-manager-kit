@@ -34,7 +34,6 @@ object Operations: ManagedContextHolder {
         get() = contextHolder.get() != null
 
     override fun applyContext(context: ManagedContext) {
-        contextHolder.remove()
         contextHolder.set(context)
     }
 

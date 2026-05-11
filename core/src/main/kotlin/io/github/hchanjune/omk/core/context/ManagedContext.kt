@@ -79,11 +79,12 @@ class ManagedContext(
 
 
     fun start() {
+        if (this.startMillis != 0L) return
         this.startMillis = clock.millis()
     }
 
     fun end() {
-        if (this.startMillis == 0L) return
+        if (this.startMillis == 0L || this.endMillis != 0L) return
         this.endMillis = clock.millis()
         this.durationMs = endMillis - startMillis
     }
@@ -182,6 +183,7 @@ class ManagedContext(
         child.service = this.service
         child.operation = this.operation
         child.useCase = this.useCase
+        child.message = this.message
         child.executionScope = ExecutionScope.ASYNC
         child.isAsyncHookEnabled = this.isAsyncHookEnabled
         child.push(
@@ -215,5 +217,9 @@ class ManagedContext(
     private var metricsRecorded = false
     fun isMetricsRecorded(): Boolean = metricsRecorded
     fun markMetricsRecorded() { metricsRecorded = true }
+
+    private var hooksExecuted = false
+    fun isHooksExecuted(): Boolean = hooksExecuted
+    fun markHooksExecuted() { hooksExecuted = true }
 
 }
