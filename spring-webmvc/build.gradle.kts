@@ -27,6 +27,13 @@ dependencies {
     compileOnly("io.opentelemetry:opentelemetry-api")
 
     testImplementation(kotlin("test"))
+    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:4.0.2"))
+    testImplementation("org.slf4j:slf4j-api")
+    testRuntimeOnly("org.slf4j:slf4j-simple")
+    testImplementation("io.opentelemetry:opentelemetry-api")
+    testImplementation("org.springframework:spring-messaging")
+    testImplementation("org.aspectj:aspectjrt")
+    testImplementation("org.apache.kafka:kafka-clients")
 }
 
 tasks.test { useJUnitPlatform() }

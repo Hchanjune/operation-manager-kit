@@ -354,6 +354,9 @@ operation-manager:
     micrometer:
       enabled: true       # Enable/disable Micrometer metrics recording (default: true)
 
+    otel:
+      enabled: true       # Enable/disable OpenTelemetry trace export (default: true, requires Tracer bean)
+
     logging:
       enabled: true
       pretty: false       # Pretty-print format (human-readable)
@@ -701,6 +704,22 @@ Spring Security is an **optional** dependency — the library works without it.
 
 ---
 
+## Observability Pipelines
+
+OMK collects the same span tree through two **independent** export pipelines:
+
+```
+OMK span tree (completed at request end)
+    │
+    ├── MetricsOperationHook  →  Micrometer MeterRegistry  →  Prometheus / Grafana Mimir
+    │
+    └── OtelOperationHook     →  OpenTelemetry Tracer      →  Tempo / Jaeger / Zipkin
+```
+
+These pipelines do not interact with each other. You can enable one, both, or neither.
+
+---
+
 ## Micrometer Integration
 
 When `MeterRegistry` is available and `micrometer.enabled=true`, a Micrometer-backed `MetricsRecorder` bean is registered automatically.
@@ -717,6 +736,70 @@ implementation("io.micrometer:micrometer-registry-prometheus")
 Metrics will be exposed at `/actuator/prometheus`.
 
 > Prometheus is **pull-based** — the library does not push metrics. Prometheus scrapes `/actuator/prometheus` on its own schedule. Ensure the endpoint is reachable from your Prometheus instance.
+
+---
+
+## OpenTelemetry Integration
+
+When an `io.opentelemetry.api.trace.Tracer` bean is present on the classpath, `OtelOperationHook` is automatically activated. It walks the completed OMK span tree and exports each span to the OTel SDK, which forwards them to the configured backend (Tempo, Jaeger, Zipkin, etc.).
+
+### How spans are exported
+
+Each `MetricSpan` in the tree becomes an OTel span with:
+- **Start and end timestamps** from the OMK timing (after-the-fact export — spans are sent when the request completes, not in real time)
+- **Attributes** from `MetricTags` (entrypoint, service, operation, repository, etc.)
+- **SpanKind** derived from `MetricLayer`: `ENTRY → SERVER`, `APPLICATION → INTERNAL`, `DB/EXTERNAL → CLIENT`
+- **Status** from `MetricOutcome`: `SUCCESS → OK`, anything else → `ERROR` with the error type description
+- **Parent context** reconstructed from the incoming `traceId` / `causationId` (W3C format), so OMK spans continue the distributed trace from the upstream caller
+
+### Setup — minimal (standalone OTel)
+
+```kotlin
+// build.gradle.kts
+implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
+```
+
+```yaml
+# application.yml
+management:
+  otlp:
+    tracing:
+      endpoint: http://tempo:4318/v1/traces   # or Jaeger / Zipkin endpoint
+  tracing:
+    sampling:
+      probability: 1.0
+```
+
+The starter registers a `Tracer` bean automatically. `OtelOperationHook` detects it via `@ConditionalOnBean` and activates.
+
+### Setup — with Spring Boot Micrometer Tracing
+
+If you already use Micrometer Tracing for automatic HTTP instrumentation, adding the OTel bridge exposes a `Tracer` bean as well:
+
+```kotlin
+implementation("org.springframework.boot:spring-boot-starter-actuator")
+implementation("io.micrometer:micrometer-tracing-bridge-otel")
+implementation("io.opentelemetry:opentelemetry-exporter-otlp")
+```
+
+In this case, Micrometer Tracing creates an HTTP server span automatically, and OMK spans become a sibling trace rooted at the same upstream `traceparent`. Both appear in the same distributed trace in Tempo/Jaeger.
+
+### Backend examples
+
+| Backend | OTLP endpoint |
+|---------|---------------|
+| Grafana Tempo | `http://tempo:4318/v1/traces` |
+| Jaeger | `http://jaeger:4317/v1/traces` (gRPC) or `http://jaeger:4318/v1/traces` (HTTP) |
+| Zipkin | use `opentelemetry-exporter-zipkin` instead of OTLP |
+
+### Disable OTel export
+
+```yaml
+operation-manager:
+  webmvc:
+    otel:
+      enabled: false
+```
 
 ---
 
@@ -808,13 +891,44 @@ implementation("com.github.loki4j:loki-logback-appender:1.5.x")
 
 > `additivity="false"` is required on both loggers. Without it, log events bubble up to the root logger and appear in the console or file appender as well.
 
+### Async appender (high-throughput)
+
+For high-traffic environments, wrap any appender with Logback's built-in `AsyncAppender` to move file or network I/O off the request thread:
+
+```xml
+<appender name="OMK_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <!-- ...existing config... -->
+</appender>
+
+<appender name="ASYNC_OMK" class="ch.qos.logback.classic.AsyncAppender">
+    <appender-ref ref="OMK_FILE"/>
+    <queueSize>1000</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <includeCallerData>false</includeCallerData>
+</appender>
+
+<logger name="OperationManager.JSON" level="INFO" additivity="false">
+    <appender-ref ref="ASYNC_OMK"/>
+</logger>
+```
+
+| Option | Effect |
+|--------|--------|
+| `queueSize` | In-memory event buffer size (events, not bytes). Size to absorb burst traffic. |
+| `discardingThreshold=0` | By default Logback silently drops INFO logs when the queue exceeds 80% capacity. Set to `0` to disable discarding and prevent log loss. |
+| `includeCallerData=false` | Avoids capturing stack frame metadata, which is expensive. |
+
+**What this actually offloads:** the I/O cost — file writes and network calls (Loki direct push). The effect is most significant with the `loki-logback-appender` approach, where network latency (1–10ms per request) would otherwise block the request thread on every operation.
+
+**What remains on the request thread:** the log message string is still built synchronously before being handed to the async queue. For most workloads this is negligible, but for requests with deep span trees the string-building cost stays.
+
 ### Recommended setup per environment
 
 | Environment | Pretty | JSON |
 |-------------|--------|------|
 | Local / dev | `CONSOLE` | `OFF` |
 | Staging | `CONSOLE` | `LOKI` (either option) |
-| Production | `OFF` | `LOKI` (Promtail recommended) |
+| Production | `OFF` | `LOKI` + `AsyncAppender` (Promtail recommended) |
 
 ---
 
@@ -840,6 +954,7 @@ You can replace any default provider by registering a custom bean.
 - **Spring AOP self-invocation**: AOP aspects do not intercept internal method calls within the same class.
 - **Streaming responses**: The `traceparent` response header is set after request processing. For streaming or async responses, the header may not be delivered.
 - **`Operations.context` scope**: Calling `Operations.context` outside a managed request scope (HTTP request, event handler, or manual `Operations.initializeForEvent()`) throws an `IllegalStateException` with a descriptive message.
+- **Sampling**: OMK does not implement its own sampling mechanism. Each concern is addressed by the appropriate layer: trace volume is controlled by the OTel SDK (`management.tracing.sampling.probability`); log I/O overhead is eliminated by Logback `AsyncAppender`; Micrometer recording has no meaningful per-request overhead by design. Disabling success-case logging (`success-level: NONE`) and enabling `AsyncAppender` covers the vast majority of high-throughput concerns without a dedicated sampling layer.
 
 ---
 
@@ -852,8 +967,8 @@ You can replace any default provider by registering a custom bean.
 - [x] Micrometer-backed `MetricsOperationHook` with full span tree recording
 - [x] `@ManagedController` as ENTRY-layer root span; layer/timestamp/thread visible in span tree
 - [x] Messaging context propagation (`@ManagedEventHandler` for Kafka, Spring Messaging, etc.; auto-extraction priority chain; manual `Operations.initializeForEvent()`)
-- [ ] OpenTelemetry SDK integration
-- [ ] Sampling support for high-throughput environments
+- [x] OpenTelemetry SDK integration (`OtelOperationHook` — auto-activated when `Tracer` bean is present)
+- [x] Sampling — handled per layer: OTel SDK for trace sampling, `AsyncAppender` for log I/O, `success-level: NONE` for log volume (see Notes)
 
 ---
 

@@ -3,10 +3,11 @@ package io.github.hchanjune.omk.webmvc.config.auto
 import io.github.hchanjune.omk.webmvc.config.AspectConfiguration
 import io.github.hchanjune.omk.webmvc.config.AsyncConfiguration
 import io.github.hchanjune.omk.webmvc.config.FilterConfiguration
-import io.github.hchanjune.omk.webmvc.config.ProviderConfiguration
+import io.github.hchanjune.omk.webmvc.config.HooksConfiguration
 import io.github.hchanjune.omk.webmvc.config.MetricsConfiguration
 import io.github.hchanjune.omk.webmvc.config.OperationConfiguration
-import io.github.hchanjune.omk.webmvc.config.HooksConfiguration
+import io.github.hchanjune.omk.webmvc.config.OtelHooksConfiguration
+import io.github.hchanjune.omk.webmvc.config.ProviderConfiguration
 import io.github.hchanjune.omk.webmvc.config.SecurityFilterConfiguration
 import io.github.hchanjune.omk.webmvc.config.properties.OperationManagerWebmvcAutoConfigProperties
 import io.github.hchanjune.omk.webmvc.config.properties.TelemetryConfigureProperties
@@ -22,6 +23,7 @@ import org.springframework.context.annotation.Import
     OperationConfiguration::class,
     MetricsConfiguration::class,
     HooksConfiguration::class,
+    OtelHooksConfiguration::class,
     FilterConfiguration::class,
     SecurityFilterConfiguration::class,
     AspectConfiguration::class,
