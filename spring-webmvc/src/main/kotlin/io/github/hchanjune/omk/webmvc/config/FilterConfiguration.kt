@@ -29,22 +29,29 @@ internal class FilterConfiguration {
         causationIdProvider: CausationIdProvider,
         compositeHook: OperationHook,
         telemetryProperties: TelemetryConfigureProperties,
+    ): ManagedContextPersistenceFilter = ManagedContextPersistenceFilter(
+        contextProvider = contextProvider,
+        propagationProvider = propagationProvider,
+        traceIdProvider = traceIdProvider,
+        causationIdProvider = causationIdProvider,
+        compositeHook = compositeHook,
+        generateWhenMissing = telemetryProperties.propagation.generateWhenMissing
+    )
+
+    @Bean
+    @ConditionalOnProperty(
+        prefix = "operation-manager.webmvc.context-filter",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    fun managedContextPersistenceFilterRegistration(
+        filter: ManagedContextPersistenceFilter
     ): FilterRegistrationBean<ManagedContextPersistenceFilter> =
-        FilterRegistrationBean(
-            ManagedContextPersistenceFilter(
-                contextProvider = contextProvider,
-                propagationProvider = propagationProvider,
-                traceIdProvider = traceIdProvider,
-                causationIdProvider = causationIdProvider,
-                compositeHook = compositeHook,
-                generateWhenMissing = telemetryProperties.propagation.generateWhenMissing
-            )
-        ).apply {
+        FilterRegistrationBean(filter).apply {
             setName("managedContextPersistenceFilter")
             addUrlPatterns("/*")
             order = -90
-    }
-
-
+        }
 
 }

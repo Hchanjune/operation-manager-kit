@@ -4,3 +4,4 @@ plugins {
 rootProject.name = "operation-manager-kit"
 include("core")
 include("spring-webmvc")
+include("test-app-webmvc")

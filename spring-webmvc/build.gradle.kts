@@ -34,6 +34,12 @@ dependencies {
     testImplementation("org.springframework:spring-messaging")
     testImplementation("org.aspectj:aspectjrt")
     testImplementation("org.apache.kafka:kafka-clients")
+    testImplementation("io.micrometer:micrometer-core")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
+    testImplementation("org.springframework.security:spring-security-core")
+    testImplementation("org.springframework:spring-test")
+    testImplementation("org.springframework:spring-webmvc")
+    testImplementation("jakarta.servlet:jakarta.servlet-api")
 }
 
 tasks.test { useJUnitPlatform() }

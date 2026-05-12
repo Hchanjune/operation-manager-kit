@@ -3,6 +3,7 @@ import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.api.plugins.JavaPluginExtension
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.gradle.testing.jacoco.tasks.JacocoReport
 
 plugins {
     kotlin("jvm") version "2.2.21" apply false
@@ -18,10 +19,36 @@ allprojects {
     }
 }
 
+apply(plugin = "jacoco")
+
+tasks.register<JacocoReport>("jacocoAggregatedReport") {
+    group = "verification"
+    description = "Aggregated JaCoCo report: unit + integration test coverage for core and spring-webmvc"
+    dependsOn(subprojects.map { ":${it.name}:test" })
+    executionData.from(subprojects.map { it.layout.buildDirectory.file("jacoco/test.exec") })
+    reports {
+        html.required.set(true)
+        html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/aggregated/html"))
+        xml.required.set(false)
+    }
+}
+
+gradle.projectsEvaluated {
+    tasks.named<JacocoReport>("jacocoAggregatedReport") {
+        listOf(":core", ":spring-webmvc").forEach { path ->
+            val sub = project(path)
+            val main = sub.extensions.getByType(JavaPluginExtension::class.java).sourceSets["main"]
+            sourceDirectories.from(main.allSource.srcDirs)
+            classDirectories.from(main.output.classesDirs)
+        }
+    }
+}
+
 subprojects {
     apply(plugin = "java-library")
     apply(plugin = "org.jetbrains.kotlin.jvm")
     apply(plugin = "maven-publish")
+    apply(plugin = "jacoco")
 
     extensions.configure<JavaPluginExtension> {
         toolchain {
