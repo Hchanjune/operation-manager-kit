@@ -9,6 +9,7 @@ data class DefaultOperationLoggingProperties(
     var pretty: Boolean = false,
     var json: Boolean = true,
     var spans: Boolean = false,
+    var response: Boolean = true,
     var successLevel: LogLevel = LogLevel.INFO,
     var failureLevel: LogLevel = LogLevel.ERROR,
 )

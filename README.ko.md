@@ -1,7 +1,7 @@
 # Operation Manager Kit
 
 [![JitPack](https://jitpack.io/v/Hchanjune/operation-manager-kit.svg)](https://jitpack.io/#Hchanjune/operation-manager-kit)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.x-brightgreen)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2%2B-brightgreen)
 ![Java](https://img.shields.io/badge/Java-21-blue)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.2-purple)
 
@@ -24,6 +24,19 @@
 
 ---
 
+## 호환성
+
+| Spring Boot | Spring Framework | Java | 지원 여부 |
+|-------------|-----------------|------|----------|
+| 3.2.x | 6.1 | 17+ | 지원 (최소 버전) |
+| 3.3.x – 3.5.x | 6.1 / 6.2 | 17+ | 지원 |
+| 4.0.x+ | 7.0+ | 21+ | 지원 |
+| 2.x | 5.x | — | 미지원 (`javax.*` 네임스페이스) |
+
+> **Spring Boot 2.x**는 Spring Boot 3.0에서 `javax.*` → `jakarta.*` 네임스페이스가 변경되었기 때문에 지원하지 않습니다.
+
+---
+
 ## 설치
 
 JitPack 저장소를 추가하고 필요한 모듈을 의존성에 포함하세요.
@@ -41,6 +54,16 @@ dependencies {
     implementation("com.github.Hchanjune.operation-manager-kit:core:x.x.x")
     implementation("com.github.Hchanjune.operation-manager-kit:spring-webmvc:x.x.x")
 }
+```
+
+AOP Aspect 기능을 사용하려면 AspectJ가 클래스패스에 있어야 합니다. Spring Boot 버전에 맞는 스타터를 추가하세요:
+
+```kotlin
+// Spring Boot 3.x
+implementation("org.springframework.boot:spring-boot-starter-aop")
+
+// Spring Boot 4.x
+implementation("org.springframework.boot:spring-boot-starter-aspectj")
 ```
 
 ---
@@ -206,8 +229,39 @@ class MyEnrichmentHook : OperationHook {
 | `pretty` | `false` | 사람이 읽기 쉬운 포맷으로 출력 |
 | `json` | `true` | JSON 포맷 출력 (프로덕션 권장) |
 | `spans` | `false` | pretty 출력에 span 트리 포함 |
+| `response` | `true` | Operations 블록의 반환값을 로그에 포함 |
 | `success-level` | `INFO` | 성공 시 로그 레벨 |
 | `failure-level` | `ERROR` | 실패 시 로그 레벨 |
+
+**`response` 필드:**
+
+`Operations { }` 블록의 반환값은 자동으로 캡처되어 `response` 필드로 기록됩니다. pretty 포맷에서는 `toString()`이 사용됩니다. JSON 포맷에서는 `toString()` 결과가 JSON 객체나 배열(`{...}` / `[...]`) 형태이면 nested JSON으로 embed되고, 그렇지 않으면 quoted string으로 출력됩니다.
+
+로그에 출력되는 내용을 제어하려면 결과 클래스의 `toString()`을 오버라이드하세요:
+
+```kotlin
+data class OrderResult(val orderId: String, val total: BigDecimal, val cardLast4: String) {
+    override fun toString() = """{"orderId":"$orderId","total":$total}"""  // 민감 필드 제외
+}
+```
+
+`response: false`로 설정하면 필드 자체가 로그에서 제거됩니다.
+
+**`message` 필드:**
+
+`message`는 컨텍스트에 직접 설정하는 자유 형식 레이블입니다. `DefaultOperationLoggingHook`보다 먼저 실행되는 훅(Order < 50) 내부에서 설정하며, 항상 로그에 포함됩니다(토글 없음):
+
+```kotlin
+@Order(30)
+class MyEnrichmentHook : OperationHook {
+    override fun onSuccess(context: ManagedContext) {
+        context.message = "주문 생성 완료"
+    }
+    override fun onFailure(context: ManagedContext, exception: Throwable) {
+        context.message = "주문 실패: ${exception.message}"
+    }
+}
+```
 
 **Pretty 출력 예시 (`spans: true` 설정 시):**
 ```
@@ -436,6 +490,20 @@ asyncService.fireAndForget()  // 훅 없음
 
 > 훅은 태스크가 완료될 때 async 스레드에서 실행되며, 메인 스레드와 독립적으로 동작합니다. Async 메트릭은 별도로 기록되며 메인 요청의 span 트리에는 나타나지 않습니다.
 
+### Java 21 Virtual Thread 지원
+
+`spring.threads.virtual.enabled=true`로 설정하면 Spring Boot는 기본 `@Async` executor를 가상 스레드 기반의 `SimpleAsyncTaskExecutor`로 교체합니다. OMK는 `ThreadPoolTaskExecutorCustomizer`와 함께 `SimpleAsyncTaskExecutorCustomizer`도 자동으로 등록하므로, 가상 스레드 환경에서도 컨텍스트 전파와 훅 실행이 동일하게 동작합니다 — 별도 설정이 필요 없습니다.
+
+```yaml
+# OMK 설정 변경 없이 자동 지원
+spring:
+  threads:
+    virtual:
+      enabled: true
+```
+
+포크된 컨텍스트, span 트리, 훅 생명주기는 플랫폼 스레드 `@Async` 실행과 동일하게 동작합니다. `ThreadLocal`은 가상 스레드에서도 완전히 지원되며, 각 가상 스레드는 독립된 `ManagedContext`를 유지합니다.
+
 컨텍스트 전파를 완전히 비활성화하려면:
 
 ```yaml
@@ -445,7 +513,7 @@ operation-manager:
       enabled: false
 ```
 
-> 커스텀 `AsyncConfigurer` 또는 커스텀 `ThreadPoolTaskExecutor`를 사용하는 경우, `ManagedContextTaskDecorator`를 직접 주입해서 수동으로 적용하세요.
+> 커스텀 `AsyncConfigurer`, `ThreadPoolTaskExecutor`, 또는 `SimpleAsyncTaskExecutor`를 직접 구성하는 경우 `ManagedContextTaskDecorator`를 주입해서 수동으로 적용하세요.
 
 ---
 
@@ -500,7 +568,7 @@ launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
 | | 컨텍스트 접근 | Span 트리 | 훅 실행 |
 |--|--|--|--|
 | 메인 요청 스레드 | ✓ | ✓ 메인 트리 | ✓ 항상 (서블릿 필터) |
-| `@Async` 스레드 | ✓ 포크 (`executionScope=ASYNC`) | ✓ 독립 | 선택적 — 설정 또는 `enableAsyncHook()` |
+| `@Async` 스레드 (플랫폼 또는 가상) | ✓ 포크 (`executionScope=ASYNC`) | ✓ 독립 | 선택적 — 설정 또는 `enableAsyncHook()` |
 | 코루틴 자식 | ✓ 포크 (`executionScope=ASYNC`) | ✓ 독립 | 선택적 — 설정 또는 `enableAsyncHook()` |
 | 이벤트 핸들러 (`@ManagedEventHandler`) | ✓ 신규 (`executionScope=EVENT`) | ✓ 독립 | ✓ 항상 |
 
@@ -952,7 +1020,7 @@ implementation("com.github.loki4j:loki-logback-appender:1.5.x")
 
 ## 주의사항 및 제한
 
-- **스레드 로컬 컨텍스트**: `ManagedContext`는 `ThreadLocal`에 저장됩니다. `@Async` 전파는 `ManagedContextTaskDecorator`를 통해 자동으로 포크됩니다. Kotlin 코루틴은 `ManagedContextElement`를 통한 명시적 전파가 필요합니다. 포크된 async 컨텍스트는 독립적인 span 트리와 생명주기를 가지며, 훅 실행은 설정이나 `enableAsyncHook()`으로 제어합니다.
+- **스레드 로컬 컨텍스트**: `ManagedContext`는 `ThreadLocal`에 저장됩니다. `@Async` 전파는 `ManagedContextTaskDecorator`를 통해 자동으로 포크됩니다 — `ThreadPoolTaskExecutor`(플랫폼 스레드)와 `SimpleAsyncTaskExecutor`(Java 21 가상 스레드, `spring.threads.virtual.enabled=true`) 모두 지원합니다. Kotlin 코루틴은 `ManagedContextElement`를 통한 명시적 전파가 필요합니다. 포크된 async 컨텍스트는 독립적인 span 트리와 생명주기를 가지며, 훅 실행은 설정이나 `enableAsyncHook()`으로 제어합니다.
 - **Spring AOP 자기 호출**: 동일 클래스 내부의 메서드 호출은 AOP Aspect가 인터셉트하지 않습니다.
 - **스트리밍 응답**: `traceparent` 응답 헤더는 요청 처리 완료 후 설정됩니다. 스트리밍 또는 비동기 응답에서는 헤더가 전달되지 않을 수 있습니다.
 - **`Operations.context` 범위**: 관리 범위(HTTP 요청, 이벤트 핸들러, 또는 수동 `Operations.initializeForEvent()`) 밖에서 `Operations.context`를 호출하면 명확한 메시지와 함께 `IllegalStateException`이 발생합니다.
@@ -965,6 +1033,7 @@ implementation("com.github.loki4j:loki-logback-appender:1.5.x")
 - [ ] Maven Central 배포
 - [ ] WebFlux 지원
 - [x] 비동기 컨텍스트 전파 (`@Async`는 `ManagedContextTaskDecorator`, 코루틴은 `ManagedContextElement`)
+- [x] Java 21 가상 스레드 지원 (`spring.threads.virtual.enabled=true` — `SimpleAsyncTaskExecutorCustomizer` 자동 등록, 별도 설정 불필요)
 - [x] Span 수준 메트릭 계측 (`@ManagedOperation`, `@ManagedMetric`, `@ManagedRepository` DB span)
 - [x] Micrometer 기반 `MetricsOperationHook` 및 전체 span 트리 기록
 - [x] `@ManagedController`의 ENTRY 레이어 루트 span; span 트리에 레이어/타임스탬프/스레드명 표시

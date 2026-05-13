@@ -31,8 +31,12 @@ import org.springframework.context.annotation.Import
 )
 @AutoConfigureAfter(
     name = [
+        // Spring Boot 4.x (spring-boot-micrometer module)
         "org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration",
         "org.springframework.boot.micrometer.metrics.autoconfigure.CompositeMeterRegistryAutoConfiguration",
+        // Spring Boot 3.x (spring-boot-actuator-autoconfigure module)
+        "org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration",
+        "org.springframework.boot.actuate.autoconfigure.metrics.CompositeMeterRegistryAutoConfiguration",
     ]
 )
 @EnableConfigurationProperties(OperationManagerWebmvcAutoConfigProperties::class, TelemetryConfigureProperties::class)

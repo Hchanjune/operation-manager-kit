@@ -4,6 +4,7 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.api.plugins.JavaPluginExtension
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.gradle.testing.jacoco.tasks.JacocoReport
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 
 plugins {
     kotlin("jvm") version "2.2.21" apply false
@@ -12,7 +13,7 @@ plugins {
 
 allprojects {
     group = "com.github.Hchanjune.operation-manager-kit"
-    version = "0.7.2"
+    version = "0.7.3"
 
     repositories {
         mavenCentral()
@@ -40,6 +41,28 @@ gradle.projectsEvaluated {
             val main = sub.extensions.getByType(JavaPluginExtension::class.java).sourceSets["main"]
             sourceDirectories.from(main.allSource.srcDirs)
             classDirectories.from(main.output.classesDirs)
+        }
+    }
+
+    tasks.register<JacocoCoverageVerification>("jacocoCoverageGate") {
+        group = "verification"
+        description = "Fails the build if aggregated coverage drops below threshold"
+        dependsOn("jacocoAggregatedReport")
+        executionData.from(subprojects.map { it.layout.buildDirectory.file("jacoco/test.exec") })
+        listOf(":core", ":spring-webmvc").forEach { path ->
+            val sub = project(path)
+            val main = sub.extensions.getByType(JavaPluginExtension::class.java).sourceSets["main"]
+            sourceDirectories.from(main.allSource.srcDirs)
+            classDirectories.from(main.output.classesDirs)
+        }
+        violationRules {
+            rule {
+                limit {
+                    counter = "LINE"
+                    value = "COVEREDRATIO"
+                    minimum = "0.80".toBigDecimal()
+                }
+            }
         }
     }
 }

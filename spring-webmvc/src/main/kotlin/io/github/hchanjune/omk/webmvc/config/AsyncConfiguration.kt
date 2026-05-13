@@ -2,6 +2,7 @@ package io.github.hchanjune.omk.webmvc.config
 
 import io.github.hchanjune.omk.webmvc.async.ManagedContextTaskDecorator
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.boot.task.SimpleAsyncTaskExecutorCustomizer
 import org.springframework.boot.task.ThreadPoolTaskExecutorCustomizer
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -24,5 +25,14 @@ internal class AsyncConfiguration {
         decorator: ManagedContextTaskDecorator
     ): ThreadPoolTaskExecutorCustomizer =
         ThreadPoolTaskExecutorCustomizer { executor -> executor.setTaskDecorator(decorator) }
+
+    // Covers spring.threads.virtual.enabled=true: Spring Boot switches @Async executor
+    // to SimpleAsyncTaskExecutor backed by virtual threads; ThreadPoolTaskExecutorCustomizer
+    // is not applied to it, so we register a separate customizer for this case.
+    @Bean
+    fun managedContextSimpleAsyncExecutorCustomizer(
+        decorator: ManagedContextTaskDecorator
+    ): SimpleAsyncTaskExecutorCustomizer =
+        SimpleAsyncTaskExecutorCustomizer { executor -> executor.setTaskDecorator(decorator) }
 
 }

@@ -4,9 +4,13 @@ import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.webmvc.Operations
+import org.springframework.core.task.SimpleAsyncTaskExecutor
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -123,5 +127,25 @@ class ManagedContextTaskDecoratorTest {
 
         assertFailsWith<RuntimeException> { decorated.run() }
         assertTrue(!hookCalled)
+    }
+
+    @Test
+    fun `context propagates through virtual thread executor`() {
+        val ctx = makeContext()
+        ctx.injectTraceId("vt-trace-id")
+        Operations.applyContext(ctx)
+
+        val latch = CountDownLatch(1)
+        var capturedTraceId: String? = null
+
+        val executor = SimpleAsyncTaskExecutor(Thread.ofVirtual().factory())
+        executor.setTaskDecorator(ManagedContextTaskDecorator())
+        executor.execute {
+            capturedTraceId = if (Operations.hasContext) Operations.context.traceId else null
+            latch.countDown()
+        }
+
+        latch.await(3, TimeUnit.SECONDS)
+        assertEquals("vt-trace-id", capturedTraceId)
     }
 }

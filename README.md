@@ -1,7 +1,7 @@
 # Operation Manager Kit
 
 [![JitPack](https://jitpack.io/v/Hchanjune/operation-manager-kit.svg)](https://jitpack.io/#Hchanjune/operation-manager-kit)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.x-brightgreen)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2%2B-brightgreen)
 ![Java](https://img.shields.io/badge/Java-21-blue)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.2-purple)
 
@@ -24,6 +24,19 @@ It provides a structured execution boundary around business logic, automatically
 
 ---
 
+## Compatibility
+
+| Spring Boot | Spring Framework | Java | Status |
+|-------------|-----------------|------|--------|
+| 3.2.x | 6.1 | 17+ | Supported (minimum) |
+| 3.3.x – 3.5.x | 6.1 / 6.2 | 17+ | Supported |
+| 4.0.x+ | 7.0+ | 21+ | Supported |
+| 2.x | 5.x | — | Not supported (`javax.*` namespace) |
+
+> **Spring Boot 2.x** is not supported due to the `javax.*` → `jakarta.*` namespace migration in Spring Boot 3.0.
+
+---
+
 ## Installation
 
 Add JitPack to your repositories and include the desired modules.
@@ -41,6 +54,16 @@ dependencies {
     implementation("com.github.Hchanjune.operation-manager-kit:core:x.x.x")
     implementation("com.github.Hchanjune.operation-manager-kit:spring-webmvc:x.x.x")
 }
+```
+
+AOP aspects require AspectJ on the classpath. Add the appropriate starter for your Spring Boot version:
+
+```kotlin
+// Spring Boot 3.x
+implementation("org.springframework.boot:spring-boot-starter-aop")
+
+// Spring Boot 4.x
+implementation("org.springframework.boot:spring-boot-starter-aspectj")
 ```
 
 ---
@@ -206,8 +229,39 @@ The built-in `DefaultOperationLoggingHook` supports both pretty-print and JSON l
 | `pretty` | `false` | Human-readable formatted output |
 | `json` | `true` | JSON format, recommended for production |
 | `spans` | `false` | Append span tree to pretty output |
+| `response` | `true` | Include the operation block's return value in log output |
 | `success-level` | `INFO` | Log level for successful operations |
 | `failure-level` | `ERROR` | Log level for failed operations |
+
+**`response` field:**
+
+The return value of the `Operations { }` block is automatically captured and logged as the `response` field. In pretty format, `toString()` is used. In JSON format, if `toString()` returns a JSON object or array (`{...}` / `[...]`), it is embedded as nested JSON; otherwise it is logged as a quoted string.
+
+To control what appears in logs, override `toString()` on your result class:
+
+```kotlin
+data class OrderResult(val orderId: String, val total: BigDecimal, val cardLast4: String) {
+    override fun toString() = """{"orderId":"$orderId","total":$total}"""  // omit sensitive fields
+}
+```
+
+Set `response: false` to suppress the field entirely.
+
+**`message` field:**
+
+`message` is a free-form label you set directly on the context inside a hook that runs before `DefaultOperationLoggingHook` (Order < 50). It is always included in logs and has no toggle:
+
+```kotlin
+@Order(30)
+class MyEnrichmentHook : OperationHook {
+    override fun onSuccess(context: ManagedContext) {
+        context.message = "Order created successfully"
+    }
+    override fun onFailure(context: ManagedContext, exception: Throwable) {
+        context.message = "Order failed: ${exception.message}"
+    }
+}
+```
 
 **Pretty output (with `spans: true`):**
 ```
@@ -434,6 +488,20 @@ asyncService.fireAndForget()  // no hooks
 
 > Hooks fire on the async thread when the task completes, independently of the main thread. Async metrics are recorded separately and do not appear in the main request's span tree.
 
+### Java 21 Virtual Thread Support
+
+When `spring.threads.virtual.enabled=true` is set, Spring Boot replaces the default `@Async` executor with a `SimpleAsyncTaskExecutor` backed by virtual threads. OMK automatically registers `SimpleAsyncTaskExecutorCustomizer` alongside `ThreadPoolTaskExecutorCustomizer`, so context propagation and hook execution work identically in virtual thread mode — no additional configuration required.
+
+```yaml
+# No OMK-specific configuration needed — virtual thread support is automatic
+spring:
+  threads:
+    virtual:
+      enabled: true
+```
+
+The forked context, span tree, and hook lifecycle behave identically to platform-thread `@Async` execution. `ThreadLocal` is fully supported on virtual threads — each virtual thread maintains its own isolated `ManagedContext`.
+
 To disable context propagation entirely:
 
 ```yaml
@@ -443,7 +511,7 @@ operation-manager:
       enabled: false
 ```
 
-> If you have a custom `AsyncConfigurer` or `ThreadPoolTaskExecutor`, inject `ManagedContextTaskDecorator` and apply it manually.
+> If you have a custom `AsyncConfigurer`, `ThreadPoolTaskExecutor`, or `SimpleAsyncTaskExecutor`, inject `ManagedContextTaskDecorator` and apply it manually.
 
 ---
 
@@ -498,7 +566,7 @@ launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
 | | Context access | Span tree | Hook execution |
 |--|--|--|--|
 | Main request thread | ✓ | ✓ Main tree | ✓ Always (servlet filter) |
-| `@Async` thread | ✓ Forked (`executionScope=ASYNC`) | ✓ Independent | Optional — config or `enableAsyncHook()` |
+| `@Async` thread (platform or virtual) | ✓ Forked (`executionScope=ASYNC`) | ✓ Independent | Optional — config or `enableAsyncHook()` |
 | Coroutine child | ✓ Forked (`executionScope=ASYNC`) | ✓ Independent | Optional — config or `enableAsyncHook()` |
 | Event handler (`@ManagedEventHandler`) | ✓ New (`executionScope=EVENT`) | ✓ Independent | ✓ Always |
 
@@ -950,7 +1018,7 @@ You can replace any default provider by registering a custom bean.
 
 ## Notes & Limitations
 
-- **Thread-local context**: `ManagedContext` is stored in `ThreadLocal`. `@Async` propagation is handled automatically via `ManagedContextTaskDecorator`. Kotlin coroutines require explicit propagation via `ManagedContextElement`. In fire-and-forget patterns (`launch`), hooks and span recording are outside the request lifecycle by design.
+- **Thread-local context**: `ManagedContext` is stored in `ThreadLocal`. `@Async` propagation is handled automatically via `ManagedContextTaskDecorator` — applied to both `ThreadPoolTaskExecutor` (platform threads) and `SimpleAsyncTaskExecutor` (Java 21 virtual threads via `spring.threads.virtual.enabled=true`). Kotlin coroutines require explicit propagation via `ManagedContextElement`. In fire-and-forget patterns (`launch`), hooks and span recording are outside the request lifecycle by design.
 - **Spring AOP self-invocation**: AOP aspects do not intercept internal method calls within the same class.
 - **Streaming responses**: The `traceparent` response header is set after request processing. For streaming or async responses, the header may not be delivered.
 - **`Operations.context` scope**: Calling `Operations.context` outside a managed request scope (HTTP request, event handler, or manual `Operations.initializeForEvent()`) throws an `IllegalStateException` with a descriptive message.
@@ -963,6 +1031,7 @@ You can replace any default provider by registering a custom bean.
 - [ ] Maven Central publishing
 - [ ] WebFlux support
 - [x] Async context propagation (`@Async` via `ManagedContextTaskDecorator`, coroutines via `ManagedContextElement`)
+- [x] Java 21 virtual thread support (`spring.threads.virtual.enabled=true` — `SimpleAsyncTaskExecutorCustomizer` registered automatically alongside `ThreadPoolTaskExecutorCustomizer`)
 - [x] Span-level metric instrumentation (`@ManagedOperation`, `@ManagedMetric`, `@ManagedRepository` as DB spans)
 - [x] Micrometer-backed `MetricsOperationHook` with full span tree recording
 - [x] `@ManagedController` as ENTRY-layer root span; layer/timestamp/thread visible in span tree

@@ -59,7 +59,7 @@ class DefaultOperationLoggingHook(
             row("Operation   ", context.operation)
             row("UseCase     ", context.useCase)
             appendLine("├─ Message     : ${context.message}")
-            row("Response    ", context.response)
+            if (props.response) row("Response    ", context.response)
             appendLine("├─ Performance : ${context.durationMs}Ms")
             appendLine("├─ Timestamp   : ${context.timestamp}")
 
@@ -142,7 +142,17 @@ class DefaultOperationLoggingHook(
             field("useCase", context.useCase)
             fieldNum("durationMs", context.durationMs)
             field("message", context.message)
-            field("response", context.response)
+            if (props.response && context.response.isNotEmpty()) {
+                val responseStr = trunc(context.response, 5000)
+                if (!first) append(",")
+                val trimmed = responseStr.trimStart()
+                if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                    append("\"response\":$responseStr")
+                } else {
+                    append("\"response\":\"${esc(responseStr)}\"")
+                }
+                first = false
+            }
 
             exception?.let {
                 val rc = rootCause(it)

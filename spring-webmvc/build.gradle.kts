@@ -5,12 +5,14 @@ plugins {
     `maven-publish`
 }
 
+val springBootVersion: String by project
+
 dependencies {
     api(project(":core"))
 
-    compileOnly(platform("org.springframework.boot:spring-boot-dependencies:4.0.2"))
+    compileOnly(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
 
-    kapt("org.springframework.boot:spring-boot-configuration-processor:4.0.2")
+    kapt("org.springframework.boot:spring-boot-configuration-processor:$springBootVersion")
 
     compileOnly("org.slf4j:slf4j-api")
     compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-core")
@@ -27,7 +29,7 @@ dependencies {
     compileOnly("io.opentelemetry:opentelemetry-api")
 
     testImplementation(kotlin("test"))
-    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:4.0.2"))
+    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
     testImplementation("org.slf4j:slf4j-api")
     testRuntimeOnly("org.slf4j:slf4j-simple")
     testImplementation("io.opentelemetry:opentelemetry-api")

@@ -33,6 +33,61 @@ class TelemetryProviderTest {
     }
 
     @Test
+    fun `w3c extractTraceId returns null when parts more than 4`() {
+        assertNull(w3c.extractTraceId { "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-extra" })
+    }
+
+    @Test
+    fun `w3c extractTraceId accepts future version if format is valid`() {
+        assertEquals("4bf92f3577b34da6a3ce929d0e0e4736", w3c.extractTraceId { "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" })
+    }
+
+    @Test
+    fun `w3c extractTraceId returns null when version is ff`() {
+        assertNull(w3c.extractTraceId { "ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" })
+    }
+
+    @Test
+    fun `w3c extractTraceId returns null when traceId is wrong length`() {
+        assertNull(w3c.extractTraceId { "00-4bf92f3577b34da6-00f067aa0ba902b7-01" })
+    }
+
+    @Test
+    fun `w3c extractTraceId returns null when traceId contains uppercase hex`() {
+        assertNull(w3c.extractTraceId { "00-4BF92F3577B34DA6A3CE929D0E0E4736-00f067aa0ba902b7-01" })
+    }
+
+    @Test
+    fun `w3c extractTraceId returns null when traceId contains non-hex characters`() {
+        assertNull(w3c.extractTraceId { "00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-00f067aa0ba902b7-01" })
+    }
+
+    @Test
+    fun `w3c extractTraceId returns null when traceId is all zeros`() {
+        assertNull(w3c.extractTraceId { "00-00000000000000000000000000000000-00f067aa0ba902b7-01" })
+    }
+
+    @Test
+    fun `w3c extractParentId returns null when parentId is wrong length`() {
+        assertNull(w3c.extractParentId { "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067-01" })
+    }
+
+    @Test
+    fun `w3c extractParentId returns null when parentId contains uppercase hex`() {
+        assertNull(w3c.extractParentId { "00-4bf92f3577b34da6a3ce929d0e0e4736-00F067AA0BA902B7-01" })
+    }
+
+    @Test
+    fun `w3c extractParentId returns null when parentId is all zeros`() {
+        assertNull(w3c.extractParentId { "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01" })
+    }
+
+    @Test
+    fun `w3c extractTraceId returns null when flags field is invalid`() {
+        assertNull(w3c.extractTraceId { "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-ZZ" })
+    }
+
+    @Test
     fun `w3c extractTraceId returns second segment of traceparent`() {
         val traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
         assertEquals("4bf92f3577b34da6a3ce929d0e0e4736", w3c.extractTraceId { traceparent })
