@@ -7,13 +7,13 @@ import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 
 plugins {
-    kotlin("jvm") version "2.2.21" apply false
-    kotlin("plugin.spring") version "2.2.21" apply false
+    kotlin("jvm") version "2.3.21" apply false
+    kotlin("plugin.spring") version "2.3.21" apply false
 }
 
 allprojects {
     group = "com.github.Hchanjune.operation-manager-kit"
-    version = "0.7.4"
+    version = "0.7.5"
 
     repositories {
         mavenCentral()

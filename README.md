@@ -2,9 +2,9 @@
 
 [![JitPack](https://jitpack.io/v/Hchanjune/operation-manager-kit.svg)](https://jitpack.io/#Hchanjune/operation-manager-kit)
 [![codecov](https://codecov.io/gh/Hchanjune/operation-manager-kit/branch/main/graph/badge.svg)](https://codecov.io/gh/Hchanjune/operation-manager-kit)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2%2B-brightgreen)
-![Java](https://img.shields.io/badge/Java-21-blue)
-![Kotlin](https://img.shields.io/badge/Kotlin-2.2-purple)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2%2B-brightgreen?logo=springboot&logoColor=white)
+![Java](https://img.shields.io/badge/Java-21-blue?logo=openjdk&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.3-purple?logo=kotlin&logoColor=white)
 
 **[한국어](README.ko.md) | English**
 
