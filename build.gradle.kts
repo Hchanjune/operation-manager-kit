@@ -13,7 +13,7 @@ plugins {
 
 allprojects {
     group = "com.github.Hchanjune.operation-manager-kit"
-    version = "0.7.3"
+    version = "0.7.4"
 
     repositories {
         mavenCentral()
@@ -30,7 +30,8 @@ tasks.register<JacocoReport>("jacocoAggregatedReport") {
     reports {
         html.required.set(true)
         html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/aggregated/html"))
-        xml.required.set(false)
+        xml.required.set(true)
+        xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/aggregated/jacocoTestReport.xml"))
     }
 }
 

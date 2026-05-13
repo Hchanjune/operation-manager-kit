@@ -58,3 +58,11 @@ jobs:
         with:
           name: jacoco-report
           path: build/reports/jacoco/aggregated/html
+
+      - name: Upload Coverage to Codecov
+        if: matrix.spring-boot-version == '4.0.6'
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: build/reports/jacoco/aggregated/jacocoTestReport.xml
+          fail_ci_if_error: false
