@@ -1,0 +1,7 @@
+operation-manager:
+  webflux:
+    micrometer:
+      enabled: false
+    logging:
+      pretty: false
+      json: false

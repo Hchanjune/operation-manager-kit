@@ -4,4 +4,6 @@ plugins {
 rootProject.name = "operation-manager-kit"
 include("core")
 include("spring-webmvc")
+include("spring-webflux")
 include("test-app-webmvc")
+include("test-app-webflux")
