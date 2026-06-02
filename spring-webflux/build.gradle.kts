@@ -42,6 +42,7 @@ dependencies {
     testImplementation("org.springframework:spring-webflux")
     testImplementation("org.springframework:spring-messaging")
     testImplementation("org.apache.kafka:kafka-clients")
+    testImplementation("io.projectreactor:reactor-test")
 }
 
 tasks.test { useJUnitPlatform() }
