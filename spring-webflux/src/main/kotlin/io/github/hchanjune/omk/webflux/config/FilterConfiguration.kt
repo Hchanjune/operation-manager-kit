@@ -2,6 +2,7 @@ package io.github.hchanjune.omk.webflux.config
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
+import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
@@ -29,6 +30,7 @@ internal class FilterConfiguration {
         traceIdProvider: TraceIdProvider,
         causationIdProvider: CausationIdProvider,
         compositeHook: OperationHook,
+        issuerProvider: IssuerProvider,
         telemetryProperties: TelemetryConfigureProperties,
     ): ManagedContextWebFilter = ManagedContextWebFilter(
         contextProvider = contextProvider,
@@ -36,6 +38,7 @@ internal class FilterConfiguration {
         traceIdProvider = traceIdProvider,
         causationIdProvider = causationIdProvider,
         compositeHook = compositeHook,
+        issuerProvider = issuerProvider,
         generateWhenMissing = telemetryProperties.propagation.generateWhenMissing
     )
 }

@@ -2,6 +2,7 @@ package io.github.hchanjune.omk.webflux.filter
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
+import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
@@ -17,6 +18,7 @@ class ManagedContextWebFilter(
     private val traceIdProvider: TraceIdProvider,
     private val causationIdProvider: CausationIdProvider,
     private val compositeHook: OperationHook,
+    private val issuerProvider: IssuerProvider = IssuerProvider { "anonymous" },
     private val generateWhenMissing: Boolean = true
 ) : WebFilter {
 
@@ -27,6 +29,7 @@ class ManagedContextWebFilter(
             val extractedCausationId = propagationProvider.extractParentId { request.headers.getFirst(it) }
             injectTraceId(extractedTraceId ?: if (generateWhenMissing) traceIdProvider.provideTraceId() else "")
             injectCausationId(extractedCausationId ?: if (generateWhenMissing) causationIdProvider.provideCausationId() else "")
+            injectIssuer(issuerProvider.currentIssuer())
             injectProtocol("HTTP")
             injectType("API")
             injectHttpInfo(uri = request.uri.path, method = request.method.name())
