@@ -35,58 +35,59 @@ class ManagedOperationAspect(
 
         if (isMono(joinPoint)) {
             val result = joinPoint.proceed() as Mono<*>
-            return result.transformDeferredContextual { mono, reactorCtx ->
-                val ctx = reactorCtx.getOrEmpty<ManagedContext>(ReactiveOperations.CONTEXT_KEY).orElse(null)
-                    ?: return@transformDeferredContextual mono
-                ctx.injectAnnotationInfo(operationAnnotation.operation, operationAnnotation.useCase)
-                val span = ctx.push(
-                    name = MetricName(spanName),
-                    kind = MetricKind.TIMER,
-                    policy = MetricPolicy.defaults(),
-                    tags = MetricTags.Builder()
-                        .put("service", ctx.service)
-                        .put("operation", operationAnnotation.operation)
-                        .put("use_case", operationAnnotation.useCase)
-                        .build(),
-                    descriptor = MetricDescriptor(
-                        operation = operationAnnotation.operation,
-                        useCase = operationAnnotation.useCase,
-                        layer = MetricLayer.APPLICATION
-                    ),
-                    idProvider = spanIdProvider
-                )
-                mono.doOnSuccess { span.end(); ctx.pop() }
-                    .doOnError { e -> span.end(e); ctx.pop() }
-            }
+            return instrumentMono(result, operationAnnotation, spanName)
+        }
+
+        if (isNullContinuation(joinPoint)) {
+            return instrumentMono(proceedAsMono(joinPoint), operationAnnotation, spanName)
         }
 
         val ctx = getManagedContext(joinPoint) ?: return joinPoint.proceed()
+        return instrumentSuspend(joinPoint, ctx, operationAnnotation, spanName)
+    }
 
-        ctx.injectAnnotationInfo(operationAnnotation.operation, operationAnnotation.useCase)
+    private fun instrumentMono(source: Mono<*>, op: ManagedOperation, spanName: String): Mono<*> =
+        source.transformDeferredContextual { mono, reactorCtx ->
+            val ctx = getManagedContext(reactorCtx)
+            if (ctx == null) mono else pushAndInstrument(ctx, mono, op, spanName)
+        }
+
+    private fun pushAndInstrument(ctx: ManagedContext, mono: Mono<*>, op: ManagedOperation, spanName: String): Mono<*> {
+        ctx.injectAnnotationInfo(op.operation, op.useCase)
         val span = ctx.push(
             name = MetricName(spanName),
             kind = MetricKind.TIMER,
             policy = MetricPolicy.defaults(),
             tags = MetricTags.Builder()
                 .put("service", ctx.service)
-                .put("operation", operationAnnotation.operation)
-                .put("use_case", operationAnnotation.useCase)
+                .put("operation", op.operation)
+                .put("use_case", op.useCase)
                 .build(),
-            descriptor = MetricDescriptor(
-                operation = operationAnnotation.operation,
-                useCase = operationAnnotation.useCase,
-                layer = MetricLayer.APPLICATION
-            ),
+            descriptor = MetricDescriptor(operation = op.operation, useCase = op.useCase, layer = MetricLayer.APPLICATION),
             idProvider = spanIdProvider
         )
+        return mono.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+    }
 
-        return try {
-            val result = joinPoint.proceed()
-            span.end(); ctx.pop()
-            result
-        } catch (e: Throwable) {
-            span.end(e); ctx.pop()
-            throw e
+    private fun instrumentSuspend(joinPoint: ProceedingJoinPoint, ctx: ManagedContext, op: ManagedOperation, spanName: String): Any? {
+        ctx.injectAnnotationInfo(op.operation, op.useCase)
+        val result = joinPoint.proceed()
+        return if (result is Mono<*>) {
+            pushAndInstrument(ctx, result, op, spanName)
+        } else {
+            val span = ctx.push(
+                name = MetricName(spanName),
+                kind = MetricKind.TIMER,
+                policy = MetricPolicy.defaults(),
+                tags = MetricTags.Builder()
+                    .put("service", ctx.service)
+                    .put("operation", op.operation)
+                    .put("use_case", op.useCase)
+                    .build(),
+                descriptor = MetricDescriptor(operation = op.operation, useCase = op.useCase, layer = MetricLayer.APPLICATION),
+                idProvider = spanIdProvider
+            )
+            span.end(); ctx.pop(); result
         }
     }
 }

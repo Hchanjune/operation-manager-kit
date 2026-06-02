@@ -14,6 +14,7 @@ dependencies {
 
     kapt("org.springframework.boot:spring-boot-configuration-processor:$springBootVersion")
 
+    compileOnly("org.jetbrains.kotlin:kotlin-reflect")
     compileOnly("org.slf4j:slf4j-api")
     compileOnly("io.micrometer:micrometer-core")
     compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-core")

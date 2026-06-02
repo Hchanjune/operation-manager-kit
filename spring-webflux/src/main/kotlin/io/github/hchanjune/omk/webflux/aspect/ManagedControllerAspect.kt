@@ -30,45 +30,68 @@ class ManagedControllerAspect(
     ): Any? {
         val className = joinPoint.signature.declaringType.simpleName
         val methodName = joinPoint.signature.name.substringBefore('-')
-
+        // Path 1: Mono-returning method
         if (isMono(joinPoint)) {
             val result = joinPoint.proceed() as Mono<*>
-            return result.transformDeferredContextual { mono, reactorCtx ->
-                val ctx = reactorCtx.getOrEmpty<ManagedContext>(ReactiveOperations.CONTEXT_KEY).orElse(null)
-                    ?: return@transformDeferredContextual mono
-                if (ctx.entrypoint != className) ctx.injectEntryPoint(className)
-                val span = ctx.push(
-                    name = MetricName("$className.$methodName"),
-                    kind = MetricKind.TIMER,
-                    policy = MetricPolicy.defaults(),
-                    tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                    descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                    idProvider = spanIdProvider
-                )
-                mono.doOnSuccess { span.end(); ctx.pop() }
-                    .doOnError { e -> span.end(e); ctx.pop() }
-            }
+            return instrumentMono(result, className, methodName)
         }
 
+        // Path 2: suspend fun called via WebFlux non-Kotlin path (null continuation)
+        // Spring invokes proxy.ok(null) → CGLIB args=[null] → joinPoint.proceed() would fail.
+        // Return a properly-instrumented Mono; Spring's processReturnType converts it back.
+        if (isNullContinuation(joinPoint)) {
+            return instrumentMono(proceedAsMono(joinPoint), className, methodName)
+        }
+
+        // Path 3: suspend fun called directly with valid continuation (e.g., from another coroutine)
+        // joinPoint.proceed() may return a Mono (when Spring's invokeSuspendingFunction is called
+        // internally), so we check the result type and apply deferred instrumentation accordingly.
         val ctx = getManagedContext(joinPoint) ?: return joinPoint.proceed()
 
         if (ctx.entrypoint != className) ctx.injectEntryPoint(className)
-        val span = ctx.push(
-            name = MetricName("$className.$methodName"),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-            descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-            idProvider = spanIdProvider
-        )
-
-        return try {
-            val result = joinPoint.proceed()
-            span.end(); ctx.pop()
-            result
-        } catch (e: Throwable) {
-            span.end(e); ctx.pop()
-            throw e
+        val result = joinPoint.proceed()
+        return if (result is Mono<*>) {
+            // proceed() returned a Mono — the span must be ended inside the reactive chain
+            val span = ctx.push(
+                name = MetricName("$className.$methodName"),
+                kind = MetricKind.TIMER,
+                policy = MetricPolicy.defaults(),
+                tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
+                descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+                idProvider = spanIdProvider
+            )
+            result.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+        } else {
+            val span = ctx.push(
+                name = MetricName("$className.$methodName"),
+                kind = MetricKind.TIMER,
+                policy = MetricPolicy.defaults(),
+                tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
+                descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+                idProvider = spanIdProvider
+            )
+            try {
+                span.end(); ctx.pop(); result
+            } catch (e: Throwable) {
+                span.end(e); ctx.pop(); throw e
+            }
         }
     }
+
+    private fun instrumentMono(source: Mono<*>, className: String, methodName: String): Mono<*> =
+        source.transformDeferredContextual { mono, reactorCtx ->
+            val ctx = getManagedContext(reactorCtx)
+                ?: return@transformDeferredContextual mono
+            if (ctx.entrypoint != className) ctx.injectEntryPoint(className)
+            val span = ctx.push(
+                name = MetricName("$className.$methodName"),
+                kind = MetricKind.TIMER,
+                policy = MetricPolicy.defaults(),
+                tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
+                descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+                idProvider = spanIdProvider
+            )
+            mono.doOnSuccess { span.end(); ctx.pop() }
+                .doOnError { e -> span.end(e); ctx.pop() }
+        }
 }

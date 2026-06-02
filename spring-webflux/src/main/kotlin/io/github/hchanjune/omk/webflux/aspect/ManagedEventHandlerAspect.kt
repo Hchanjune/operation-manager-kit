@@ -15,9 +15,6 @@ import io.github.hchanjune.omk.core.metric.MetricPolicy
 import io.github.hchanjune.omk.core.metric.MetricTags
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.webflux.ReactiveOperations
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.reactor.ReactorContext
-import kotlinx.coroutines.withContext
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
@@ -85,32 +82,71 @@ class ManagedEventHandlerAspect(
             }
         }
 
-        // suspend 경로
-        val coroutineCtx = currentCoroutineContext()
-        val existingCtx = coroutineCtx[ReactorContext]?.context
-            ?.getOrEmpty<ManagedContext>(ReactiveOperations.CONTEXT_KEY)?.orElse(null)
-
-        if (existingCtx != null) {
-            existingCtx.injectEntryPoint(className)
-            val span = existingCtx.push(
-                name = MetricName("$className.$methodName"),
-                kind = MetricKind.TIMER,
-                policy = MetricPolicy.defaults(),
-                tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                idProvider = spanIdProvider
-            )
-            return try {
-                val result = joinPoint.proceed()
-                span.end(); existingCtx.pop()
-                result
-            } catch (e: Throwable) {
-                span.end(e); existingCtx.pop()
-                throw e
+        // suspend fun via null continuation (WebFlux non-Kotlin path): return instrumented Mono
+        if (isNullContinuation(joinPoint)) {
+            return proceedAsMono(joinPoint).transformDeferredContextual { mono, reactorCtx ->
+                val ctx = getManagedContext(reactorCtx)
+                if (ctx != null) {
+                    ctx.injectEntryPoint(className)
+                    val span = ctx.push(
+                        name = MetricName("$className.$methodName"),
+                        kind = MetricKind.TIMER,
+                        policy = MetricPolicy.defaults(),
+                        tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
+                        descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+                        idProvider = spanIdProvider
+                    )
+                    mono.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+                } else {
+                    // No upstream context: event handler creates its own
+                    val newCtx = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args))
+                    newCtx.injectEntryPoint(className)
+                    val span = newCtx.push(
+                        name = MetricName("$className.$methodName"),
+                        kind = MetricKind.TIMER,
+                        policy = MetricPolicy.defaults(),
+                        tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
+                        descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+                        idProvider = spanIdProvider
+                    )
+                    mono
+                        .doOnSuccess { span.end(); newCtx.pop(); newCtx.end(); ReactiveOperations.hook?.onSuccess(newCtx) }
+                        .doOnError { e -> span.end(e); newCtx.pop(); newCtx.end(); ReactiveOperations.hook?.onFailure(newCtx, e) }
+                        .contextWrite(reactor.util.context.Context.of(ReactiveOperations.CONTEXT_KEY, newCtx))
+                }
             }
         }
 
-        // Context owner: 새로운 context 생성 후 coroutine context에 주입
+        // suspend fun with valid continuation
+        val existingCtx = getManagedContext(joinPoint)
+
+        if (existingCtx != null) {
+            existingCtx.injectEntryPoint(className)
+            val result = joinPoint.proceed()
+            return if (result is Mono<*>) {
+                val span = existingCtx.push(
+                    name = MetricName("$className.$methodName"),
+                    kind = MetricKind.TIMER,
+                    policy = MetricPolicy.defaults(),
+                    tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
+                    descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+                    idProvider = spanIdProvider
+                )
+                result.doOnSuccess { span.end(); existingCtx.pop() }.doOnError { e -> span.end(e); existingCtx.pop() }
+            } else {
+                val span = existingCtx.push(
+                    name = MetricName("$className.$methodName"),
+                    kind = MetricKind.TIMER,
+                    policy = MetricPolicy.defaults(),
+                    tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
+                    descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+                    idProvider = spanIdProvider
+                )
+                span.end(); existingCtx.pop(); result
+            }
+        }
+
+        // Context owner: no upstream context, create new one and proceed
         val newContext = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args))
         newContext.injectEntryPoint(className)
         val span = newContext.push(
@@ -122,13 +158,8 @@ class ManagedEventHandlerAspect(
             idProvider = spanIdProvider
         )
 
-        val baseReactorCtx = coroutineCtx[ReactorContext]?.context ?: Context.empty()
-        val newReactorCtx = baseReactorCtx.put(ReactiveOperations.CONTEXT_KEY, newContext)
-
         return try {
-            val result = withContext(ReactorContext(newReactorCtx)) {
-                joinPoint.proceed()
-            }
+            val result = joinPoint.proceed()
             span.end(); newContext.pop()
             newContext.end()
             ReactiveOperations.hook?.onSuccess(newContext)

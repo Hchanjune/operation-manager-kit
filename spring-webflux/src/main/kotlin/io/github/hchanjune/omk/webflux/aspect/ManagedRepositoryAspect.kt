@@ -10,8 +10,6 @@ import io.github.hchanjune.omk.core.metric.MetricPolicy
 import io.github.hchanjune.omk.core.metric.MetricTags
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.webflux.ReactiveOperations
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.reactor.ReactorContext
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
@@ -26,7 +24,7 @@ class ManagedRepositoryAspect(
 ) : ReactiveAspectSupport() {
 
     @Around("@within(managedRepository)")
-    suspend fun aroundRepository(
+    fun aroundRepository(
         joinPoint: ProceedingJoinPoint,
         managedRepository: ManagedRepository
     ): Any? {
@@ -35,35 +33,33 @@ class ManagedRepositoryAspect(
 
         if (isMono(joinPoint)) {
             val result = joinPoint.proceed() as Mono<*>
-            return result.transformDeferredContextual { mono, reactorCtx ->
-                val ctx = reactorCtx.getOrEmpty<ManagedContext>(ReactiveOperations.CONTEXT_KEY).orElse(null)
-                    ?: return@transformDeferredContextual mono
-                val span = ctx.push(
-                    name = MetricName("$className.$methodName"),
-                    kind = MetricKind.TIMER,
-                    policy = MetricPolicy.defaults(),
-                    tags = MetricTags.Builder()
-                        .put("repository", className)
-                        .put("method", methodName)
-                        .put("operation", ctx.operation)
-                        .build(),
-                    descriptor = MetricDescriptor(
-                        operation = ctx.operation,
-                        useCase = ctx.useCase,
-                        layer = MetricLayer.DB
-                    ),
-                    idProvider = spanIdProvider
-                )
-                mono.doOnSuccess { span.end(); ctx.pop() }
-                    .doOnError { e -> span.end(e); ctx.pop() }
-            }
+            return instrumentMono(result, className, methodName)
         }
 
-        val ctx = currentCoroutineContext()[ReactorContext]?.context
-            ?.getOrEmpty<ManagedContext>(ReactiveOperations.CONTEXT_KEY)?.orElse(null)
-            ?: return joinPoint.proceed()
+        if (isNullContinuation(joinPoint)) {
+            return instrumentMono(proceedAsMono(joinPoint), className, methodName)
+        }
 
-        val span = ctx.push(
+        val ctx = getManagedContext(joinPoint) ?: return joinPoint.proceed()
+        val result = joinPoint.proceed()
+        return if (result is Mono<*>) {
+            val span = buildSpan(ctx, className, methodName)
+            result.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+        } else {
+            val span = buildSpan(ctx, className, methodName)
+            span.end(); ctx.pop(); result
+        }
+    }
+
+    private fun instrumentMono(source: Mono<*>, className: String, methodName: String): Mono<*> =
+        source.transformDeferredContextual { mono, reactorCtx ->
+            val ctx = getManagedContext(reactorCtx) ?: return@transformDeferredContextual mono
+            val span = buildSpan(ctx, className, methodName)
+            mono.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+        }
+
+    private fun buildSpan(ctx: ManagedContext, className: String, methodName: String) =
+        ctx.push(
             name = MetricName("$className.$methodName"),
             kind = MetricKind.TIMER,
             policy = MetricPolicy.defaults(),
@@ -72,21 +68,7 @@ class ManagedRepositoryAspect(
                 .put("method", methodName)
                 .put("operation", ctx.operation)
                 .build(),
-            descriptor = MetricDescriptor(
-                operation = ctx.operation,
-                useCase = ctx.useCase,
-                layer = MetricLayer.DB
-            ),
+            descriptor = MetricDescriptor(operation = ctx.operation, useCase = ctx.useCase, layer = MetricLayer.DB),
             idProvider = spanIdProvider
         )
-
-        return try {
-            val result = joinPoint.proceed()
-            span.end(); ctx.pop()
-            result
-        } catch (e: Throwable) {
-            span.end(e); ctx.pop()
-            throw e
-        }
-    }
 }

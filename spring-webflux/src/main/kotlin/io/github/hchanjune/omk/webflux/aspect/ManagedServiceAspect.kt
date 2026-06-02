@@ -28,9 +28,25 @@ class ManagedServiceAspect : ReactiveAspectSupport() {
             }
         }
 
-        val ctx = getManagedContext(joinPoint) ?: return joinPoint.proceed()
+        if (isNullContinuation(joinPoint)) {
+            return proceedAsMono(joinPoint).transformDeferredContextual { mono, reactorCtx ->
+                val ctx = getManagedContext(reactorCtx) ?: return@transformDeferredContextual mono
+                if (ctx.service != className) ctx.injectService(className)
+                mono
+            }
+        }
 
+        val ctx = getManagedContext(joinPoint) ?: return joinPoint.proceed()
         if (ctx.service != className) ctx.injectService(className)
-        return joinPoint.proceed()
+        val result = joinPoint.proceed()
+        return if (result is Mono<*>) {
+            result.transformDeferredContextual { mono, reactorCtx ->
+                val c = getManagedContext(reactorCtx) ?: return@transformDeferredContextual mono
+                if (c.service != className) c.injectService(className)
+                mono
+            }
+        } else {
+            result
+        }
     }
 }
