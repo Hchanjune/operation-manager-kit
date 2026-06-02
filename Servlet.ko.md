@@ -92,13 +92,13 @@ println(result.data) // "OK"
 
 ## 어노테이션
 
-| 어노테이션 | 대상 | 역할 |
-|------------|------|------|
-| `@ManagedController` | 클래스 | 핸들러 메서드마다 ENTRY 레이어 루트 span 생성; entrypoint 주입 |
-| `@ManagedService` | 클래스 | 서비스 클래스명을 컨텍스트의 service에 주입 |
-| `@ManagedRepository` | 클래스 | 리포지토리의 모든 메서드를 DB 레이어 자식 span으로 계측 |
-| `@ManagedOperation` | 메서드 | `operation`, `useCase` 값 주입; APPLICATION 레이어 span 생성 |
-| `@ManagedMetric` | 메서드 | 임의 메서드를 이름이 있는 APPLICATION 레이어 자식 span으로 계측 |
+| 어노테이션                  | 대상  | 역할                                                   |
+|------------------------|-----|------------------------------------------------------|
+| `@ManagedController`   | 클래스 | 핸들러 메서드마다 ENTRY 레이어 루트 span 생성; entrypoint 주입        |
+| `@ManagedService`      | 클래스 | 서비스 클래스명을 컨텍스트의 service에 주입                          |
+| `@ManagedRepository`   | 클래스 | 리포지토리의 모든 메서드를 DB 레이어 자식 span으로 계측                   |
+| `@ManagedOperation`    | 메서드 | `operation`, `useCase` 값 주입; APPLICATION 레이어 span 생성 |
+| `@ManagedMetric`       | 메서드 | 임의 메서드를 이름이 있는 APPLICATION 레이어 자식 span으로 계측          |
 | `@ManagedEventHandler` | 메서드 | 메시징 핸들러에 ENTRY 레이어 span 생성; 이벤트 인자에서 트레이스 컨텍스트 자동 추출 |
 
 ---
@@ -133,14 +133,14 @@ class MyEnrichmentHook : OperationHook {
 
 ### 기본 로깅 훅
 
-| 프로퍼티 | 기본값 | 설명 |
-|----------|--------|------|
-| `pretty` | `false` | 사람이 읽기 쉬운 포맷 |
-| `json` | `true` | JSON 포맷 (프로덕션 권장) |
-| `spans` | `false` | pretty 출력에 span 트리 포함 |
-| `response` | `true` | Operations 블록의 반환값을 로그에 포함 |
-| `success-level` | `INFO` | 성공 시 로그 레벨 |
-| `failure-level` | `ERROR` | 실패 시 로그 레벨 |
+| 프로퍼티            | 기본값     | 설명                         |
+|-----------------|---------|----------------------------|
+| `pretty`        | `false` | 사람이 읽기 쉬운 포맷               |
+| `json`          | `true`  | JSON 포맷 (프로덕션 권장)          |
+| `spans`         | `false` | pretty 출력에 span 트리 포함      |
+| `response`      | `true`  | Operations 블록의 반환값을 로그에 포함 |
+| `success-level` | `INFO`  | 성공 시 로그 레벨                 |
+| `failure-level` | `ERROR` | 실패 시 로그 레벨                 |
 
 **Pretty 출력 예시 (`spans: true` 설정 시):**
 ```
@@ -227,11 +227,11 @@ operation-manager:
 
 `@EnableAsync` 활성화 시 `ManagedContextTaskDecorator`가 자동 등록됩니다. `@Async` 메서드 호출 시 컨텍스트는 **포크**됩니다 — 각 async 스레드는 독립적인 복사본을 받습니다.
 
-| 필드 | 동작 |
-|------|------|
-| `traceId`, `causationId`, `issuer` | 상속 |
-| `executionScope` | `ASYNC`로 설정 |
-| Span 트리, 타이밍, 훅 레코드 | 독립 |
+| 필드                                 | 동작          |
+|------------------------------------|-------------|
+| `traceId`, `causationId`, `issuer` | 상속          |
+| `executionScope`                   | `ASYNC`로 설정 |
+| Span 트리, 타이밍, 훅 레코드                | 독립          |
 
 ### Java 21 Virtual Thread 지원
 
@@ -262,13 +262,13 @@ launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
 
 ### 자동 컨텍스트 추출 우선순위
 
-| 우선순위 | 소스 |
-|----------|------|
-| 1순위 | `@ManagedEvent*` 필드 어노테이션 |
-| 2순위 | Kafka `ConsumerRecord` 헤더 (W3C traceparent → X-Trace-Id 폴백) |
-| 3순위 | Spring `Message<*>` 헤더 |
-| 4순위 | 덕 타이핑 (리플렉션으로 `traceId`, `causationId` 등 탐색) |
-| 5순위 | `generate-when-missing` |
+| 우선순위 | 소스                                                          |
+|------|-------------------------------------------------------------|
+| 1순위  | `@ManagedEvent*` 필드 어노테이션                                   |
+| 2순위  | Kafka `ConsumerRecord` 헤더 (W3C traceparent → X-Trace-Id 폴백) |
+| 3순위  | Spring `Message<*>` 헤더                                      |
+| 4순위  | 덕 타이핑 (리플렉션으로 `traceId`, `causationId` 등 탐색)                |
+| 5순위  | `generate-when-missing`                                     |
 
 ```kotlin
 @Component
@@ -344,10 +344,10 @@ management:
 
 ## Logback 연동
 
-| 로거 | 내용 |
-|------|------|
-| `OperationManager.Pretty` | 사람이 읽기 좋은 박스 포맷 |
-| `OperationManager.JSON` | 구조화된 JSON (프로덕션) |
+| 로거                        | 내용               |
+|---------------------------|------------------|
+| `OperationManager.Pretty` | 사람이 읽기 좋은 박스 포맷  |
+| `OperationManager.JSON`   | 구조화된 JSON (프로덕션) |
 
 ```xml
 <logger name="OperationManager.Pretty" level="INFO" additivity="false">
@@ -360,15 +360,15 @@ management:
 
 ## 라이브러리 확장
 
-| 인터페이스 | 역할 |
-|------------|------|
-| `TraceIdProvider` | 커스텀 트레이스 ID 생성 |
-| `SpanIdProvider` | 커스텀 스팬 ID 생성 |
-| `CausationIdProvider` | 커스텀 인과관계 ID 생성 |
-| `IssuerProvider` | 커스텀 발급자 추출 |
-| `TelemetryPropagationProvider` | 커스텀 헤더 전파 표준 |
-| `MetricsRecorder` | 커스텀 메트릭 백엔드 |
-| `OperationHook` | 커스텀 라이프사이클 콜백 |
+| 인터페이스                          | 역할             |
+|--------------------------------|----------------|
+| `TraceIdProvider`              | 커스텀 트레이스 ID 생성 |
+| `SpanIdProvider`               | 커스텀 스팬 ID 생성   |
+| `CausationIdProvider`          | 커스텀 인과관계 ID 생성 |
+| `IssuerProvider`               | 커스텀 발급자 추출     |
+| `TelemetryPropagationProvider` | 커스텀 헤더 전파 표준   |
+| `MetricsRecorder`              | 커스텀 메트릭 백엔드    |
+| `OperationHook`                | 커스텀 라이프사이클 콜백  |
 
 ---
 
@@ -378,3 +378,5 @@ management:
 - **`Operations.context` 범위**: 관리 범위 밖에서 호출하면 `IllegalStateException`이 발생합니다.
 - **스트리밍 응답**: `traceparent` 응답 헤더는 스트리밍 또는 비동기 응답에서 전달되지 않을 수 있습니다.
 - **스레드 로컬 컨텍스트**: `ManagedContext`는 `ThreadLocal`에 저장됩니다. Kotlin 코루틴은 `ManagedContextElement`를 통한 명시적 전파가 필요합니다.
+
+---

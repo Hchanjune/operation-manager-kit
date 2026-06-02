@@ -135,13 +135,13 @@ Context state is cumulative:
 
 ## Annotations
 
-| Annotation | Target | Purpose |
-|------------|--------|---------|
-| `@ManagedController` | Class | Opens an ENTRY-layer root span per handler method; injects entrypoint into context |
-| `@ManagedService` | Class | Injects service name into context |
-| `@ManagedRepository` | Class | Instruments all methods on a repository as DB-layer child spans |
-| `@ManagedOperation` | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span |
-| `@ManagedMetric` | Method | Instruments any method as a named APPLICATION-layer child span |
+| Annotation             | Target | Purpose                                                                                            |
+|------------------------|--------|----------------------------------------------------------------------------------------------------|
+| `@ManagedController`   | Class  | Opens an ENTRY-layer root span per handler method; injects entrypoint into context                 |
+| `@ManagedService`      | Class  | Injects service name into context                                                                  |
+| `@ManagedRepository`   | Class  | Instruments all methods on a repository as DB-layer child spans                                    |
+| `@ManagedOperation`    | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span                    |
+| `@ManagedMetric`       | Method | Instruments any method as a named APPLICATION-layer child span                                     |
 | `@ManagedEventHandler` | Method | Opens an ENTRY-layer span for messaging handlers; auto-extracts trace context from event arguments |
 
 > `@ManagedRepository` targets class-level annotations. Because Spring Data reactive repositories are interfaces, applying `@ManagedRepository` directly to a `CoroutineCrudRepository` interface will not take effect. Consider using `@ManagedMetric` on individual service methods that call the repository instead.
@@ -178,14 +178,14 @@ class MyEnrichmentHook : OperationHook {
 
 ### Default Logging Hook
 
-| Property | Default | Description |
-|----------|---------|-------------|
-| `pretty` | `false` | Human-readable formatted output |
-| `json` | `true` | JSON format (recommended for production) |
-| `spans` | `false` | Append span tree to pretty output |
-| `response` | `true` | Include the operation block's return value |
-| `success-level` | `INFO` | Log level for successful operations |
-| `failure-level` | `ERROR` | Log level for failed operations |
+| Property        | Default | Description                                |
+|-----------------|---------|--------------------------------------------|
+| `pretty`        | `false` | Human-readable formatted output            |
+| `json`          | `true`  | JSON format (recommended for production)   |
+| `spans`         | `false` | Append span tree to pretty output          |
+| `response`      | `true`  | Include the operation block's return value |
+| `success-level` | `INFO`  | Log level for successful operations        |
+| `failure-level` | `ERROR` | Log level for failed operations            |
 
 **Pretty output (with `spans: true`):**
 ```
@@ -288,13 +288,13 @@ The AOP aspects read the `ManagedContext` from the continuation's `ReactorContex
 
 ### Automatic context extraction priority
 
-| Priority | Source |
-|----------|--------|
-| 1st | `@ManagedEvent*` field annotations |
-| 2nd | Kafka `ConsumerRecord` headers (W3C traceparent → X-Trace-Id fallback) |
-| 3rd | Spring `Message<*>` headers |
-| 4th | Duck typing (reflection scan for `traceId`, `causationId`, etc.) |
-| 5th | `generate-when-missing` |
+| Priority | Source                                                                 |
+|----------|------------------------------------------------------------------------|
+| 1st      | `@ManagedEvent*` field annotations                                     |
+| 2nd      | Kafka `ConsumerRecord` headers (W3C traceparent → X-Trace-Id fallback) |
+| 3rd      | Spring `Message<*>` headers                                            |
+| 4th      | Duck typing (reflection scan for `traceId`, `causationId`, etc.)       |
+| 5th      | `generate-when-missing`                                                |
 
 ```kotlin
 @Component
@@ -371,10 +371,10 @@ implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-start
 
 ## Logback Integration
 
-| Logger | Content |
-|--------|---------|
-| `OperationManager.Pretty` | Human-readable box format |
-| `OperationManager.JSON` | Structured JSON (production) |
+| Logger                    | Content                      |
+|---------------------------|------------------------------|
+| `OperationManager.Pretty` | Human-readable box format    |
+| `OperationManager.JSON`   | Structured JSON (production) |
 
 ```xml
 <logger name="OperationManager.Pretty" level="INFO" additivity="false">
@@ -387,15 +387,15 @@ implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-start
 
 ## Extending the Library
 
-| Interface | Purpose |
-|-----------|---------|
-| `TraceIdProvider` | Custom trace ID generation |
-| `SpanIdProvider` | Custom span ID generation |
-| `CausationIdProvider` | Custom causation ID generation |
-| `IssuerProvider` | Custom issuer resolution |
-| `TelemetryPropagationProvider` | Custom header propagation |
-| `MetricsRecorder` | Custom metrics backend |
-| `OperationHook` | Custom lifecycle callbacks |
+| Interface                      | Purpose                        |
+|--------------------------------|--------------------------------|
+| `TraceIdProvider`              | Custom trace ID generation     |
+| `SpanIdProvider`               | Custom span ID generation      |
+| `CausationIdProvider`          | Custom causation ID generation |
+| `IssuerProvider`               | Custom issuer resolution       |
+| `TelemetryPropagationProvider` | Custom header propagation      |
+| `MetricsRecorder`              | Custom metrics backend         |
+| `OperationHook`                | Custom lifecycle callbacks     |
 
 ---
 
@@ -406,3 +406,5 @@ implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-start
 - **`@ManagedRepository` on interfaces**: Spring Data reactive repositories are interfaces — `@ManagedRepository` has no effect on them directly. Use `@ManagedMetric` on service methods instead.
 - **Event loop thread**: In a properly non-blocking application, spans will show the same `reactor-http-nio-*` thread. This is expected behavior — switching to `Dispatchers.IO` is only necessary for blocking operations.
 - **`ReactiveOperations` scope**: Calling `ReactiveOperations { }` outside a managed HTTP request scope throws `IllegalStateException`.
+
+---

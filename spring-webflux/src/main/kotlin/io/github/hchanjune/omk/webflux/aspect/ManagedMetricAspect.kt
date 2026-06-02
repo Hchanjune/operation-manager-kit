@@ -9,7 +9,6 @@ import io.github.hchanjune.omk.core.metric.MetricName
 import io.github.hchanjune.omk.core.metric.MetricPolicy
 import io.github.hchanjune.omk.core.metric.MetricTags
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
-import io.github.hchanjune.omk.webflux.ReactiveOperations
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect

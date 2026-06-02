@@ -18,22 +18,24 @@ It provides a structured execution boundary around business logic, automatically
 
 ## Modules
 
-| Module | Description | Docs |
-|--------|-------------|------|
-| `core` | Framework-agnostic execution engine, context model, and provider contracts | — |
-| `spring-webmvc` | Spring Boot auto-configuration for Servlet stack (AOP aspects, servlet filters, Micrometer) | [Servlet.md](Servlet.md) |
+| Module           | Description                                                                                   | Docs                       |
+|------------------|-----------------------------------------------------------------------------------------------|----------------------------|
+| `core`           | Framework-agnostic execution engine, context model, and provider contracts                    | —                          |
+| `spring-webmvc`  | Spring Boot auto-configuration for Servlet stack (AOP aspects, servlet filters, Micrometer)   | [Servlet.md](Servlet.md)   |
 | `spring-webflux` | Spring Boot auto-configuration for Reactive stack (AOP aspects, WebFilter, Kotlin Coroutines) | [Reactive.md](Reactive.md) |
+
+→ **[API Reference](API.md)** — All annotations, classes, interfaces, and configuration properties
 
 ---
 
 ## Compatibility
 
-| Spring Boot | Spring Framework | Java | Status |
-|-------------|-----------------|------|--------|
-| 3.2.x | 6.1 | 17+ | Supported (minimum) |
-| 3.3.x – 3.5.x | 6.1 / 6.2 | 17+ | Supported |
-| 4.0.x+ | 7.0+ | 21+ | Supported |
-| 2.x | 5.x | — | Not supported (`javax.*` namespace) |
+| Spring Boot   | Spring Framework | Java | Status                              |
+|---------------|------------------|------|-------------------------------------|
+| 3.2.x         | 6.1              | 17+  | Supported (minimum)                 |
+| 3.3.x – 3.5.x | 6.1 / 6.2        | 17+  | Supported                           |
+| 4.0.x+        | 7.0+             | 21+  | Supported                           |
+| 2.x           | 5.x              | —    | Not supported (`javax.*` namespace) |
 
 > **Spring Boot 2.x** is not supported due to the `javax.*` → `jakarta.*` namespace migration in Spring Boot 3.0.
 
@@ -104,4 +106,6 @@ dependencies {
 
 ## License
 
-This project is open-source. Contributions are welcome.
+### [Apache License 2.0](LICENSE)
+
+---

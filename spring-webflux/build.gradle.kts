@@ -40,6 +40,8 @@ dependencies {
     testImplementation("org.springframework.security:spring-security-core")
     testImplementation("org.springframework:spring-test")
     testImplementation("org.springframework:spring-webflux")
+    testImplementation("org.springframework:spring-messaging")
+    testImplementation("org.apache.kafka:kafka-clients")
 }
 
 tasks.test { useJUnitPlatform() }

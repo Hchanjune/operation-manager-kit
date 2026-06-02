@@ -92,13 +92,13 @@ println(result.data) // "OK"
 
 ## Annotations
 
-| Annotation | Target | Purpose |
-|------------|--------|---------|
-| `@ManagedController` | Class | Opens an ENTRY-layer root span per handler method; injects entrypoint into context |
-| `@ManagedService` | Class | Injects service name into context |
-| `@ManagedRepository` | Class | Instruments all methods on a repository as DB-layer child spans |
-| `@ManagedOperation` | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span |
-| `@ManagedMetric` | Method | Instruments any method as a named APPLICATION-layer child span |
+| Annotation             | Target | Purpose                                                                                            |
+|------------------------|--------|----------------------------------------------------------------------------------------------------|
+| `@ManagedController`   | Class  | Opens an ENTRY-layer root span per handler method; injects entrypoint into context                 |
+| `@ManagedService`      | Class  | Injects service name into context                                                                  |
+| `@ManagedRepository`   | Class  | Instruments all methods on a repository as DB-layer child spans                                    |
+| `@ManagedOperation`    | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span                    |
+| `@ManagedMetric`       | Method | Instruments any method as a named APPLICATION-layer child span                                     |
 | `@ManagedEventHandler` | Method | Opens an ENTRY-layer span for messaging handlers; auto-extracts trace context from event arguments |
 
 ---
@@ -133,14 +133,14 @@ class MyEnrichmentHook : OperationHook {
 
 ### Default Logging Hook
 
-| Property | Default | Description |
-|----------|---------|-------------|
-| `pretty` | `false` | Human-readable formatted output |
-| `json` | `true` | JSON format (recommended for production) |
-| `spans` | `false` | Append span tree to pretty output |
-| `response` | `true` | Include the operation block's return value |
-| `success-level` | `INFO` | Log level for successful operations |
-| `failure-level` | `ERROR` | Log level for failed operations |
+| Property        | Default | Description                                |
+|-----------------|---------|--------------------------------------------|
+| `pretty`        | `false` | Human-readable formatted output            |
+| `json`          | `true`  | JSON format (recommended for production)   |
+| `spans`         | `false` | Append span tree to pretty output          |
+| `response`      | `true`  | Include the operation block's return value |
+| `success-level` | `INFO`  | Log level for successful operations        |
+| `failure-level` | `ERROR` | Log level for failed operations            |
 
 **Pretty output (with `spans: true`):**
 ```
@@ -227,11 +227,11 @@ operation-manager:
 
 When `@EnableAsync` is active, `ManagedContextTaskDecorator` is automatically registered. When an `@Async` method is called, the context is **forked** — each async thread receives an independent copy.
 
-| Field | Behavior |
-|-------|----------|
-| `traceId`, `causationId`, `issuer` | Inherited |
-| `executionScope` | Set to `ASYNC` |
-| Span tree, timing, hook records | Independent |
+| Field                              | Behavior       |
+|------------------------------------|----------------|
+| `traceId`, `causationId`, `issuer` | Inherited      |
+| `executionScope`                   | Set to `ASYNC` |
+| Span tree, timing, hook records    | Independent    |
 
 ### Java 21 Virtual Thread Support
 
@@ -262,13 +262,13 @@ launch(Dispatchers.IO + ManagedContextElement(Operations.context)) {
 
 ### Automatic context extraction priority
 
-| Priority | Source |
-|----------|--------|
-| 1st | `@ManagedEvent*` field annotations |
-| 2nd | Kafka `ConsumerRecord` headers (W3C traceparent → X-Trace-Id fallback) |
-| 3rd | Spring `Message<*>` headers |
-| 4th | Duck typing (reflection scan for `traceId`, `causationId`, etc.) |
-| 5th | `generate-when-missing` (generate new IDs or inject empty strings) |
+| Priority | Source                                                                 |
+|----------|------------------------------------------------------------------------|
+| 1st      | `@ManagedEvent*` field annotations                                     |
+| 2nd      | Kafka `ConsumerRecord` headers (W3C traceparent → X-Trace-Id fallback) |
+| 3rd      | Spring `Message<*>` headers                                            |
+| 4th      | Duck typing (reflection scan for `traceId`, `causationId`, etc.)       |
+| 5th      | `generate-when-missing` (generate new IDs or inject empty strings)     |
 
 ```kotlin
 @Component
@@ -344,10 +344,10 @@ management:
 
 ## Logback Integration
 
-| Logger | Content |
-|--------|---------|
-| `OperationManager.Pretty` | Human-readable box format |
-| `OperationManager.JSON` | Structured JSON (production) |
+| Logger                    | Content                      |
+|---------------------------|------------------------------|
+| `OperationManager.Pretty` | Human-readable box format    |
+| `OperationManager.JSON`   | Structured JSON (production) |
 
 ```xml
 <logger name="OperationManager.Pretty" level="INFO" additivity="false">
@@ -360,15 +360,15 @@ management:
 
 ## Extending the Library
 
-| Interface | Purpose |
-|-----------|---------|
-| `TraceIdProvider` | Custom trace ID generation |
-| `SpanIdProvider` | Custom span ID generation |
-| `CausationIdProvider` | Custom causation ID generation |
-| `IssuerProvider` | Custom issuer resolution |
-| `TelemetryPropagationProvider` | Custom header propagation |
-| `MetricsRecorder` | Custom metrics backend |
-| `OperationHook` | Custom lifecycle callbacks |
+| Interface                      | Purpose                        |
+|--------------------------------|--------------------------------|
+| `TraceIdProvider`              | Custom trace ID generation     |
+| `SpanIdProvider`               | Custom span ID generation      |
+| `CausationIdProvider`          | Custom causation ID generation |
+| `IssuerProvider`               | Custom issuer resolution       |
+| `TelemetryPropagationProvider` | Custom header propagation      |
+| `MetricsRecorder`              | Custom metrics backend         |
+| `OperationHook`                | Custom lifecycle callbacks     |
 
 ---
 
@@ -378,3 +378,5 @@ management:
 - **`Operations.context` scope**: Calling outside a managed scope throws `IllegalStateException`.
 - **Streaming responses**: The `traceparent` response header may not be delivered for streaming or async responses.
 - **Thread-local context**: `ManagedContext` is stored in `ThreadLocal`. Kotlin coroutines require explicit propagation via `ManagedContextElement`.
+
+---

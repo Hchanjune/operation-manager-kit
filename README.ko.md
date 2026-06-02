@@ -18,22 +18,24 @@
 
 ## 모듈
 
-| 모듈 | 설명 | 문서 |
-|------|------|------|
-| `core` | 프레임워크 독립적인 실행 엔진, 컨텍스트 모델, 프로바이더 계약 | — |
-| `spring-webmvc` | Servlet 스택 자동 설정 (AOP Aspect, 서블릿 필터, Micrometer) | [Servlet.ko.md](Servlet.ko.md) |
+| 모듈               | 설명                                                           | 문서                               |
+|------------------|--------------------------------------------------------------|----------------------------------|
+| `core`           | 프레임워크 독립적인 실행 엔진, 컨텍스트 모델, 프로바이더 계약                          | —                                |
+| `spring-webmvc`  | Servlet 스택 자동 설정 (AOP Aspect, 서블릿 필터, Micrometer)            | [Servlet.ko.md](Servlet.ko.md)   |
 | `spring-webflux` | Reactive 스택 자동 설정 (AOP Aspect, WebFilter, Kotlin Coroutines) | [Reactive.ko.md](Reactive.ko.md) |
+
+→ **[API 레퍼런스](API.ko.md)** — 모든 어노테이션, 클래스, 인터페이스, 설정 프로퍼티
 
 ---
 
 ## 호환성
 
-| Spring Boot | Spring Framework | Java | 지원 여부 |
-|-------------|-----------------|------|----------|
-| 3.2.x | 6.1 | 17+ | 지원 (최소 버전) |
-| 3.3.x – 3.5.x | 6.1 / 6.2 | 17+ | 지원 |
-| 4.0.x+ | 7.0+ | 21+ | 지원 |
-| 2.x | 5.x | — | 미지원 (`javax.*` 네임스페이스) |
+| Spring Boot   | Spring Framework | Java | 지원 여부                  |
+|---------------|------------------|------|------------------------|
+| 3.2.x         | 6.1              | 17+  | 지원 (최소 버전)             |
+| 3.3.x – 3.5.x | 6.1 / 6.2        | 17+  | 지원                     |
+| 4.0.x+        | 7.0+             | 21+  | 지원                     |
+| 2.x           | 5.x              | —    | 미지원 (`javax.*` 네임스페이스) |
 
 > **Spring Boot 2.x**는 Spring Boot 3.0에서 `javax.*` → `jakarta.*` 네임스페이스가 변경되었기 때문에 지원하지 않습니다.
 
@@ -104,4 +106,6 @@ dependencies {
 
 ## 라이선스
 
-이 프로젝트는 오픈소스입니다. 기여를 환영합니다.
+### [Apache License 2.0](LICENSE)
+
+---
