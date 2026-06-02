@@ -1,10 +1,16 @@
 package io.github.hchanjune.omk.webflux.aspect
 
 import io.github.hchanjune.omk.core.annotations.ManagedController
+import io.github.hchanjune.omk.core.annotations.ManagedEventHandler
 import io.github.hchanjune.omk.core.annotations.ManagedMetric
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
 import io.github.hchanjune.omk.core.annotations.ManagedRepository
 import io.github.hchanjune.omk.core.annotations.ManagedService
+import io.github.hchanjune.omk.core.provider.CausationIdProvider
+import io.github.hchanjune.omk.core.provider.ManagedContextProvider
+import io.github.hchanjune.omk.core.provider.TraceIdProvider
+import io.github.hchanjune.omk.webflux.ReactiveOperations
+import kotlinx.coroutines.runBlocking
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.webflux.TestSupport
@@ -29,6 +35,10 @@ import kotlin.test.assertNull
 
 @ManagedController
 private class StubController
+
+private class StubEventHolder {
+    @ManagedEventHandler fun handleEvent(payload: String) {}
+}
 
 @ManagedService
 private class StubService
@@ -315,6 +325,83 @@ class AspectsDirectTest {
         val jp = fakeJp(StubMetricHolder::class.java, methodName = "unnamed", args = arrayOf(createContinuationWithContext(ctx)))
         aspect.aroundMetric(jp, ann)
         assertEquals("StubMetricHolder.unnamed", ctx.rootSpan?.name?.value)
+    }
+
+    // ── ManagedEventHandlerAspect ─────────────────────────────────────────────
+
+    private fun configureEventProviders() {
+        ReactiveOperations.configureEventProviders(
+            contextProvider = object : ManagedContextProvider {
+                override fun provide() = ManagedContext(spanIdProvider = spanIdProvider)
+            },
+            traceIdProvider = object : TraceIdProvider { override fun provideTraceId() = "evt-trace" },
+            causationIdProvider = object : CausationIdProvider { override fun provideCausationId() = "evt-cause" },
+            generateWhenMissing = true
+        )
+    }
+
+    @Test
+    fun `event handler aspect handles Mono return type with existing context`() {
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val ctx = context()
+        val jp = fakeMonoJp(StubEventHolder::class.java, "handleEvent")
+        val jpWithCtx = fakeJp(
+            StubEventHolder::class.java,
+            "handleEvent",
+            returns = Mono.just("event-ok"),
+            returnType = Mono::class.java,
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        val result = runBlocking { aspect.aroundEventHandler(jpWithCtx, ann) }
+        assertNotNull(result)
+    }
+
+    @Test
+    fun `event handler aspect proceeds without context`() {
+        configureEventProviders()
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val jp = fakeJp(StubEventHolder::class.java, "handleEvent", returns = "ok")
+        val result = runBlocking { aspect.aroundEventHandler(jp, ann) }
+        assertEquals("ok", result)
+    }
+
+    @Test
+    fun `event handler aspect propagates exception without context`() {
+        configureEventProviders()
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val jp = fakeJp(StubEventHolder::class.java, "handleEvent", throws = RuntimeException("evt-boom"))
+        assertFailsWith<RuntimeException> { runBlocking { aspect.aroundEventHandler(jp, ann) } }
+    }
+
+    @Test
+    fun `event handler aspect with existing context uses it`() {
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubEventHolder::class.java, "handleEvent", returns = "ok",
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        val result = runBlocking { aspect.aroundEventHandler(jp, ann) }
+        assertEquals("ok", result)
+    }
+
+    @Test
+    fun `event handler aspect Mono path without context`() {
+        configureEventProviders()
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val jp = fakeMonoJp(StubEventHolder::class.java, "handleEvent")
+        val result = runBlocking { aspect.aroundEventHandler(jp, ann) }
+        assertNotNull(result)
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────
