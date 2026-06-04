@@ -29,6 +29,7 @@ dependencies {
     compileOnly("io.opentelemetry:opentelemetry-api")
 
     testImplementation(kotlin("test"))
+    testImplementation(kotlin("reflect"))
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
     testImplementation("org.slf4j:slf4j-api")
     testRuntimeOnly("org.slf4j:slf4j-simple")

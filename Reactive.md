@@ -109,15 +109,24 @@ In a WebFlux + Coroutines application, use `ReactiveOperations` to access the ma
 class AuditService {
 
     @ManagedOperation(operation = "Audit", useCase = "Compliance")
-    suspend fun record(): AuditResult {
-        val result = ReactiveOperations {  // this: ManagedContext
-            println(traceId)
-            println(issuer)
-            println(operation)
-            AuditResult(traceId = traceId, issuer = issuer)
-        }
-        return result.data
+    suspend fun record(): OperationResult<AuditResult> = ReactiveOperations {  // this: ManagedContext
+        println(traceId)
+        println(issuer)
+        println(operation)
+        AuditResult(traceId = traceId, issuer = issuer)
     }
+}
+```
+
+The return type can be inferred — the explicit annotation is optional:
+
+```kotlin
+suspend fun record() = ReactiveOperations {
+    AuditResult(traceId = traceId, issuer = issuer)
+}
+
+suspend fun record() = ReactiveOperations<AuditResult> {
+    AuditResult(traceId = traceId, issuer = issuer)
 }
 ```
 

@@ -25,11 +25,13 @@ import org.aspectj.lang.reflect.SourceLocation
 import org.aspectj.runtime.internal.AroundClosure
 import reactor.core.publisher.Mono
 import reactor.util.context.Context
+import kotlin.coroutines.Continuation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 // ── Stub annotations ──────────────────────────────────────────────────────────
 
@@ -56,6 +58,18 @@ private class StubOperationHolder {
     @ManagedOperation                                                   fun noName() {}
 }
 
+// Stub whose method return type is Mono — used so isMono() returns true
+private class MonoStub {
+    fun monoMethod(): Mono<String> = Mono.just("stub-result")
+}
+private val MONO_METHOD = MonoStub::class.java.getDeclaredMethod("monoMethod")
+
+// Stub with a real suspend method — used so isNullContinuation() returns true
+private class SuspendStub {
+    suspend fun doWork(): String = "suspended"
+}
+private val SUSPEND_METHOD = SuspendStub::class.java.getDeclaredMethod("doWork", Continuation::class.java)
+
 // ── FakeJoinPoint ────────────────────────────────────────────────────────────
 
 private fun fakeJp(
@@ -64,7 +78,9 @@ private fun fakeJp(
     returns: Any? = "ok",
     throws: Throwable? = null,
     returnType: Class<*> = String::class.java,
-    args: Array<Any?> = arrayOf("placeholder")
+    method: java.lang.reflect.Method = String::class.java.getMethod("toString"),
+    args: Array<Any?> = arrayOf("placeholder"),
+    target: Any? = null
 ): ProceedingJoinPoint = object : ProceedingJoinPoint {
     override fun `set$AroundClosure`(arc: AroundClosure?) {}
     override fun proceed(): Any? = throws?.let { throw it } ?: returns
@@ -75,7 +91,7 @@ private fun fakeJp(
         override fun getDeclaringType(): Class<*> = declaringType
         override fun getDeclaringTypeName(): String = declaringType.name
         override fun getModifiers() = 0
-        override fun getMethod() = String::class.java.getMethod("toString")
+        override fun getMethod() = method
         override fun getReturnType(): Class<*> = returnType
         override fun getParameterNames() = arrayOf<String>()
         override fun getParameterTypes() = arrayOf<Class<*>>()
@@ -85,7 +101,7 @@ private fun fakeJp(
         override fun toLongString() = toString()
     }
     override fun getThis(): Any? = null
-    override fun getTarget(): Any? = null
+    override fun getTarget(): Any? = target
     override fun getSourceLocation(): SourceLocation = object : SourceLocation {
         override fun getWithinType(): Class<*> = declaringType
         override fun getFileName() = "test"
@@ -98,6 +114,7 @@ private fun fakeJp(
     override fun toLongString() = toShortString()
 }
 
+// fakeMonoJp: proceed() returns a Mono but isMono() is still false (legacy helper, keeps existing tests unchanged)
 private fun fakeMonoJp(
     declaringType: Class<*>,
     methodName: String = "doWork",
@@ -107,6 +124,34 @@ private fun fakeMonoJp(
     methodName = methodName,
     returns = Mono.justOrEmpty(monoResult),
     returnType = Mono::class.java
+)
+
+// fakeProperMonoJp: method return type is Mono, so isMono() returns true
+private fun fakeProperMonoJp(
+    declaringType: Class<*>,
+    methodName: String = "doWork",
+    monoResult: Any? = "mono-ok",
+    args: Array<Any?> = emptyArray()
+): ProceedingJoinPoint = fakeJp(
+    declaringType = declaringType,
+    methodName = methodName,
+    returns = Mono.justOrEmpty(monoResult),
+    returnType = Mono::class.java,
+    method = MONO_METHOD,
+    args = args
+)
+
+// fakeNullContinuationJp: last arg is null + method has Continuation param, so isNullContinuation() returns true
+private fun fakeNullContinuationJp(
+    declaringType: Class<*>,
+    methodName: String = "doWork",
+    suspendTarget: Any = SuspendStub()
+): ProceedingJoinPoint = fakeJp(
+    declaringType = declaringType,
+    methodName = methodName,
+    method = SUSPEND_METHOD,
+    args = arrayOf(null),
+    target = suspendTarget
 )
 
 // ── Test class ────────────────────────────────────────────────────────────────
@@ -159,6 +204,53 @@ class AspectsDirectTest {
         assertNotNull(result)
     }
 
+    @Test
+    fun `controller aspect isMono path without reactor context returns mono unchanged`() {
+        val aspect = ManagedControllerAspect(spanIdProvider)
+        val ann = StubController::class.java.getAnnotation(ManagedController::class.java)!!
+        val jp = fakeProperMonoJp(StubController::class.java)
+        val result = (aspect.aroundController(jp, ann) as Mono<*>).block()
+        assertEquals("mono-ok", result)
+    }
+
+    @Test
+    fun `controller aspect isMono path with reactor context pushes and pops span`() {
+        val aspect = ManagedControllerAspect(spanIdProvider)
+        val ann = StubController::class.java.getAnnotation(ManagedController::class.java)!!
+        val ctx = context()
+        val jp = fakeProperMonoJp(StubController::class.java, "getOrder")
+        val result = (aspect.aroundController(jp, ann) as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertEquals("mono-ok", result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `controller aspect suspend path when proceed returns Mono wraps it with span`() {
+        val aspect = ManagedControllerAspect(spanIdProvider)
+        val ann = StubController::class.java.getAnnotation(ManagedController::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubController::class.java,
+            methodName = "getOrder",
+            returns = Mono.just("order-data"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        val result = (aspect.aroundController(jp, ann) as Mono<*>).block()
+        assertEquals("order-data", result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `controller aspect null continuation path calls proceedAsMono`() {
+        val aspect = ManagedControllerAspect(spanIdProvider)
+        val ann = StubController::class.java.getAnnotation(ManagedController::class.java)!!
+        val jp = fakeNullContinuationJp(StubController::class.java)
+        val result = aspect.aroundController(jp, ann)
+        assertTrue(result is Mono<*>)
+    }
+
     // ── ManagedOperationAspect ────────────────────────────────────────────────
 
     @Test
@@ -205,6 +297,57 @@ class AspectsDirectTest {
         assertEquals("StubOperationHolder.noName", ctx.rootSpan?.name?.value)
     }
 
+    @Test
+    fun `operation aspect isMono path without reactor context returns mono unchanged`() {
+        val aspect = ManagedOperationAspect(spanIdProvider)
+        val ann = StubOperationHolder::class.java.getDeclaredMethod("withName")
+            .getAnnotation(ManagedOperation::class.java)!!
+        val jp = fakeProperMonoJp(StubOperationHolder::class.java)
+        val result = (aspect.aroundOperation(jp, ann) as Mono<*>).block()
+        assertEquals("mono-ok", result)
+    }
+
+    @Test
+    fun `operation aspect isMono path with reactor context injects annotation info`() {
+        val aspect = ManagedOperationAspect(spanIdProvider)
+        val ann = StubOperationHolder::class.java.getDeclaredMethod("withName")
+            .getAnnotation(ManagedOperation::class.java)!!
+        val ctx = context()
+        val jp = fakeProperMonoJp(StubOperationHolder::class.java, "withName")
+        val result = (aspect.aroundOperation(jp, ann) as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertEquals("mono-ok", result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `operation aspect suspend path when proceed returns Mono wraps it with span`() {
+        val aspect = ManagedOperationAspect(spanIdProvider)
+        val ann = StubOperationHolder::class.java.getDeclaredMethod("withName")
+            .getAnnotation(ManagedOperation::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubOperationHolder::class.java,
+            methodName = "withName",
+            returns = Mono.just("op-data"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        val result = (aspect.aroundOperation(jp, ann) as Mono<*>).block()
+        assertEquals("op-data", result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `operation aspect null continuation path calls proceedAsMono`() {
+        val aspect = ManagedOperationAspect(spanIdProvider)
+        val ann = StubOperationHolder::class.java.getDeclaredMethod("withName")
+            .getAnnotation(ManagedOperation::class.java)!!
+        val jp = fakeNullContinuationJp(StubOperationHolder::class.java)
+        val result = aspect.aroundOperation(jp, ann)
+        assertTrue(result is Mono<*>)
+    }
+
     // ── ManagedServiceAspect ──────────────────────────────────────────────────
 
     @Test
@@ -233,6 +376,44 @@ class AspectsDirectTest {
         val jp = fakeMonoJp(StubService::class.java)
         val result = aspect.aroundService(jp, ann)
         assertNotNull(result)
+    }
+
+    @Test
+    fun `service aspect isMono path with reactor context injects service name`() {
+        val aspect = ManagedServiceAspect()
+        val ann = StubService::class.java.getAnnotation(ManagedService::class.java)!!
+        val ctx = context()
+        val jp = fakeProperMonoJp(StubService::class.java)
+        val result = (aspect.aroundService(jp, ann) as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertEquals("mono-ok", result)
+        assertEquals("StubService", ctx.service)
+    }
+
+    @Test
+    fun `service aspect suspend path when proceed returns Mono applies service injection`() {
+        val aspect = ManagedServiceAspect()
+        val ann = StubService::class.java.getAnnotation(ManagedService::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubService::class.java,
+            returns = Mono.just("svc-data"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        val result = (aspect.aroundService(jp, ann) as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertEquals("svc-data", result)
+    }
+
+    @Test
+    fun `service aspect null continuation path calls proceedAsMono`() {
+        val aspect = ManagedServiceAspect()
+        val ann = StubService::class.java.getAnnotation(ManagedService::class.java)!!
+        val jp = fakeNullContinuationJp(StubService::class.java)
+        val result = aspect.aroundService(jp, ann)
+        assertTrue(result is Mono<*>)
     }
 
     // ── ManagedRepositoryAspect ───────────────────────────────────────────────
@@ -272,6 +453,44 @@ class AspectsDirectTest {
         aspect.aroundRepository(jp, ann)
         assertNull(ctx.peek())
         assertNotNull(ctx.rootSpan)
+    }
+
+    @Test
+    fun `repository aspect isMono path with reactor context pushes and pops DB span`() {
+        val aspect = ManagedRepositoryAspect(spanIdProvider)
+        val ann = StubRepo::class.java.getAnnotation(ManagedRepository::class.java)!!
+        val ctx = context()
+        val jp = fakeProperMonoJp(StubRepo::class.java, "findAll")
+        val result = (aspect.aroundRepository(jp, ann) as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertEquals("mono-ok", result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `repository aspect suspend path when proceed returns Mono wraps with DB span`() {
+        val aspect = ManagedRepositoryAspect(spanIdProvider)
+        val ann = StubRepo::class.java.getAnnotation(ManagedRepository::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubRepo::class.java,
+            methodName = "findAll",
+            returns = Mono.just("rows"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        val result = (aspect.aroundRepository(jp, ann) as Mono<*>).block()
+        assertEquals("rows", result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `repository aspect null continuation path calls proceedAsMono`() {
+        val aspect = ManagedRepositoryAspect(spanIdProvider)
+        val ann = StubRepo::class.java.getAnnotation(ManagedRepository::class.java)!!
+        val jp = fakeNullContinuationJp(StubRepo::class.java)
+        val result = aspect.aroundRepository(jp, ann)
+        assertTrue(result is Mono<*>)
     }
 
     // ── ManagedMetricAspect ───────────────────────────────────────────────────
@@ -325,6 +544,47 @@ class AspectsDirectTest {
         val jp = fakeJp(StubMetricHolder::class.java, methodName = "unnamed", args = arrayOf(createContinuationWithContext(ctx)))
         aspect.aroundMetric(jp, ann)
         assertEquals("StubMetricHolder.unnamed", ctx.rootSpan?.name?.value)
+    }
+
+    @Test
+    fun `metric aspect isMono path with reactor context pushes and pops span`() {
+        val aspect = ManagedMetricAspect(spanIdProvider)
+        val ann = StubMetricHolder::class.java.getDeclaredMethod("named")
+            .getAnnotation(ManagedMetric::class.java)!!
+        val ctx = context()
+        val jp = fakeProperMonoJp(StubMetricHolder::class.java, "named")
+        val result = (aspect.aroundMetric(jp, ann) as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertEquals("mono-ok", result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `metric aspect suspend path when proceed returns Mono wraps with span`() {
+        val aspect = ManagedMetricAspect(spanIdProvider)
+        val ann = StubMetricHolder::class.java.getDeclaredMethod("named")
+            .getAnnotation(ManagedMetric::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubMetricHolder::class.java,
+            methodName = "named",
+            returns = Mono.just("metric-data"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        val result = (aspect.aroundMetric(jp, ann) as Mono<*>).block()
+        assertEquals("metric-data", result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `metric aspect null continuation path calls proceedAsMono`() {
+        val aspect = ManagedMetricAspect(spanIdProvider)
+        val ann = StubMetricHolder::class.java.getDeclaredMethod("named")
+            .getAnnotation(ManagedMetric::class.java)!!
+        val jp = fakeNullContinuationJp(StubMetricHolder::class.java)
+        val result = aspect.aroundMetric(jp, ann)
+        assertTrue(result is Mono<*>)
     }
 
     // ── ManagedEventHandlerAspect ─────────────────────────────────────────────
@@ -402,6 +662,75 @@ class AspectsDirectTest {
         val jp = fakeMonoJp(StubEventHolder::class.java, "handleEvent")
         val result = runBlocking { aspect.aroundEventHandler(jp, ann) }
         assertNotNull(result)
+    }
+
+    @Test
+    fun `event handler aspect isMono path contextOwner=true creates new context`() {
+        configureEventProviders()
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val jp = fakeProperMonoJp(StubEventHolder::class.java, "handleEvent")
+        // subscribe without reactor context → contextOwner=true → initializes new context
+        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>).block()
+        assertEquals("mono-ok", result)
+    }
+
+    @Test
+    fun `event handler aspect isMono path contextOwner=false uses existing context`() {
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val ctx = context()
+        val jp = fakeProperMonoJp(StubEventHolder::class.java, "handleEvent")
+        // subscribe with context → contextOwner=false → wraps existing context
+        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertEquals("mono-ok", result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `event handler aspect null continuation path without context creates new context`() {
+        configureEventProviders()
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val jp = fakeNullContinuationJp(StubEventHolder::class.java, "handleEvent")
+        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>).block()
+        assertNotNull(result)
+    }
+
+    @Test
+    fun `event handler aspect null continuation path with context uses existing context`() {
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val ctx = context()
+        val jp = fakeNullContinuationJp(StubEventHolder::class.java, "handleEvent")
+        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertNotNull(result)
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `event handler aspect suspend existing context when proceed returns Mono wraps with span`() {
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubEventHolder::class.java,
+            "handleEvent",
+            returns = Mono.just("event-mono"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>).block()
+        assertEquals("event-mono", result)
+        assertNull(ctx.peek())
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────
