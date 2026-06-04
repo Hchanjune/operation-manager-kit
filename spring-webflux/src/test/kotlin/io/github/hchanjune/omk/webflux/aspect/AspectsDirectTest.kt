@@ -64,11 +64,14 @@ private class MonoStub {
 }
 private val MONO_METHOD = MonoStub::class.java.getDeclaredMethod("monoMethod")
 
-// Stub with a real suspend method — used so isNullContinuation() returns true
-private class SuspendStub {
+// Stub with a real suspend method — used so isNullContinuation() returns true.
+// Must NOT be private: CoroutinesUtils invokes the method via reflection from a different package,
+// which requires the declaring class to be publicly accessible.
+class SuspendStub {
     suspend fun doWork(): String = "suspended"
 }
 private val SUSPEND_METHOD = SuspendStub::class.java.getDeclaredMethod("doWork", Continuation::class.java)
+    .also { it.isAccessible = true }
 
 // ── FakeJoinPoint ────────────────────────────────────────────────────────────
 
