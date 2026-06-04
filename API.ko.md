@@ -236,10 +236,16 @@ result.data    // AuditResult
 result.context // ManagedContext
 ```
 
-### Mono invoke 연산자
+### Mono 헬퍼
 
 ```kotlin
-operator fun <T : Any> invoke(block: ManagedContext.() -> Mono<T>): Mono<OperationResult<T>>
+fun <T : Any> mono(block: ManagedContext.() -> Mono<T>): Mono<OperationResult<T>>
+```
+
+```kotlin
+val result: Mono<OperationResult<MyData>> = ReactiveOperations.mono {
+    Mono.just(MyData())
+}
 ```
 
 ### 프로퍼티

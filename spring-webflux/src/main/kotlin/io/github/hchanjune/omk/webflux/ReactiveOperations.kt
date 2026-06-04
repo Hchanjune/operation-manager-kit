@@ -33,7 +33,7 @@ object ReactiveOperations {
         return OperationResult(context = managedContext, data = data)
     }
 
-    operator fun <T : Any> invoke(block: ManagedContext.() -> Mono<T>): Mono<OperationResult<T>> =
+    fun <T : Any> mono(block: ManagedContext.() -> Mono<T>): Mono<OperationResult<T>> =
         Mono.deferContextual { ctx ->
             val managedContext = ctx.getOrEmpty<ManagedContext>(CONTEXT_KEY).orElse(null)
                 ?: return@deferContextual Mono.error(IllegalStateException(

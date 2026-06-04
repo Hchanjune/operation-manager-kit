@@ -26,7 +26,7 @@ class ReactiveOperationsTest {
         ReactiveOperations(block)
 
     private fun <T : Any> callMono(block: ManagedContext.() -> Mono<T>): Mono<OperationResult<T>> =
-        ReactiveOperations(block)
+        ReactiveOperations.mono(block)
 
     // ── suspend invoke ────────────────────────────────────────────────────────
 

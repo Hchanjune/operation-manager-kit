@@ -91,6 +91,54 @@ dependencies {
 
 ---
 
+## Usage at a Glance
+
+### Servlet Stack (Spring WebMVC)
+
+Annotate your components and wrap the business logic in `Operations { }` to capture the execution result alongside its managed context:
+
+```kotlin
+@Service
+@ManagedService
+class OrderService(private val orderRepository: OrderRepository) {
+
+    @ManagedOperation(operation = "CreateOrder", useCase = "OrderManagement")
+    fun create(request: OrderRequest) = Operations {
+        orderRepository.save(Order.from(request))
+    }
+}
+```
+
+### Reactive Stack (Spring WebFlux + Kotlin Coroutines)
+
+Use `ReactiveOperations { }` inside `suspend fun` methods. For non-coroutine Mono-returning methods, use `ReactiveOperations.mono { }`:
+
+```kotlin
+@Service
+@ManagedService
+class OrderService(private val orderRepository: OrderRepository) {
+
+    // suspend fun — recommended
+    @ManagedOperation(operation = "CreateOrder", useCase = "OrderManagement")
+    suspend fun create(request: OrderRequest) = ReactiveOperations {
+        orderRepository.save(Order.from(request))
+    }
+
+    // Mono-returning method
+    @ManagedOperation(operation = "FindOrder", useCase = "OrderManagement")
+    fun find(id: String): Mono<OperationResult<Order>> = ReactiveOperations.mono {
+        orderRepository.findById(id)
+    }
+}
+```
+
+| | Servlet (WebMVC) | Reactive (WebFlux) |
+|---|---|---|
+| Coroutine / blocking | `Operations { }` | `ReactiveOperations { }` |
+| Mono-returning | — | `ReactiveOperations.mono { }` |
+
+---
+
 ## Roadmap
 
 - [ ] Maven Central publishing

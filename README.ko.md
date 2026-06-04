@@ -91,6 +91,54 @@ dependencies {
 
 ---
 
+## 한눈에 보는 사용법
+
+### Servlet 스택 (Spring WebMVC)
+
+컴포넌트에 어노테이션을 붙이고, 비즈니스 로직을 `Operations { }` 로 감싸면 실행 결과와 관리 컨텍스트를 함께 캡처합니다:
+
+```kotlin
+@Service
+@ManagedService
+class OrderService(private val orderRepository: OrderRepository) {
+
+    @ManagedOperation(operation = "CreateOrder", useCase = "OrderManagement")
+    fun create(request: OrderRequest) = Operations {
+        orderRepository.save(Order.from(request))
+    }
+}
+```
+
+### Reactive 스택 (Spring WebFlux + Kotlin Coroutines)
+
+`suspend fun` 안에서는 `ReactiveOperations { }` 를 사용합니다. Mono를 반환하는 비코루틴 메서드에는 `ReactiveOperations.mono { }` 를 사용합니다:
+
+```kotlin
+@Service
+@ManagedService
+class OrderService(private val orderRepository: OrderRepository) {
+
+    // suspend fun — 권장 패턴
+    @ManagedOperation(operation = "CreateOrder", useCase = "OrderManagement")
+    suspend fun create(request: OrderRequest) = ReactiveOperations {
+        orderRepository.save(Order.from(request))
+    }
+
+    // Mono 반환 메서드
+    @ManagedOperation(operation = "FindOrder", useCase = "OrderManagement")
+    fun find(id: String): Mono<OperationResult<Order>> = ReactiveOperations.mono {
+        orderRepository.findById(id)
+    }
+}
+```
+
+| | Servlet (WebMVC) | Reactive (WebFlux) |
+|---|---|---|
+| 코루틴 / 블로킹 | `Operations { }` | `ReactiveOperations { }` |
+| Mono 반환 | — | `ReactiveOperations.mono { }` |
+
+---
+
 ## 로드맵
 
 - [ ] Maven Central 배포
