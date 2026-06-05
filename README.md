@@ -10,6 +10,19 @@
 
 ---
 
+## Table of Contents
+
+- [Modules](#modules)
+- [Compatibility](#compatibility)
+- [Installation](#installation)
+  - [Servlet Stack (Spring WebMVC)](#servlet-stack-spring-webmvc)
+  - [Reactive Stack (Spring WebFlux + Kotlin Coroutines)](#reactive-stack-spring-webflux--kotlin-coroutines)
+- [Usage at a Glance](#usage-at-a-glance)
+- [Roadmap](#roadmap)
+- [License](#license)
+
+---
+
 **Operation Manager Kit** is a lightweight observability and distributed tracing library for Spring-based applications.
 
 It provides a structured execution boundary around business logic, automatically capturing consistent metadata such as trace IDs, issuer identity, HTTP context, service/operation names, execution timing, and lifecycle hooks — with minimal configuration.

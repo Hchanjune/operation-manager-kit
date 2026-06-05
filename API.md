@@ -6,6 +6,31 @@
 
 ---
 
+## Table of Contents
+
+- [Annotations](#annotations)
+  - [`@ManagedController`](#managedcontroller)
+  - [`@ManagedService`](#managedservice)
+  - [`@ManagedRepository`](#managedrepository)
+  - [`@ManagedOperation`](#managedoperation)
+  - [`@ManagedMetric`](#managedmetric)
+  - [`@ManagedEventHandler`](#managedeventhandler)
+  - [Event field annotations](#event-field-annotations)
+- [ManagedContext](#managedcontext)
+- [Operations (WebMVC)](#operations-webmvc)
+- [ReactiveOperations (WebFlux)](#reactiveoperations-webflux)
+- [OperationHook](#operationhook)
+- [OperationResult\<T\>](#operationresultt)
+- [MetricSpan](#metricspan)
+- [MetricOutcome](#metricoutcome)
+- [EventMetadata](#eventmetadata)
+- [ExecutionScope](#executionscope)
+- [ManagedProtocolType](#managedprotocoltype)
+- [Provider Interfaces](#provider-interfaces)
+- [Configuration Properties](#configuration-properties)
+
+---
+
 ## Annotations
 
 ### `@ManagedController`

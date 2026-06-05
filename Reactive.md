@@ -6,6 +6,25 @@
 
 ---
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Annotations](#annotations)
+- [Hook System](#hook-system)
+- [Span Metrics](#span-metrics)
+- [Configuration Properties](#configuration-properties)
+- [How Context Propagates](#how-context-propagates)
+- [Event-Driven Context Propagation](#event-driven-context-propagation-managedeventhandler)
+- [Spring Security Integration](#spring-security-integration)
+- [Distributed Tracing](#distributed-tracing)
+- [Observability Pipelines](#observability-pipelines)
+- [Logback Integration](#logback-integration)
+- [Extending the Library](#extending-the-library)
+- [Notes & Limitations](#notes--limitations)
+
+---
+
 ## Prerequisites
 
 ### Dependencies
