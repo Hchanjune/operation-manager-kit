@@ -26,6 +26,7 @@
 - [EventMetadata](#eventmetadata)
 - [ExecutionScope](#executionscope)
 - [ManagedProtocolType](#managedprotocoltype)
+- [OperationOutcome](#operationoutcome)
 - [프로바이더 인터페이스](#프로바이더-인터페이스)
 - [설정 프로퍼티](#설정-프로퍼티)
 
@@ -162,6 +163,8 @@ class ManagedContext
 | `operation`      | `String`              | `@ManagedOperation.operation` 값           |
 | `useCase`        | `String`              | `@ManagedOperation.useCase` 값             |
 | `response`       | `String`              | `Operations { }` 반환값의 `toString()`        |
+| `statusCode`     | `Int?`                | HTTP 응답 상태 코드. 응답 커밋 시점에 주입되기 전까지는 `null` |
+| `outcome`        | `OperationOutcome`    | `statusCode`로부터 도출된 분류. 주입 전까지는 `SUCCESS` |
 | `timestamp`      | `Instant`             | 컨텍스트 생성 시간 (UTC)                          |
 | `durationMs`     | `Long`                | 총 실행 시간 (밀리초)                             |
 | `executionScope` | `ExecutionScope`      | `PRIMARY`, `ASYNC`, 또는 `EVENT`            |
@@ -292,6 +295,8 @@ interface OperationHook {
 }
 ```
 
+`onFailure`는 응답 상태가 `5xx`이거나 핸들러가 예외를 던진 경우에만 호출됩니다. `401`/`403`/그 외 `4xx`를 포함한 나머지 응답은 모두 `onSuccess`가 호출되므로, 이를 진짜 `SUCCESS`와 구분하려면 `context.outcome`([OperationOutcome](#operationoutcome) 참고)을 확인하세요.
+
 Spring `@Component`로 등록하고, `@Order`로 순서를 제어합니다.
 
 ```kotlin
@@ -409,6 +414,28 @@ enum class ManagedProtocolType {
 
 ---
 
+## OperationOutcome
+
+```kotlin
+enum class OperationOutcome {
+    SUCCESS, UNAUTHENTICATED, FORBIDDEN, CLIENT_ERROR, SERVER_ERROR
+}
+```
+
+HTTP 응답 상태 코드로부터 도출되는 분류로, WebMVC/WebFlux 필터가 success/failure 훅을 호출하기 직전에 `ManagedContext.injectStatusCode(statusCode)`를 통해 설정합니다.
+
+| Outcome           | 상태 코드 범위 |
+|-------------------|--------------|
+| `SUCCESS`         | < 400        |
+| `UNAUTHENTICATED` | 401          |
+| `FORBIDDEN`       | 403          |
+| `CLIENT_ERROR`    | 그 외 4xx     |
+| `SERVER_ERROR`    | >= 500       |
+
+`onFailure`는 `SERVER_ERROR`일 때만 호출됩니다. `UNAUTHENTICATED`/`FORBIDDEN`을 포함한 나머지 outcome은 모두 `onSuccess`가 호출되는데, 요청이 정상적으로 처리되어 의도한 응답(예: Spring Security의 `AuthenticationEntryPoint`가 작성한 401)이 반환되었기 때문입니다. `DefaultOperationLoggingHook`은 `onSuccess` 내부에서 `context.outcome`을 확인해, `SUCCESS`가 아닌 outcome은 `logging.success-level` 대신 `logging.client-error-level`로 로깅합니다.
+
+---
+
 ## 프로바이더 인터페이스
 
 동일한 인터페이스의 `@Bean`을 등록하면 기본 구현을 교체할 수 있습니다.
@@ -496,6 +523,7 @@ interface MetricsRecorder {
 | `logging.response`                                  | `Boolean`         | `true`           | 오퍼레이션 반환값을 로그에 포함                  |
 | `logging.success-level`                             | `LogLevel`        | `INFO`           | 성공 시 로그 레벨                         |
 | `logging.failure-level`                             | `LogLevel`        | `ERROR`          | 실패 시 로그 레벨                         |
+| `logging.client-error-level`                        | `LogLevel`        | `WARN`           | `outcome`이 `SUCCESS`가 아닌 `onSuccess` 호출(`UNAUTHENTICATED`, `FORBIDDEN`, `CLIENT_ERROR` 등)의 로그 레벨 |
 | `async-propagation.enabled`                         | `Boolean`         | `true`           | `@Async` 컨텍스트 전파 활성화               |
 | `async-propagation.hook-enabled`                    | `Boolean`         | `false`          | async 태스크 완료 시 훅 실행                |
 | `telemetry.propagation.mode`                        | `PropagationMode` | `W3C_STANDARD`   | `W3C_STANDARD` 또는 `CUSTOM`         |
@@ -517,6 +545,7 @@ interface MetricsRecorder {
 | `logging.response`                                  | `Boolean`         | `true`           | 오퍼레이션 반환값을 로그에 포함          |
 | `logging.success-level`                             | `LogLevel`        | `INFO`           | 성공 시 로그 레벨                 |
 | `logging.failure-level`                             | `LogLevel`        | `ERROR`          | 실패 시 로그 레벨                 |
+| `logging.client-error-level`                        | `LogLevel`        | `WARN`           | `outcome`이 `SUCCESS`가 아닌 `onSuccess` 호출(`UNAUTHENTICATED`, `FORBIDDEN`, `CLIENT_ERROR` 등)의 로그 레벨 |
 | `telemetry.propagation.mode`                        | `PropagationMode` | `W3C_STANDARD`   | `W3C_STANDARD` 또는 `CUSTOM` |
 | `telemetry.propagation.generate-when-missing`       | `Boolean`         | `true`           | 요청 헤더에 ID가 없을 때 자동 생성      |
 | `telemetry.propagation.custom-headers.trace-id`     | `String`          | `X-Trace-Id`     | 커스텀 트레이스 ID 헤더명            |

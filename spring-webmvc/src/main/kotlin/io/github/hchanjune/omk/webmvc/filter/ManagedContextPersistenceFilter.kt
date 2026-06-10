@@ -1,6 +1,7 @@
 package io.github.hchanjune.omk.webmvc.filter
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
@@ -56,8 +57,13 @@ class ManagedContextPersistenceFilter(
                 Operations.initialize(context)
                 try {
                     filterChain.doFilter(request, response)
+                    context.injectStatusCode(response.status)
                     Operations.complete()
-                    compositeHook.onSuccess(context)
+                    if (context.outcome == OperationOutcome.SERVER_ERROR) {
+                        compositeHook.onFailure(context, RuntimeException("HTTP ${response.status}"))
+                    } else {
+                        compositeHook.onSuccess(context)
+                    }
                 } catch (exception: Throwable) {
                     Operations.complete()
                     compositeHook.onFailure(context, exception)
@@ -66,6 +72,7 @@ class ManagedContextPersistenceFilter(
             } else {
                 val exception = request.getAttribute("jakarta.servlet.error.exception") as? Throwable
                     ?: RuntimeException("Unknown Servlet Error (Status: ${response.status})")
+                context.injectStatusCode(response.status)
                 Operations.applyContext(context)
                 Operations.complete()
                 filterChain.doFilter(request, response)

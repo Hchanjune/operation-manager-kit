@@ -12,4 +12,5 @@ data class DefaultOperationLoggingProperties(
     var response: Boolean = true,
     var successLevel: LogLevel = LogLevel.INFO,
     var failureLevel: LogLevel = LogLevel.ERROR,
+    var clientErrorLevel: LogLevel = LogLevel.WARN,
 )

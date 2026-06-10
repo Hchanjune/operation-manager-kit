@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.webmvc.hooks
 
+import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.metric.MetricLayer
 import io.github.hchanjune.omk.core.metric.MetricSpan
@@ -17,8 +18,9 @@ class DefaultOperationLoggingHook(
 ) : OperationLoggingHook {
 
     override fun onSuccess(context: ManagedContext) {
-        if (props.pretty) log(prettyLogger, props.successLevel) { prettyContext(context, null) }
-        if (props.json)   log(jsonLogger,   props.successLevel) { jsonContext(context, null) }
+        val level = if (context.outcome == OperationOutcome.SUCCESS) props.successLevel else props.clientErrorLevel
+        if (props.pretty) log(prettyLogger, level) { prettyContext(context, null) }
+        if (props.json)   log(jsonLogger,   level) { jsonContext(context, null) }
     }
 
     override fun onFailure(context: ManagedContext, exception: Throwable) {
@@ -37,6 +39,15 @@ class DefaultOperationLoggingHook(
         }
     }
 
+    private fun statusLabel(context: ManagedContext, exception: Throwable?): String =
+        if (exception != null) "FAILED" else context.outcome.name
+
+    private fun headerLine(context: ManagedContext, exception: Throwable?): String = when {
+        exception != null -> "❌ Failed"
+        context.outcome == OperationOutcome.SUCCESS -> "✅ Success"
+        else -> "⚠️ ${context.outcome.name}"
+    }
+
     private fun prettyContext(context: ManagedContext, exception: Throwable?): String {
         fun StringBuilder.row(label: String, value: String) {
             if (value.isNotBlank()) appendLine("├─ $label : $value")
@@ -45,8 +56,8 @@ class DefaultOperationLoggingHook(
         return buildString {
             appendLine(" ")
             appendLine("┌───────────────────────────────────────────────────────────────────────────────────")
-            appendLine(if (exception != null) "│ ❌ Failed" else "│ ✅ Success")
-            appendLine("├─ Status      : ${if (exception != null) "FAILED" else "SUCCESS"}")
+            appendLine("│ ${headerLine(context, exception)}")
+            appendLine("├─ Status      : ${statusLabel(context, exception)}")
             appendLine("├─ TraceId     : ${context.traceId}")
             appendLine("├─ CausationId : ${context.causationId}")
             appendLine("├─ Issuer      : ${context.issuer}")
@@ -129,7 +140,7 @@ class DefaultOperationLoggingHook(
                 first = false
             }
 
-            field("status", if (exception != null) "FAILED" else "SUCCESS")
+            field("status", statusLabel(context, exception))
             field("traceId", context.traceId)
             field("causationId", context.causationId)
             field("issuer", context.issuer)

@@ -1,6 +1,7 @@
 package io.github.hchanjune.omk.webmvc.filter
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
@@ -45,9 +46,10 @@ class ManagedContextPersistenceFilterTest {
         var successCalled = false
         var failureCalled = false
         var lastException: Throwable? = null
-        override fun onSuccess(context: ManagedContext) { successCalled = true }
+        var lastContext: ManagedContext? = null
+        override fun onSuccess(context: ManagedContext) { successCalled = true; lastContext = context }
         override fun onFailure(context: ManagedContext, exception: Throwable) {
-            failureCalled = true; lastException = exception
+            failureCalled = true; lastException = exception; lastContext = context
         }
     }
 
@@ -76,6 +78,27 @@ class ManagedContextPersistenceFilterTest {
         makeFilter(hook = hook).doFilter(MockHttpServletRequest(), MockHttpServletResponse(), MockFilterChain())
         assertTrue(hook.successCalled)
         assertTrue(!Operations.hasContext)
+    }
+
+    @Test
+    fun `normal dispatch with response status 500 and no exception calls onFailure`() {
+        val hook = TrackingHook()
+        val res = MockHttpServletResponse().apply { status = 500 }
+        makeFilter(hook = hook).doFilter(MockHttpServletRequest(), res, MockFilterChain())
+        assertTrue(hook.failureCalled)
+        assertTrue(!hook.successCalled)
+        assertEquals(OperationOutcome.SERVER_ERROR, hook.lastContext?.outcome)
+    }
+
+    @Test
+    fun `normal dispatch with response status 401 calls onSuccess but classifies UNAUTHENTICATED outcome`() {
+        val hook = TrackingHook()
+        val res = MockHttpServletResponse().apply { status = 401 }
+        makeFilter(hook = hook).doFilter(MockHttpServletRequest(), res, MockFilterChain())
+        assertTrue(hook.successCalled)
+        assertTrue(!hook.failureCalled)
+        assertEquals(401, hook.lastContext?.statusCode)
+        assertEquals(OperationOutcome.UNAUTHENTICATED, hook.lastContext?.outcome)
     }
 
     @Test

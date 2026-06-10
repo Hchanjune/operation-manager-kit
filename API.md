@@ -26,6 +26,7 @@
 - [EventMetadata](#eventmetadata)
 - [ExecutionScope](#executionscope)
 - [ManagedProtocolType](#managedprotocoltype)
+- [OperationOutcome](#operationoutcome)
 - [Provider Interfaces](#provider-interfaces)
 - [Configuration Properties](#configuration-properties)
 
@@ -162,6 +163,8 @@ class ManagedContext
 | `operation`      | `String`              | `@ManagedOperation.operation` value                      |
 | `useCase`        | `String`              | `@ManagedOperation.useCase` value                        |
 | `response`       | `String`              | `toString()` of the `Operations { }` return value        |
+| `statusCode`     | `Int?`                | HTTP response status code; `null` until injected at response commit |
+| `outcome`        | `OperationOutcome`    | Classification derived from `statusCode`; `SUCCESS` until injected |
 | `timestamp`      | `Instant`             | Context creation time (UTC)                              |
 | `durationMs`     | `Long`                | Total execution time in milliseconds                     |
 | `executionScope` | `ExecutionScope`      | `PRIMARY`, `ASYNC`, or `EVENT`                           |
@@ -292,6 +295,8 @@ interface OperationHook {
 }
 ```
 
+`onFailure` fires only when the response status is `5xx` (or the handler throws). All other responses — including `401`/`403`/other `4xx` — call `onSuccess`; inspect `context.outcome` (see [OperationOutcome](#operationoutcome)) to distinguish these from a true `SUCCESS`.
+
 Register as a Spring `@Component`. Ordering is controlled via `@Order`.
 
 ```kotlin
@@ -409,6 +414,28 @@ enum class ManagedProtocolType {
 
 ---
 
+## OperationOutcome
+
+```kotlin
+enum class OperationOutcome {
+    SUCCESS, UNAUTHENTICATED, FORBIDDEN, CLIENT_ERROR, SERVER_ERROR
+}
+```
+
+Derived from the HTTP response status code via `ManagedContext.injectStatusCode(statusCode)`, called by the WebMVC/WebFlux filters right before the success/failure hooks fire.
+
+| Outcome           | Status code range |
+|-------------------|--------------------|
+| `SUCCESS`         | < 400              |
+| `UNAUTHENTICATED` | 401                |
+| `FORBIDDEN`       | 403                |
+| `CLIENT_ERROR`    | other 4xx          |
+| `SERVER_ERROR`    | >= 500             |
+
+`onFailure` is only triggered for `SERVER_ERROR`; all other outcomes (including `UNAUTHENTICATED` / `FORBIDDEN`) still call `onSuccess`, since the request was handled and a response was returned as intended (e.g. Spring Security's `AuthenticationEntryPoint` writing a 401). `DefaultOperationLoggingHook` reads `context.outcome` inside `onSuccess` to log non-`SUCCESS` outcomes at `logging.client-error-level` instead of `logging.success-level`.
+
+---
+
 ## Provider Interfaces
 
 Replace default implementations by registering a `@Bean` of the matching interface.
@@ -496,6 +523,7 @@ Default implementation uses Micrometer. Falls back to no-op when `MeterRegistry`
 | `logging.response`                                  | `Boolean`         | `true`           | Include operation return value in log       |
 | `logging.success-level`                             | `LogLevel`        | `INFO`           | Log level for successful operations         |
 | `logging.failure-level`                             | `LogLevel`        | `ERROR`          | Log level for failed operations             |
+| `logging.client-error-level`                        | `LogLevel`        | `WARN`           | Log level for `onSuccess` calls whose `outcome` is not `SUCCESS` (e.g. `UNAUTHENTICATED`, `FORBIDDEN`, `CLIENT_ERROR`) |
 | `async-propagation.enabled`                         | `Boolean`         | `true`           | Enable `@Async` context propagation         |
 | `async-propagation.hook-enabled`                    | `Boolean`         | `false`          | Run hooks on async task completion          |
 | `telemetry.propagation.mode`                        | `PropagationMode` | `W3C_STANDARD`   | `W3C_STANDARD` or `CUSTOM`                  |
@@ -517,6 +545,7 @@ Default implementation uses Micrometer. Falls back to no-op when `MeterRegistry`
 | `logging.response`                                  | `Boolean`         | `true`           | Include operation return value in log    |
 | `logging.success-level`                             | `LogLevel`        | `INFO`           | Log level for successful operations      |
 | `logging.failure-level`                             | `LogLevel`        | `ERROR`          | Log level for failed operations          |
+| `logging.client-error-level`                        | `LogLevel`        | `WARN`           | Log level for `onSuccess` calls whose `outcome` is not `SUCCESS` (e.g. `UNAUTHENTICATED`, `FORBIDDEN`, `CLIENT_ERROR`) |
 | `telemetry.propagation.mode`                        | `PropagationMode` | `W3C_STANDARD`   | `W3C_STANDARD` or `CUSTOM`               |
 | `telemetry.propagation.generate-when-missing`       | `Boolean`         | `true`           | Generate IDs when not in request headers |
 | `telemetry.propagation.custom-headers.trace-id`     | `String`          | `X-Trace-Id`     | Custom trace ID header name              |

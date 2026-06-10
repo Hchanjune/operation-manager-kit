@@ -133,6 +133,15 @@ Order 60    →  MetricsOperationHook
 Order > 60  →  Custom post-logging hooks
 ```
 
+### Outcome Classification (onSuccess vs onFailure)
+
+After `filterChain.doFilter()` returns without throwing, `ManagedContextPersistenceFilter` calls `context.injectStatusCode(response.status)`, which derives `context.outcome` (see [OperationOutcome](API.md#operationoutcome)) from the final HTTP status code:
+
+- If `outcome == SERVER_ERROR` (5xx), `onFailure` is called — even when no exception was thrown (e.g. `response.sendError(500)` or `response.status = 500` set directly).
+- For every other outcome, including `UNAUTHENTICATED` (401) and `FORBIDDEN` (403), `onSuccess` is still called — the request was handled and a response was returned as intended (e.g. Spring Security's `AuthenticationEntryPoint`).
+
+`DefaultOperationLoggingHook` reads `context.outcome` inside `onSuccess` and logs non-`SUCCESS` outcomes at `logging.client-error-level` (default `WARN`) instead of `logging.success-level`.
+
 ### Custom Hook Example
 
 ```kotlin
@@ -160,6 +169,7 @@ class MyEnrichmentHook : OperationHook {
 | `response`      | `true`  | Include the operation block's return value |
 | `success-level` | `INFO`  | Log level for successful operations        |
 | `failure-level` | `ERROR` | Log level for failed operations            |
+| `client-error-level` | `WARN` | Log level for `onSuccess` calls whose `outcome` is not `SUCCESS` (e.g. `UNAUTHENTICATED`, `FORBIDDEN`, `CLIENT_ERROR`) |
 
 **Pretty output (with `spans: true`):**
 ```

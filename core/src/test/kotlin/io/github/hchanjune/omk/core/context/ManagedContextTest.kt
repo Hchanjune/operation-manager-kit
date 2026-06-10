@@ -1,6 +1,7 @@
 package io.github.hchanjune.omk.core.context
 
 import io.github.hchanjune.omk.core.contants.ExecutionScope
+import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
 import io.github.hchanjune.omk.core.metric.MetricLayer
@@ -220,6 +221,60 @@ class ManagedContextTest {
         val fork = ctx.forkAsync()
         assertEquals("async.execution", fork.rootSpan!!.name.value)
         assertEquals("main-root", ctx.rootSpan!!.name.value)
+    }
+
+    // ── Status code / outcome ────────────────────────────────────────────
+
+    @Test
+    fun `outcome defaults to SUCCESS before any status code is injected`() {
+        val ctx = ctx()
+        assertNull(ctx.statusCode)
+        assertEquals(OperationOutcome.SUCCESS, ctx.outcome)
+    }
+
+    @Test
+    fun `injectStatusCode maps 2xx and 3xx to SUCCESS`() {
+        val ctx = ctx()
+        ctx.injectStatusCode(200)
+        assertEquals(200, ctx.statusCode)
+        assertEquals(OperationOutcome.SUCCESS, ctx.outcome)
+
+        ctx.injectStatusCode(302)
+        assertEquals(OperationOutcome.SUCCESS, ctx.outcome)
+    }
+
+    @Test
+    fun `injectStatusCode maps 401 to UNAUTHENTICATED`() {
+        val ctx = ctx()
+        ctx.injectStatusCode(401)
+        assertEquals(OperationOutcome.UNAUTHENTICATED, ctx.outcome)
+    }
+
+    @Test
+    fun `injectStatusCode maps 403 to FORBIDDEN`() {
+        val ctx = ctx()
+        ctx.injectStatusCode(403)
+        assertEquals(OperationOutcome.FORBIDDEN, ctx.outcome)
+    }
+
+    @Test
+    fun `injectStatusCode maps other 4xx to CLIENT_ERROR`() {
+        val ctx = ctx()
+        ctx.injectStatusCode(404)
+        assertEquals(OperationOutcome.CLIENT_ERROR, ctx.outcome)
+
+        ctx.injectStatusCode(400)
+        assertEquals(OperationOutcome.CLIENT_ERROR, ctx.outcome)
+    }
+
+    @Test
+    fun `injectStatusCode maps 5xx to SERVER_ERROR`() {
+        val ctx = ctx()
+        ctx.injectStatusCode(500)
+        assertEquals(OperationOutcome.SERVER_ERROR, ctx.outcome)
+
+        ctx.injectStatusCode(503)
+        assertEquals(OperationOutcome.SERVER_ERROR, ctx.outcome)
     }
 
     // ── Hook records ──────────────────────────────────────────────────────

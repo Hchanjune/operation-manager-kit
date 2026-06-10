@@ -133,6 +133,15 @@ Order 60    →  MetricsOperationHook
 Order > 60  →  커스텀 후처리 훅
 ```
 
+### Outcome 분류 (onSuccess vs onFailure)
+
+`filterChain.doFilter()`가 예외 없이 반환되면, `ManagedContextPersistenceFilter`는 `context.injectStatusCode(response.status)`를 호출하여 최종 HTTP 상태 코드로부터 `context.outcome`([OperationOutcome](API.ko.md#operationoutcome) 참고)을 도출합니다.
+
+- `outcome == SERVER_ERROR`(5xx)이면 예외가 발생하지 않았더라도 `onFailure`가 호출됩니다 (예: `response.sendError(500)` 또는 `response.status = 500`을 직접 설정한 경우).
+- 그 외의 모든 outcome(`UNAUTHENTICATED`(401), `FORBIDDEN`(403) 포함)은 여전히 `onSuccess`가 호출됩니다 — 요청이 정상적으로 처리되어 의도한 응답이 반환되었기 때문입니다 (예: Spring Security의 `AuthenticationEntryPoint`).
+
+`DefaultOperationLoggingHook`은 `onSuccess` 내부에서 `context.outcome`을 확인하여, `SUCCESS`가 아닌 outcome은 `logging.success-level` 대신 `logging.client-error-level`(기본값 `WARN`)로 로깅합니다.
+
 ### 커스텀 훅 예시
 
 ```kotlin
@@ -160,6 +169,7 @@ class MyEnrichmentHook : OperationHook {
 | `response`      | `true`  | Operations 블록의 반환값을 로그에 포함 |
 | `success-level` | `INFO`  | 성공 시 로그 레벨                 |
 | `failure-level` | `ERROR` | 실패 시 로그 레벨                 |
+| `client-error-level` | `WARN` | `outcome`이 `SUCCESS`가 아닌 `onSuccess` 호출(`UNAUTHENTICATED`, `FORBIDDEN`, `CLIENT_ERROR` 등)의 로그 레벨 |
 
 **Pretty 출력 예시 (`spans: true` 설정 시):**
 ```

@@ -1,6 +1,7 @@
 package io.github.hchanjune.omk.webflux.filter
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.IssuerProvider
@@ -109,6 +110,23 @@ class ManagedContextWebFilterTest {
             Mono.empty()
         })
         assertTrue(hook.failureCalled)
+    }
+
+    @Test
+    fun `filter calls onSuccess but classifies 401 as UNAUTHENTICATED outcome`() {
+        var capturedCtx: ManagedContext? = null
+        val hook = object : OperationHook {
+            override fun onSuccess(context: ManagedContext) { capturedCtx = context }
+        }
+        val filter = makeFilter(hook = hook)
+        val ex = exchange()
+        runFilter(filter, ex, WebFilterChain {
+            it.response.statusCode = HttpStatus.UNAUTHORIZED
+            Mono.empty()
+        })
+        assertNotNull(capturedCtx)
+        assertEquals(401, capturedCtx?.statusCode)
+        assertEquals(OperationOutcome.UNAUTHENTICATED, capturedCtx?.outcome)
     }
 
     private fun filterWithCapture(

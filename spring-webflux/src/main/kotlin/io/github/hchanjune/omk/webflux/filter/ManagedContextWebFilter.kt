@@ -1,6 +1,7 @@
 package io.github.hchanjune.omk.webflux.filter
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
@@ -43,8 +44,9 @@ class ManagedContextWebFilter(
                 spanId = context.rootSpan?.spanId ?: context.causationId
             ) { name, value -> exchange.response.headers.set(name, value) }
             val statusCode = exchange.response.statusCode?.value() ?: 200
+            context.injectStatusCode(statusCode)
             context.end()
-            if (statusCode >= 500) {
+            if (context.outcome == OperationOutcome.SERVER_ERROR) {
                 compositeHook.onFailure(context, RuntimeException("HTTP $statusCode"))
             } else {
                 compositeHook.onSuccess(context)

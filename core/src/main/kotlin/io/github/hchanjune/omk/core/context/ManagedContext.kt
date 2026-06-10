@@ -2,6 +2,7 @@ package io.github.hchanjune.omk.core.context
 
 import io.github.hchanjune.omk.core.contants.ExecutionScope
 import io.github.hchanjune.omk.core.contants.ManagedProtocolType
+import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
 import io.github.hchanjune.omk.core.metric.MetricLayer
@@ -64,6 +65,12 @@ class ManagedContext(
         private set
 
     var response: String = ""
+        private set
+
+    var statusCode: Int? = null
+        private set
+
+    var outcome: OperationOutcome = OperationOutcome.SUCCESS
         private set
 
     var message: String = "Operation Managed"
@@ -129,6 +136,11 @@ class ManagedContext(
 
     fun injectResponse(response:String) {
         this.response = response
+    }
+
+    fun injectStatusCode(statusCode: Int) {
+        this.statusCode = statusCode
+        this.outcome = OperationOutcome.fromStatusCode(statusCode)
     }
 
 
