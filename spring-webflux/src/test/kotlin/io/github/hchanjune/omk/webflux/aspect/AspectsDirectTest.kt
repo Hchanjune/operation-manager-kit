@@ -254,6 +254,58 @@ class AspectsDirectTest {
         assertTrue(result is Mono<*>)
     }
 
+    @Test
+    fun `controller aspect isMono path records exception when the Mono errors`() {
+        val aspect = ManagedControllerAspect(spanIdProvider)
+        val ann = StubController::class.java.getAnnotation(ManagedController::class.java)!!
+        val ctx = context()
+        val ex = IllegalStateException("mono-boom")
+        val jp = fakeJp(
+            StubController::class.java,
+            returns = Mono.error<String>(ex),
+            returnType = Mono::class.java,
+            method = MONO_METHOD
+        )
+        val result = (aspect.aroundController(jp, ann) as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+        assertFailsWith<IllegalStateException> { result.block() }
+        assertEquals(ex, ctx.capturedException)
+    }
+
+    @Test
+    fun `controller aspect suspend path records exception and pops span when proceed throws synchronously`() {
+        val aspect = ManagedControllerAspect(spanIdProvider)
+        val ann = StubController::class.java.getAnnotation(ManagedController::class.java)!!
+        val ctx = context()
+        val ex = IllegalStateException("sync-boom")
+        val jp = fakeJp(
+            StubController::class.java,
+            methodName = "getOrder",
+            throws = ex,
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        assertFailsWith<IllegalStateException> { aspect.aroundController(jp, ann) }
+        assertEquals(ex, ctx.capturedException)
+        assertNull(ctx.peek())
+        assertNotNull(ctx.rootSpan)
+    }
+
+    @Test
+    fun `controller aspect suspend path records exception when proceed returns an erroring Mono`() {
+        val aspect = ManagedControllerAspect(spanIdProvider)
+        val ann = StubController::class.java.getAnnotation(ManagedController::class.java)!!
+        val ctx = context()
+        val ex = IllegalStateException("suspend-mono-boom")
+        val jp = fakeJp(
+            StubController::class.java,
+            methodName = "getOrder",
+            returns = Mono.error<String>(ex),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        assertFailsWith<IllegalStateException> { (aspect.aroundController(jp, ann) as Mono<*>).block() }
+        assertEquals(ex, ctx.capturedException)
+    }
+
     // ── ManagedOperationAspect ────────────────────────────────────────────────
 
     @Test
@@ -339,6 +391,23 @@ class AspectsDirectTest {
         val result = (aspect.aroundOperation(jp, ann) as Mono<*>).block()
         assertEquals("op-data", result)
         assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `operation aspect suspend path pops span when proceed throws synchronously`() {
+        val aspect = ManagedOperationAspect(spanIdProvider)
+        val ann = StubOperationHolder::class.java.getDeclaredMethod("withName")
+            .getAnnotation(ManagedOperation::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubOperationHolder::class.java,
+            methodName = "withName",
+            throws = IllegalStateException("op-sync-boom"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        assertFailsWith<IllegalStateException> { aspect.aroundOperation(jp, ann) }
+        assertNull(ctx.peek())
+        assertNotNull(ctx.rootSpan)
     }
 
     @Test
@@ -488,6 +557,22 @@ class AspectsDirectTest {
     }
 
     @Test
+    fun `repository aspect suspend path pops span when proceed throws synchronously`() {
+        val aspect = ManagedRepositoryAspect(spanIdProvider)
+        val ann = StubRepo::class.java.getAnnotation(ManagedRepository::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubRepo::class.java,
+            methodName = "findAll",
+            throws = RuntimeException("db-sync-boom"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        assertFailsWith<RuntimeException> { aspect.aroundRepository(jp, ann) }
+        assertNull(ctx.peek())
+        assertNotNull(ctx.rootSpan)
+    }
+
+    @Test
     fun `repository aspect null continuation path calls proceedAsMono`() {
         val aspect = ManagedRepositoryAspect(spanIdProvider)
         val ann = StubRepo::class.java.getAnnotation(ManagedRepository::class.java)!!
@@ -578,6 +663,23 @@ class AspectsDirectTest {
         val result = (aspect.aroundMetric(jp, ann) as Mono<*>).block()
         assertEquals("metric-data", result)
         assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `metric aspect suspend path pops span when proceed throws synchronously`() {
+        val aspect = ManagedMetricAspect(spanIdProvider)
+        val ann = StubMetricHolder::class.java.getDeclaredMethod("named")
+            .getAnnotation(ManagedMetric::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubMetricHolder::class.java,
+            methodName = "named",
+            throws = RuntimeException("metric-sync-boom"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        assertFailsWith<RuntimeException> { aspect.aroundMetric(jp, ann) }
+        assertNull(ctx.peek())
+        assertNotNull(ctx.rootSpan)
     }
 
     @Test
@@ -717,6 +819,22 @@ class AspectsDirectTest {
             .block()
         assertNotNull(result)
         assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `event handler aspect existingCtx suspend path pops span when proceed throws synchronously`() {
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
+            .getAnnotation(ManagedEventHandler::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(
+            StubEventHolder::class.java, "handleEvent",
+            throws = RuntimeException("evt-sync-boom"),
+            args = arrayOf(createContinuationWithContext(ctx))
+        )
+        assertFailsWith<RuntimeException> { runBlocking { aspect.aroundEventHandler(jp, ann) } }
+        assertNull(ctx.peek())
+        assertNotNull(ctx.rootSpan)
     }
 
     @Test

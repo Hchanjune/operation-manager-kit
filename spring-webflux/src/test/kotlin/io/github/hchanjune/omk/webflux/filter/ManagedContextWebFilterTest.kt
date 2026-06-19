@@ -50,7 +50,8 @@ class ManagedContextWebFilterTest {
     private fun makeFilter(
         generateWhenMissing: Boolean = true,
         hook: OperationHook = TrackingHook(),
-        issuer: String = "anonymous"
+        issuer: String = "anonymous",
+        excludeOptions: Boolean = false
     ) = ManagedContextWebFilter(
         contextProvider = contextProvider(),
         propagationProvider = w3cPropagation,
@@ -58,7 +59,8 @@ class ManagedContextWebFilterTest {
         causationIdProvider = causeProvider(),
         compositeHook = hook,
         issuerProvider = issuerProvider(issuer),
-        generateWhenMissing = generateWhenMissing
+        generateWhenMissing = generateWhenMissing,
+        excludeOptions = excludeOptions
     )
 
     private fun okChain(): WebFilterChain = WebFilterChain { Mono.empty() }
@@ -203,5 +205,42 @@ class ManagedContextWebFilterTest {
         runFilter(filter, exchange(), okChain())
         assertEquals("", capturedCtx?.traceId)
         assertEquals("", capturedCtx?.causationId)
+    }
+
+    // ── excludeOptions ────────────────────────────────────────────────────────
+
+    private fun optionsExchange(path: String = "/test"): MockServerWebExchange =
+        MockServerWebExchange.from(MockServerHttpRequest.options(path).build())
+
+    @Test
+    fun `OPTIONS request bypasses context creation when excludeOptions is true`() {
+        val hook = TrackingHook()
+        val filter = makeFilter(hook = hook, excludeOptions = true)
+        var contextFound = true
+        runFilter(filter, optionsExchange(), WebFilterChain { exchange ->
+            Mono.deferContextual { ctx ->
+                contextFound = ctx.hasKey(ReactiveOperations.CONTEXT_KEY)
+                Mono.empty()
+            }
+        })
+        assertTrue(!contextFound)
+        assertTrue(!hook.successCalled)
+        assertTrue(!hook.failureCalled)
+    }
+
+    @Test
+    fun `OPTIONS request is still managed when excludeOptions is false`() {
+        val hook = TrackingHook()
+        val filter = makeFilter(hook = hook, excludeOptions = false)
+        runFilter(filter, optionsExchange(), okChain())
+        assertTrue(hook.successCalled)
+    }
+
+    @Test
+    fun `non-OPTIONS request is still managed when excludeOptions is true`() {
+        val hook = TrackingHook()
+        val filter = makeFilter(hook = hook, excludeOptions = true)
+        runFilter(filter, exchange(), okChain())
+        assertTrue(hook.successCalled)
     }
 }

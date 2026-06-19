@@ -38,12 +38,19 @@ class ManagedMetricAspect(
         }
 
         val ctx = getManagedContext(joinPoint) ?: return joinPoint.proceed()
-        val result = joinPoint.proceed()
+        val span = buildSpan(ctx, spanName)
+
+        // proceed() itself can throw synchronously (before any Mono even exists) — the span must
+        // be pushed before this call so a sync throw here still ends/pops it instead of leaking.
+        val result = try {
+            joinPoint.proceed()
+        } catch (e: Throwable) {
+            span.end(e); ctx.pop(); throw e
+        }
+
         return if (result is Mono<*>) {
-            val span = buildSpan(ctx, spanName)
             result.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
         } else {
-            val span = buildSpan(ctx, spanName)
             span.end(); ctx.pop(); result
         }
     }

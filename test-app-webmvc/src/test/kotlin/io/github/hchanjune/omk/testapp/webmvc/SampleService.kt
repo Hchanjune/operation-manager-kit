@@ -11,4 +11,10 @@ class SampleService {
 
     @ManagedOperation(operation = "FailingSample", useCase = "TestUseCase")
     fun failingProcess(): String = throw RuntimeException("service-error")
+
+    @ManagedOperation(operation = "FailingClientSample", useCase = "TestUseCase")
+    fun failingWithHandledClientError(): String = throw SampleClientException("client-error")
+
+    @ManagedOperation(operation = "FailingServerSample", useCase = "TestUseCase")
+    fun failingWithHandledServerError(): String = throw SampleServerException("server-error")
 }

@@ -13,6 +13,7 @@ import io.github.hchanjune.omk.webmvc.aspect.ManagedOperationAspect
 import io.github.hchanjune.omk.webmvc.aspect.ManagedRepositoryAspect
 import io.github.hchanjune.omk.webmvc.aspect.ManagedServiceAspect
 import io.github.hchanjune.omk.webmvc.async.ManagedContextTaskDecorator
+import io.github.hchanjune.omk.webmvc.exception.ExceptionCapturingResolver
 import io.github.hchanjune.omk.webmvc.filter.ManagedContextPersistenceFilter
 import io.github.hchanjune.omk.webmvc.hooks.CompositeOperationHook
 import io.github.hchanjune.omk.webmvc.provider.W3CTelemetryPropagationProvider
@@ -35,6 +36,11 @@ class AutoConfigurationTest {
     @Test
     fun `ManagedContextPersistenceFilter bean is registered`() {
         assertNotNull(applicationContext.getBean(ManagedContextPersistenceFilter::class.java))
+    }
+
+    @Test
+    fun `ExceptionCapturingResolver bean is registered`() {
+        assertNotNull(applicationContext.getBean(ExceptionCapturingResolver::class.java))
     }
 
     // ── Hooks ─────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
+import io.github.hchanjune.omk.webflux.config.properties.OperationManagerWebFluxAutoConfigProperties
 import io.github.hchanjune.omk.webflux.config.properties.TelemetryConfigureProperties
 import io.github.hchanjune.omk.webflux.filter.ManagedContextWebFilter
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -32,6 +33,7 @@ internal class FilterConfiguration {
         compositeHook: OperationHook,
         issuerProvider: IssuerProvider,
         telemetryProperties: TelemetryConfigureProperties,
+        properties: OperationManagerWebFluxAutoConfigProperties,
     ): ManagedContextWebFilter = ManagedContextWebFilter(
         contextProvider = contextProvider,
         propagationProvider = propagationProvider,
@@ -39,6 +41,7 @@ internal class FilterConfiguration {
         causationIdProvider = causationIdProvider,
         compositeHook = compositeHook,
         issuerProvider = issuerProvider,
-        generateWhenMissing = telemetryProperties.propagation.generateWhenMissing
+        generateWhenMissing = telemetryProperties.propagation.generateWhenMissing,
+        excludeOptions = properties.contextFilter.excludeOptions
     )
 }

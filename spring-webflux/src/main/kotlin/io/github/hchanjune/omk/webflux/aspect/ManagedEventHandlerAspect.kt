@@ -122,26 +122,26 @@ class ManagedEventHandlerAspect(
 
         if (existingCtx != null) {
             existingCtx.injectEntryPoint(className)
-            val result = joinPoint.proceed()
+            val span = existingCtx.push(
+                name = MetricName("$className.$methodName"),
+                kind = MetricKind.TIMER,
+                policy = MetricPolicy.defaults(),
+                tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
+                descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+                idProvider = spanIdProvider
+            )
+
+            // proceed() itself can throw synchronously (before any Mono even exists) — the span
+            // must be pushed before this call so a sync throw here still ends/pops it instead of leaking.
+            val result = try {
+                joinPoint.proceed()
+            } catch (e: Throwable) {
+                span.end(e); existingCtx.pop(); throw e
+            }
+
             return if (result is Mono<*>) {
-                val span = existingCtx.push(
-                    name = MetricName("$className.$methodName"),
-                    kind = MetricKind.TIMER,
-                    policy = MetricPolicy.defaults(),
-                    tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                    descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                    idProvider = spanIdProvider
-                )
                 result.doOnSuccess { span.end(); existingCtx.pop() }.doOnError { e -> span.end(e); existingCtx.pop() }
             } else {
-                val span = existingCtx.push(
-                    name = MetricName("$className.$methodName"),
-                    kind = MetricKind.TIMER,
-                    policy = MetricPolicy.defaults(),
-                    tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                    descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                    idProvider = spanIdProvider
-                )
                 span.end(); existingCtx.pop(); result
             }
         }

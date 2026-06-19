@@ -142,6 +142,17 @@ Order > 60  →  커스텀 후처리 훅
 
 `DefaultOperationLoggingHook`은 `onSuccess` 내부에서 `context.outcome`을 확인하여, `SUCCESS`가 아닌 outcome은 `logging.success-level` 대신 `logging.client-error-level`(기본값 `WARN`)로 로깅합니다.
 
+### 예외 캡처 (`@ExceptionHandler` / `@ControllerAdvice`)
+
+`@RestControllerAdvice`가 예외를 정상 응답으로 변환하는 경우(도메인/검증 예외에서 흔한 패턴), 이 변환은 `ManagedContextPersistenceFilter`로 제어가 돌아오기 **전에** `DispatcherServlet` 내부에서 일어납니다. 필터가 실행될 때는 원본 예외 객체가 이미 사라지고, 최종 HTTP 상태 코드만 보입니다:
+
+- `SERVER_ERROR`(5xx)의 경우, 필터는 실제 예외가 전달되지 않았으므로 `onFailure`에 넘길 가짜 `RuntimeException("HTTP 500")`을 만들어내야 했습니다.
+- 그 외 outcome의 경우, `onSuccess`가 예외 정보 없이 호출되었습니다 — `DomainValidationException`이 던져져도 로그상으로는 정상 요청과 구분이 안 됐습니다.
+
+`ExceptionCapturingResolver`는 `Ordered.HIGHEST_PRECEDENCE`로 등록되는 `HandlerExceptionResolver`입니다. `@ExceptionHandler` 메서드보다 먼저 실행되어 예외를 `ManagedContext.capturedException`에 기록한 뒤 `null`을 반환해서, 실제 예외 처리는 원래 작성한 `@ExceptionHandler`가 그대로 수행합니다. 이후 필터와 `DefaultOperationLoggingHook`은 가짜 예외를 만드는 대신 `context.capturedException`을 읽습니다 — 5xx는 `onFailure`에 진짜 예외가 전달되고, 4xx/401/403도 `onSuccess`의 로그 출력에 진짜 예외의 타입/메시지/스택트레이스가 포함됩니다. `onSuccess` vs `onFailure` 라우팅 자체는 그대로입니다(위와 동일하게 상태 코드 기준) — 어떤 예외가 보이는지만 달라집니다.
+
+기본적으로 활성화되어 있으며, `operation-manager.webmvc.exception-capture.enabled: false`로 끌 수 있습니다.
+
 ### 커스텀 훅 예시
 
 ```kotlin
@@ -219,9 +230,13 @@ operation-manager:
   webmvc:
     context-filter:
       enabled: true
+      exclude-options: true   # true이면 OPTIONS(CORS preflight) 요청은 컨텍스트 생성/로깅 없이 통과 (기본값: true)
 
     context-aspect:
       enabled: true
+
+    exception-capture:
+      enabled: true       # ExceptionCapturingResolver를 등록해서 onFailure/로그가 @ExceptionHandler가 잡은 진짜 예외를 보게 함
 
     micrometer:
       enabled: true

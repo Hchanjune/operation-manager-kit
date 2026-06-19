@@ -277,6 +277,32 @@ class ManagedContextTest {
         assertEquals(OperationOutcome.SERVER_ERROR, ctx.outcome)
     }
 
+    // ── Captured exception ───────────────────────────────────────────────
+
+    @Test
+    fun `capturedException defaults to null`() {
+        val ctx = ctx()
+        assertNull(ctx.capturedException)
+    }
+
+    @Test
+    fun `recordException stores the exception`() {
+        val ctx = ctx()
+        val ex = IllegalStateException("boom")
+        ctx.recordException(ex)
+        assertEquals(ex, ctx.capturedException)
+    }
+
+    @Test
+    fun `recordException keeps the first exception when called multiple times`() {
+        val ctx = ctx()
+        val first = IllegalStateException("first")
+        val second = IllegalStateException("second")
+        ctx.recordException(first)
+        ctx.recordException(second)
+        assertEquals(first, ctx.capturedException)
+    }
+
     // ── Hook records ──────────────────────────────────────────────────────
 
     @Test

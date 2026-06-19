@@ -17,8 +17,9 @@ class DefaultOperationLoggingHook(
 
     override fun onSuccess(context: ManagedContext) {
         val level = if (context.outcome == OperationOutcome.SUCCESS) props.successLevel else props.clientErrorLevel
-        if (props.pretty) log(prettyLogger, level) { prettyContext(context, null) }
-        if (props.json)   log(jsonLogger,   level) { jsonContext(context, null) }
+        val exception = context.capturedException
+        if (props.pretty) log(prettyLogger, level) { prettyContext(context, exception) }
+        if (props.json)   log(jsonLogger,   level) { jsonContext(context, exception) }
     }
 
     override fun onFailure(context: ManagedContext, exception: Throwable) {

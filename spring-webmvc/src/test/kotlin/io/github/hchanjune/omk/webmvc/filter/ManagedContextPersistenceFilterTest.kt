@@ -55,14 +55,16 @@ class ManagedContextPersistenceFilterTest {
 
     private fun makeFilter(
         generateWhenMissing: Boolean = true,
-        hook: OperationHook = TrackingHook()
+        hook: OperationHook = TrackingHook(),
+        excludeOptions: Boolean = false
     ) = ManagedContextPersistenceFilter(
         contextProvider = contextProvider(),
         propagationProvider = propagation,
         traceIdProvider = traceProvider("gen-trace"),
         causationIdProvider = causeProvider("gen-cause"),
         compositeHook = hook,
-        generateWhenMissing = generateWhenMissing
+        generateWhenMissing = generateWhenMissing,
+        excludeOptions = excludeOptions
     )
 
     private fun throwingChain(ex: Throwable) = FilterChain { _, _ -> throw ex }
@@ -182,5 +184,37 @@ class ManagedContextPersistenceFilterTest {
         val res = MockHttpServletResponse()
         makeFilter().doFilter(MockHttpServletRequest(), res, MockFilterChain())
         assertNotNull(res.getHeader("X-Trace-Id"))
+    }
+
+    // ── excludeOptions ────────────────────────────────────────────────────────
+
+    @Test
+    fun `OPTIONS request bypasses context creation when excludeOptions is true`() {
+        val hook = TrackingHook()
+        val req = MockHttpServletRequest("OPTIONS", "/api/v1/auth/login/oauth/naver")
+        var chainCalled = false
+        makeFilter(hook = hook, excludeOptions = true).doFilter(
+            req, MockHttpServletResponse(),
+            FilterChain { _, _ -> chainCalled = true; assertTrue(!Operations.hasContext) }
+        )
+        assertTrue(chainCalled)
+        assertTrue(!hook.successCalled)
+        assertTrue(!hook.failureCalled)
+    }
+
+    @Test
+    fun `OPTIONS request is still managed when excludeOptions is false`() {
+        val hook = TrackingHook()
+        val req = MockHttpServletRequest("OPTIONS", "/api/v1/auth/login/oauth/naver")
+        makeFilter(hook = hook, excludeOptions = false).doFilter(req, MockHttpServletResponse(), MockFilterChain())
+        assertTrue(hook.successCalled)
+    }
+
+    @Test
+    fun `non-OPTIONS request is still managed when excludeOptions is true`() {
+        val hook = TrackingHook()
+        val req = MockHttpServletRequest("POST", "/api/v1/auth/login/oauth/naver")
+        makeFilter(hook = hook, excludeOptions = true).doFilter(req, MockHttpServletResponse(), MockFilterChain())
+        assertTrue(hook.successCalled)
     }
 }

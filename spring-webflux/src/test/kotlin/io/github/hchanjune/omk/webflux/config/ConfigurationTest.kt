@@ -25,6 +25,7 @@ class ConfigurationTest {
     fun `OperationManagerWebFluxAutoConfigProperties default values are all enabled`() {
         val props = OperationManagerWebFluxAutoConfigProperties()
         assertTrue(props.contextFilter.enabled)
+        assertTrue(props.contextFilter.excludeOptions)
         assertTrue(props.contextAspect.enabled)
         assertTrue(props.micrometer.enabled)
     }
@@ -34,7 +35,7 @@ class ConfigurationTest {
         val toggle = OperationManagerWebFluxAutoConfigProperties.Toggle(enabled = false)
         assertFalse(toggle.enabled)
         val props = OperationManagerWebFluxAutoConfigProperties(
-            contextFilter = OperationManagerWebFluxAutoConfigProperties.Toggle(false),
+            contextFilter = OperationManagerWebFluxAutoConfigProperties.ContextFilter(enabled = false),
             contextAspect = OperationManagerWebFluxAutoConfigProperties.Toggle(false),
             micrometer = OperationManagerWebFluxAutoConfigProperties.Toggle(false)
         )
@@ -198,7 +199,8 @@ class ConfigurationTest {
             causationIdProvider = provConfig.causationIdProvider(),
             compositeHook = HooksConfiguration().operationCompositeHook(emptyObjectProvider()),
             issuerProvider = provConfig.fallbackIssuerProvider(),
-            telemetryProperties = defaultTelemetryProps
+            telemetryProperties = defaultTelemetryProps,
+            properties = OperationManagerWebFluxAutoConfigProperties()
         )
         assertNotNull(filter)
     }

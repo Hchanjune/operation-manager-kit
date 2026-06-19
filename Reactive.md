@@ -196,6 +196,14 @@ In the `beforeCommit` hook, `ManagedContextWebFilter` calls `context.injectStatu
 
 `DefaultOperationLoggingHook` reads `context.outcome` inside `onSuccess` and logs non-`SUCCESS` outcomes at `logging.client-error-level` (default `WARN`) instead of `logging.success-level`.
 
+### Exception Capture (`@ExceptionHandler` / `@ControllerAdvice`)
+
+When a `@RestControllerAdvice` recovers from an exception via `onErrorResume` inside the same reactive chain, the original exception object never reaches `beforeCommit` — by the time it runs, only the final response status code is observable. There is no `HandlerExceptionResolver`-equivalent SPI in WebFlux to intercept this transparently, so the fix reuses `ManagedControllerAspect` instead: it already wraps every `@ManagedController` method in a `doOnError`/`catch` to mark the ENTRY span as failed, and `doOnError` fires on the real exception *before* any downstream `onErrorResume` recovers from it (standard Reactor semantics — peek operators upstream of a recovery still observe the error). The aspect now also calls `ctx.recordException(e)` at that exact point, storing it on `ManagedContext.capturedException` — the same field the WebMVC fix uses.
+
+`ManagedContextWebFilter` and `DefaultOperationLoggingHook` read `context.capturedException` instead of fabricating a placeholder: `onFailure` gets the real exception for 5xx, and `onSuccess`'s log output now includes the real exception's type/message/stack trace for 4xx/401/403 too. `onSuccess` vs `onFailure` routing itself is unchanged (still status-code based, see above).
+
+This only covers exceptions that propagate out of a `@ManagedController`-annotated method — the same precondition the rest of this library's controller-level instrumentation already requires.
+
 ### Custom Hook Example
 
 ```kotlin
@@ -274,6 +282,7 @@ operation-manager:
   webflux:
     context-filter:
       enabled: true       # Enable/disable the WebFilter (default: true)
+      exclude-options: true   # if true, OPTIONS (CORS preflight) requests bypass context creation/logging entirely (default: true)
 
     context-aspect:
       enabled: true       # Enable/disable AOP aspects (default: true)

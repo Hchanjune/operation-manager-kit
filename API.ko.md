@@ -170,6 +170,7 @@ class ManagedContext
 | `executionScope` | `ExecutionScope`      | `PRIMARY`, `ASYNC`, 또는 `EVENT`            |
 | `rootSpan`       | `MetricSpan?`         | span 트리의 루트. 첫 span이 push되기 전엔 `null`     |
 | `hookRecords`    | `List<HookRecord>`    | 각 훅의 실행 결과 목록                             |
+| `capturedException` | `Throwable?`       | `@ExceptionHandler`/`@ControllerAdvice`가 응답으로 변환하기 전에 기록된 진짜 예외 — webmvc는 `ExceptionCapturingResolver`, webflux는 `ManagedControllerAspect`가 기록함. 잡힌 예외가 없으면 `null`. 가장 먼저 기록된 예외가 유지됨 |
 
 ### 수정 가능한 필드
 

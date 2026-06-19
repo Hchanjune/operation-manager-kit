@@ -17,4 +17,16 @@ class SampleController(private val sampleService: SampleService) {
         sampleService.failingProcess()
         return ResponseEntity.ok("unreachable")
     }
+
+    @GetMapping("/test/handled-client-error")
+    fun handledClientError(): ResponseEntity<String> {
+        sampleService.failingWithHandledClientError()
+        return ResponseEntity.ok("unreachable")
+    }
+
+    @GetMapping("/test/handled-server-error")
+    fun handledServerError(): ResponseEntity<String> {
+        sampleService.failingWithHandledServerError()
+        return ResponseEntity.ok("unreachable")
+    }
 }

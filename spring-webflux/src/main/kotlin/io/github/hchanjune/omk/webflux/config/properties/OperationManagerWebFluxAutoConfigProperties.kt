@@ -4,11 +4,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "operation-manager.webflux")
 data class OperationManagerWebFluxAutoConfigProperties(
-    var contextFilter: Toggle = Toggle(),
+    var contextFilter: ContextFilter = ContextFilter(),
     var contextAspect: Toggle = Toggle(),
     var micrometer: Toggle = Toggle(),
 ) {
     data class Toggle(
         var enabled: Boolean = true
+    )
+
+    data class ContextFilter(
+        var enabled: Boolean = true,
+        var excludeOptions: Boolean = true
     )
 }

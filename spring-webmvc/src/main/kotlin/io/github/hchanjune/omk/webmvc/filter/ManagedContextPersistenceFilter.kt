@@ -12,6 +12,7 @@ import jakarta.servlet.DispatcherType
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.http.HttpMethod
 import org.springframework.web.filter.OncePerRequestFilter
 
 class ManagedContextPersistenceFilter(
@@ -20,7 +21,8 @@ class ManagedContextPersistenceFilter(
     private val traceIdProvider: TraceIdProvider,
     private val causationIdProvider: CausationIdProvider,
     private val compositeHook: OperationHook,
-    private val generateWhenMissing: Boolean = true
+    private val generateWhenMissing: Boolean = true,
+    private val excludeOptions: Boolean = false
 ): OncePerRequestFilter() {
 
     companion object {
@@ -28,6 +30,9 @@ class ManagedContextPersistenceFilter(
     }
 
     override fun shouldNotFilterErrorDispatch() = false
+
+    override fun shouldNotFilter(request: HttpServletRequest): Boolean =
+        excludeOptions && request.method.equals(HttpMethod.OPTIONS.name(), ignoreCase = true)
 
     override fun doFilterInternal(
         request: HttpServletRequest,
@@ -60,7 +65,7 @@ class ManagedContextPersistenceFilter(
                     context.injectStatusCode(response.status)
                     Operations.complete()
                     if (context.outcome == OperationOutcome.SERVER_ERROR) {
-                        compositeHook.onFailure(context, RuntimeException("HTTP ${response.status}"))
+                        compositeHook.onFailure(context, context.capturedException ?: RuntimeException("HTTP ${response.status}"))
                     } else {
                         compositeHook.onSuccess(context)
                     }

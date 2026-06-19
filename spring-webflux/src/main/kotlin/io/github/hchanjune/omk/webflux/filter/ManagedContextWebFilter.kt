@@ -8,6 +8,7 @@ import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.webflux.ReactiveOperations
+import org.springframework.http.HttpMethod
 import org.springframework.web.server.ServerWebExchange
 import org.springframework.web.server.WebFilter
 import org.springframework.web.server.WebFilterChain
@@ -20,11 +21,17 @@ class ManagedContextWebFilter(
     private val causationIdProvider: CausationIdProvider,
     private val compositeHook: OperationHook,
     private val issuerProvider: IssuerProvider = IssuerProvider { "anonymous" },
-    private val generateWhenMissing: Boolean = true
+    private val generateWhenMissing: Boolean = true,
+    private val excludeOptions: Boolean = false
 ) : WebFilter {
 
     override fun filter(exchange: ServerWebExchange, chain: WebFilterChain): Mono<Void> {
         val request = exchange.request
+
+        if (excludeOptions && request.method == HttpMethod.OPTIONS) {
+            return chain.filter(exchange)
+        }
+
         val context = contextProvider.provide().apply {
             val extractedTraceId = propagationProvider.extractTraceId { request.headers.getFirst(it) }
             val extractedCausationId = propagationProvider.extractParentId { request.headers.getFirst(it) }
@@ -47,7 +54,7 @@ class ManagedContextWebFilter(
             context.injectStatusCode(statusCode)
             context.end()
             if (context.outcome == OperationOutcome.SERVER_ERROR) {
-                compositeHook.onFailure(context, RuntimeException("HTTP $statusCode"))
+                compositeHook.onFailure(context, context.capturedException ?: RuntimeException("HTTP $statusCode"))
             } else {
                 compositeHook.onSuccess(context)
             }

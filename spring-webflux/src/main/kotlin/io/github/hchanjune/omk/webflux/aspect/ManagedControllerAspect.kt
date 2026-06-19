@@ -47,35 +47,36 @@ class ManagedControllerAspect(
         val ctx = getManagedContext(joinPoint) ?: return joinPoint.proceed()
 
         if (ctx.entrypoint != className) ctx.injectEntryPoint(className)
-        val result = joinPoint.proceed()
+        val span = ctx.push(
+            name = MetricName("$className.$methodName"),
+            kind = MetricKind.TIMER,
+            policy = MetricPolicy.defaults(),
+            tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
+            descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
+            idProvider = spanIdProvider
+        )
+
+        // proceed() itself can throw synchronously (before any Mono even exists) — the span must
+        // be pushed before this call so a sync throw here still ends/pops it and is recorded.
+        val result = try {
+            joinPoint.proceed()
+        } catch (e: Throwable) {
+            span.end(e); ctx.pop(); ctx.recordException(e); throw e
+        }
+
         return if (result is Mono<*>) {
             // proceed() returned a Mono — the span must be ended inside the reactive chain
-            val span = ctx.push(
-                name = MetricName("$className.$methodName"),
-                kind = MetricKind.TIMER,
-                policy = MetricPolicy.defaults(),
-                tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                idProvider = spanIdProvider
-            )
-            result.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+            result.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop(); ctx.recordException(e) }
         } else {
-            val span = ctx.push(
-                name = MetricName("$className.$methodName"),
-                kind = MetricKind.TIMER,
-                policy = MetricPolicy.defaults(),
-                tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                idProvider = spanIdProvider
-            )
-            try {
-                span.end(); ctx.pop(); result
-            } catch (e: Throwable) {
-                span.end(e); ctx.pop(); throw e
-            }
+            span.end(); ctx.pop(); result
         }
     }
 
+    /**
+     * Records the exception here because this is the last point where the real one is still
+     * visible: a @RestControllerAdvice further downstream in the same reactive chain will recover
+     * from it via onErrorResume before it ever reaches ManagedContextWebFilter.
+     */
     private fun instrumentMono(source: Mono<*>, className: String, methodName: String): Mono<*> =
         source.transformDeferredContextual { mono, reactorCtx ->
             val ctx = getManagedContext(reactorCtx)
@@ -90,6 +91,6 @@ class ManagedControllerAspect(
                 idProvider = spanIdProvider
             )
             mono.doOnSuccess { span.end(); ctx.pop() }
-                .doOnError { e -> span.end(e); ctx.pop() }
+                .doOnError { e -> span.end(e); ctx.pop(); ctx.recordException(e) }
         }
 }

@@ -143,6 +143,17 @@ class ManagedContext(
         this.outcome = OperationOutcome.fromStatusCode(statusCode)
     }
 
+    var capturedException: Throwable? = null
+        private set
+
+    /**
+     * Records the exception a @ExceptionHandler/@ControllerAdvice is about to convert into a response,
+     * before its identity is lost. First call wins, since it's closest to the real throw site.
+     */
+    fun recordException(exception: Throwable) {
+        if (this.capturedException == null) this.capturedException = exception
+    }
+
 
     private val spanStack = ArrayDeque<MetricSpan>()
 

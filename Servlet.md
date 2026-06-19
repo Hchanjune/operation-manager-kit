@@ -142,6 +142,17 @@ After `filterChain.doFilter()` returns without throwing, `ManagedContextPersiste
 
 `DefaultOperationLoggingHook` reads `context.outcome` inside `onSuccess` and logs non-`SUCCESS` outcomes at `logging.client-error-level` (default `WARN`) instead of `logging.success-level`.
 
+### Exception Capture (`@ExceptionHandler` / `@ControllerAdvice`)
+
+When a `@RestControllerAdvice` converts an exception into a normal response (the common pattern for domain/validation errors), that conversion happens **inside** `DispatcherServlet`, before control returns to `ManagedContextPersistenceFilter`. By the time the filter runs, the original exception object is gone — the filter only sees the final HTTP status code:
+
+- For a `SERVER_ERROR` (5xx), the filter previously had to invent a placeholder `RuntimeException("HTTP 500")` for `onFailure`, since the real exception never reached it.
+- For every other outcome, `onSuccess` was called with no exception information at all — a thrown `DomainValidationException` produced a log entry indistinguishable from a clean request.
+
+`ExceptionCapturingResolver` is a `HandlerExceptionResolver` registered at `Ordered.HIGHEST_PRECEDENCE`. It runs before your `@ExceptionHandler` methods, records the exception onto `ManagedContext.capturedException`, then returns `null` so your actual exception handler still produces the response unchanged. The filter and `DefaultOperationLoggingHook` then read `context.capturedException` instead of fabricating one — `onFailure` gets the real exception for 5xx, and `onSuccess`'s log output now includes the real exception's type/message/stack trace for 4xx/401/403 too. `onSuccess` vs `onFailure` routing itself is unchanged (still status-code based, see above) — only which exception is visible changes.
+
+This is enabled by default; disable with `operation-manager.webmvc.exception-capture.enabled: false`.
+
 ### Custom Hook Example
 
 ```kotlin
@@ -219,9 +230,13 @@ operation-manager:
   webmvc:
     context-filter:
       enabled: true
+      exclude-options: true   # if true, OPTIONS (CORS preflight) requests bypass context creation/logging entirely (default: true)
 
     context-aspect:
       enabled: true
+
+    exception-capture:
+      enabled: true       # registers ExceptionCapturingResolver so onFailure/logs see the real exception caught by @ExceptionHandler
 
     micrometer:
       enabled: true

@@ -48,12 +48,17 @@ class ManagedOperationAspect(
     private fun instrumentMono(source: Mono<*>, op: ManagedOperation, spanName: String): Mono<*> =
         source.transformDeferredContextual { mono, reactorCtx ->
             val ctx = getManagedContext(reactorCtx)
-            if (ctx == null) mono else pushAndInstrument(ctx, mono, op, spanName)
+            if (ctx == null) {
+                mono
+            } else {
+                ctx.injectAnnotationInfo(op.operation, op.useCase)
+                val span = buildSpan(ctx, op, spanName)
+                mono.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+            }
         }
 
-    private fun pushAndInstrument(ctx: ManagedContext, mono: Mono<*>, op: ManagedOperation, spanName: String): Mono<*> {
-        ctx.injectAnnotationInfo(op.operation, op.useCase)
-        val span = ctx.push(
+    private fun buildSpan(ctx: ManagedContext, op: ManagedOperation, spanName: String) =
+        ctx.push(
             name = MetricName(spanName),
             kind = MetricKind.TIMER,
             policy = MetricPolicy.defaults(),
@@ -65,27 +70,22 @@ class ManagedOperationAspect(
             descriptor = MetricDescriptor(operation = op.operation, useCase = op.useCase, layer = MetricLayer.APPLICATION),
             idProvider = spanIdProvider
         )
-        return mono.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
-    }
 
     private fun instrumentSuspend(joinPoint: ProceedingJoinPoint, ctx: ManagedContext, op: ManagedOperation, spanName: String): Any? {
         ctx.injectAnnotationInfo(op.operation, op.useCase)
-        val result = joinPoint.proceed()
+        val span = buildSpan(ctx, op, spanName)
+
+        // proceed() itself can throw synchronously (before any Mono even exists) — the span must
+        // be pushed before this call so a sync throw here still ends/pops it instead of leaking.
+        val result = try {
+            joinPoint.proceed()
+        } catch (e: Throwable) {
+            span.end(e); ctx.pop(); throw e
+        }
+
         return if (result is Mono<*>) {
-            pushAndInstrument(ctx, result, op, spanName)
+            result.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
         } else {
-            val span = ctx.push(
-                name = MetricName(spanName),
-                kind = MetricKind.TIMER,
-                policy = MetricPolicy.defaults(),
-                tags = MetricTags.Builder()
-                    .put("service", ctx.service)
-                    .put("operation", op.operation)
-                    .put("use_case", op.useCase)
-                    .build(),
-                descriptor = MetricDescriptor(operation = op.operation, useCase = op.useCase, layer = MetricLayer.APPLICATION),
-                idProvider = spanIdProvider
-            )
             span.end(); ctx.pop(); result
         }
     }

@@ -170,6 +170,7 @@ class ManagedContext
 | `executionScope` | `ExecutionScope`      | `PRIMARY`, `ASYNC`, or `EVENT`                           |
 | `rootSpan`       | `MetricSpan?`         | Root of the span tree; `null` until first span is pushed |
 | `hookRecords`    | `List<HookRecord>`    | Execution results of each hook                           |
+| `capturedException` | `Throwable?`       | Real exception recorded before a `@ExceptionHandler`/`@ControllerAdvice` converted it into a response — via `ExceptionCapturingResolver` (webmvc) or `ManagedControllerAspect` (webflux); `null` if none was caught. First exception wins |
 
 ### Mutable fields
 

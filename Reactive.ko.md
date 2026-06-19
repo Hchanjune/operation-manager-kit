@@ -196,6 +196,14 @@ Order > 60  →  커스텀 후처리 훅
 
 `DefaultOperationLoggingHook`은 `onSuccess` 내부에서 `context.outcome`을 확인하여, `SUCCESS`가 아닌 outcome은 `logging.success-level` 대신 `logging.client-error-level`(기본값 `WARN`)로 로깅합니다.
 
+### 예외 캡처 (`@ExceptionHandler` / `@ControllerAdvice`)
+
+`@RestControllerAdvice`가 같은 리액티브 체인 안에서 `onErrorResume`으로 예외를 복구하면, 원본 예외 객체는 `beforeCommit`에 도달하지 못합니다 — 그 시점엔 최종 응답 상태 코드만 관찰 가능합니다. WebFlux에는 MVC의 `HandlerExceptionResolver`에 대응하는 SPI가 없어서, 이 수정은 대신 `ManagedControllerAspect`를 재사용합니다: 이 aspect는 이미 모든 `@ManagedController` 메서드를 `doOnError`/`catch`로 감싸서 ENTRY span을 실패로 표시하고 있고, `doOnError`는 하류의 `onErrorResume`이 복구하기 *전에* 진짜 예외에 대해 먼저 실행됩니다(표준 Reactor 동작 — 복구 연산자보다 상류에 있는 peek 연산자는 여전히 에러를 관찰함). 이제 이 aspect는 같은 지점에서 `ctx.recordException(e)`도 호출해서 `ManagedContext.capturedException`에 저장합니다 — WebMVC 수정과 동일한 필드입니다.
+
+`ManagedContextWebFilter`와 `DefaultOperationLoggingHook`은 가짜 예외를 만드는 대신 `context.capturedException`을 읽습니다 — 5xx는 `onFailure`에 진짜 예외가 전달되고, 4xx/401/403도 `onSuccess`의 로그 출력에 진짜 예외의 타입/메시지/스택트레이스가 포함됩니다. `onSuccess` vs `onFailure` 라우팅 자체는 그대로입니다(위와 동일하게 상태 코드 기준).
+
+`@ManagedController`가 붙은 메서드에서 전파되는 예외만 다룹니다 — 이 라이브러리의 컨트롤러 계측 자체가 이미 요구하는 전제와 동일합니다.
+
 ### 커스텀 훅 예시
 
 ```kotlin
@@ -274,6 +282,7 @@ operation-manager:
   webflux:
     context-filter:
       enabled: true       # WebFilter 활성화 (기본값: true)
+      exclude-options: true   # true이면 OPTIONS(CORS preflight) 요청은 컨텍스트 생성/로깅 없이 통과 (기본값: true)
 
     context-aspect:
       enabled: true       # AOP Aspect 활성화 (기본값: true)
