@@ -2,13 +2,15 @@ package io.github.hchanjune.omk.webflux.aspect
 
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.webflux.ReactiveOperations
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.reactor.ReactorContext
+import kotlinx.coroutines.reactor.mono
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.reflect.MethodSignature
-import org.springframework.core.CoroutinesUtils
 import reactor.core.publisher.Mono
 import reactor.util.context.ContextView
 import kotlin.coroutines.Continuation
+import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
 abstract class ReactiveAspectSupport {
 
@@ -17,22 +19,28 @@ abstract class ReactiveAspectSupport {
 
     // Returns true when Spring called the proxy via method.invoke with null continuation
     // (non-Kotlin path). In this case joinPoint.proceed() fails; we must return a Mono instead.
-    protected fun isNullContinuation(joinPoint: ProceedingJoinPoint): Boolean =
-        joinPoint.args.lastOrNull() == null &&
-            Continuation::class.java.isAssignableFrom(
-                (joinPoint.signature as MethodSignature).method.parameterTypes.last()
-            )
+    protected fun isNullContinuation(joinPoint: ProceedingJoinPoint): Boolean {
+        val paramTypes = (joinPoint.signature as MethodSignature).method.parameterTypes
+        if (paramTypes.isEmpty()) return false
+        return joinPoint.args.lastOrNull() == null &&
+            Continuation::class.java.isAssignableFrom(paramTypes.last())
+    }
 
-    // When continuation is null, invoke the target as a Mono via CoroutinesUtils so the
-    // suspension chain remains intact. Callers wrap the returned Mono with instrumentation.
+    // When continuation is null, build a real Mono by injecting a real continuation via
+    // suspendCoroutineUninterceptedOrReturn so that joinPoint.proceed() gets a valid cont.
+    // This avoids CoroutinesUtils.invokeSuspendingFunction which requires getKotlinFunction
+    // to succeed on the proxy method (which fails in some ClassLoader configurations).
     protected fun proceedAsMono(joinPoint: ProceedingJoinPoint): Mono<*> {
-        val sig = joinPoint.signature as MethodSignature
-        val method = sig.method
-        val target = joinPoint.target
-        // Business args are all args except the last (null continuation placeholder)
-        val businessArgs = joinPoint.args.dropLast(1).toTypedArray()
+        val originalArgs = joinPoint.args
+        val argsWithoutCont = originalArgs.copyOf(originalArgs.size - 1)
         @Suppress("UNCHECKED_CAST")
-        return CoroutinesUtils.invokeSuspendingFunction(method, target, *businessArgs) as Mono<*>
+        return mono(Dispatchers.Unconfined) {
+            suspendCoroutineUninterceptedOrReturn<Any?> { cont ->
+                val newArgs = argsWithoutCont.copyOf(originalArgs.size)
+                newArgs[argsWithoutCont.size] = cont
+                joinPoint.proceed(newArgs)
+            }
+        } as Mono<*>
     }
 
     // Read context from target's original continuation when called in normal coroutine path.

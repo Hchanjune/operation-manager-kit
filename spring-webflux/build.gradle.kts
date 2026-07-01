@@ -14,15 +14,17 @@ dependencies {
 
     kapt("org.springframework.boot:spring-boot-configuration-processor:$springBootVersion")
 
-    compileOnly("org.jetbrains.kotlin:kotlin-reflect")
-    compileOnly("org.slf4j:slf4j-api")
-    compileOnly("io.micrometer:micrometer-core")
-    compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-core")
-    compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
-    compileOnly("jakarta.annotation:jakarta.annotation-api")
-    compileOnly("org.springframework:spring-webflux")
-    compileOnly("org.springframework:spring-aop")
+    api("org.jetbrains.kotlin:kotlin-reflect")
+    api("org.slf4j:slf4j-api")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
+    api("jakarta.annotation:jakarta.annotation-api")
+
     compileOnly("org.aspectj:aspectjrt")
+    compileOnly("org.springframework:spring-aop")
+
+    compileOnly("io.micrometer:micrometer-core")
+    compileOnly("org.springframework:spring-webflux")
     compileOnly("org.springframework.security:spring-security-core")
     compileOnly("org.springframework.security:spring-security-web")
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")
