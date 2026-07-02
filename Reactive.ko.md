@@ -1,4 +1,4 @@
-# OMK — Spring WebFlux (Reactive 스택)
+﻿# OMK — Spring WebFlux (Reactive 스택)
 
 **한국어 | [English](Reactive.md)**
 
@@ -32,7 +32,7 @@
 ```kotlin
 dependencies {
     implementation("com.github.Hchanjune.operation-manager-kit:core:x.x.x")
-    implementation("com.github.Hchanjune.operation-manager-kit:spring-webflux:x.x.x")
+    implementation("com.github.Hchanjune.operation-manager-kit:reactive:x.x.x")
 
     implementation("org.aspectj:aspectjweaver")
     implementation("io.micrometer:micrometer-core")
@@ -66,7 +66,7 @@ operation-manager:
 
 ### 1. 컴포넌트에 어노테이션 붙이기
 
-`spring-webflux`는 `suspend fun`과 `Mono`/`Flow` 반환 메서드를 모두 지원합니다.
+`reactive`는 `suspend fun`과 `Mono`/`Flow` 반환 메서드를 모두 지원합니다.
 
 ```kotlin
 import io.github.hchanjune.omk.core.annotations.ManagedController

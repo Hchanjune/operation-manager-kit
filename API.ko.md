@@ -1,4 +1,4 @@
-# OMK — API 레퍼런스
+﻿# OMK — API 레퍼런스
 
 **한국어 | [English](API.md)**
 

@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     kotlin("jvm")
     kotlin("plugin.spring")
 }
@@ -8,7 +8,7 @@ val springBootVersion: String by project
 dependencies {
     testImplementation(kotlin("test"))
     testImplementation(kotlin("reflect"))
-    testImplementation(project(":spring-webflux"))
+    testImplementation(project(":reactive"))
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webflux")

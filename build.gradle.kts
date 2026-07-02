@@ -1,4 +1,4 @@
-import org.gradle.api.publish.PublishingExtension
+﻿import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.api.plugins.JavaPluginExtension
@@ -26,7 +26,7 @@ apply(plugin = "jacoco")
 
 tasks.register<JacocoReport>("jacocoAggregatedReport") {
     group = "verification"
-    description = "Aggregated JaCoCo report: unit + integration test coverage for core, spring-webmvc, and spring-webflux"
+    description = "Aggregated JaCoCo report: unit + integration test coverage for core, servlet, and reactive"
     dependsOn(subprojects.map { ":${it.name}:test" })
     executionData.from(subprojects.map { it.layout.buildDirectory.file("jacoco/test.exec") })
     reports {
@@ -39,7 +39,7 @@ tasks.register<JacocoReport>("jacocoAggregatedReport") {
 
 gradle.projectsEvaluated {
     tasks.named<JacocoReport>("jacocoAggregatedReport") {
-        listOf(":core", ":spring-webmvc", ":spring-webflux").forEach { path ->
+        listOf(":core", ":servlet", ":reactive").forEach { path ->
             val sub = project(path)
             val main = sub.extensions.getByType(JavaPluginExtension::class.java).sourceSets["main"]
             sourceDirectories.from(main.allSource.srcDirs)
@@ -52,7 +52,7 @@ gradle.projectsEvaluated {
         description = "Fails the build if aggregated coverage drops below threshold"
         dependsOn("jacocoAggregatedReport")
         executionData.from(subprojects.map { it.layout.buildDirectory.file("jacoco/test.exec") })
-        listOf(":core", ":spring-webmvc", ":spring-webflux").forEach { path ->
+        listOf(":core", ":servlet", ":reactive").forEach { path ->
             val sub = project(path)
             val main = sub.extensions.getByType(JavaPluginExtension::class.java).sourceSets["main"]
             sourceDirectories.from(main.allSource.srcDirs)

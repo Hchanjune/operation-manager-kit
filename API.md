@@ -1,4 +1,4 @@
-# OMK — API Reference
+﻿# OMK — API Reference
 
 **[한국어](API.ko.md) | English**
 

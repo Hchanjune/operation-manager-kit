@@ -1,4 +1,4 @@
-# Operation Manager Kit
+﻿# Operation Manager Kit
 
 [![JitPack](https://jitpack.io/v/Hchanjune/operation-manager-kit.svg)](https://jitpack.io/#Hchanjune/operation-manager-kit)
 [![codecov](https://codecov.io/gh/Hchanjune/operation-manager-kit/branch/main/graph/badge.svg)](https://codecov.io/gh/Hchanjune/operation-manager-kit)
@@ -15,8 +15,8 @@
 - [Modules](#modules)
 - [Compatibility](#compatibility)
 - [Installation](#installation)
-  - [Servlet Stack (Spring WebMVC)](#servlet-stack-spring-webmvc)
-  - [Reactive Stack (Spring WebFlux + Kotlin Coroutines)](#reactive-stack-spring-webflux--kotlin-coroutines)
+  - [Servlet Stack (Spring WebMVC)](#servlet-stack-servlet)
+  - [Reactive Stack (Spring WebFlux + Kotlin Coroutines)](#reactive-stack-reactive--kotlin-coroutines)
 - [Usage at a Glance](#usage-at-a-glance)
 - [Roadmap](#roadmap)
 - [License](#license)
@@ -34,8 +34,8 @@ It provides a structured execution boundary around business logic, automatically
 | Module           | Description                                                                                   | Docs                       |
 |------------------|-----------------------------------------------------------------------------------------------|----------------------------|
 | `core`           | Framework-agnostic execution engine, context model, and provider contracts                    | —                          |
-| `spring-webmvc`  | Spring Boot auto-configuration for Servlet stack (AOP aspects, servlet filters, Micrometer)   | [Servlet.md](Servlet.md)   |
-| `spring-webflux` | Spring Boot auto-configuration for Reactive stack (AOP aspects, WebFilter, Kotlin Coroutines) | [Reactive.md](Reactive.md) |
+| `servlet`  | Spring Boot auto-configuration for Servlet stack (AOP aspects, servlet filters, Micrometer)   | [Servlet.md](Servlet.md)   |
+| `reactive` | Spring Boot auto-configuration for Reactive stack (AOP aspects, WebFilter, Kotlin Coroutines) | [Reactive.md](Reactive.md) |
 
 → **[API Reference](API.md)** — All annotations, classes, interfaces, and configuration properties
 
@@ -73,8 +73,7 @@ Then include the modules for your stack:
 
 ```kotlin
 dependencies {
-    implementation("com.github.Hchanjune.operation-manager-kit:core:x.x.x")
-    implementation("com.github.Hchanjune.operation-manager-kit:spring-webmvc:x.x.x")
+    implementation("com.github.Hchanjune.operation-manager-kit:servlet:x.x.x")
 
     // AOP support
     implementation("org.springframework.boot:spring-boot-starter-aop")         // Spring Boot 3.x
@@ -88,8 +87,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation("com.github.Hchanjune.operation-manager-kit:core:x.x.x")
-    implementation("com.github.Hchanjune.operation-manager-kit:spring-webflux:x.x.x")
+    implementation("com.github.Hchanjune.operation-manager-kit:reactive:x.x.x")
 
     // AOP and Micrometer support
     implementation("org.aspectj:aspectjweaver")

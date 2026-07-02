@@ -1,4 +1,4 @@
-# OMK — Spring WebFlux (Reactive Stack)
+﻿# OMK — Spring WebFlux (Reactive Stack)
 
 **[한국어](Reactive.ko.md) | English**
 
@@ -32,7 +32,7 @@
 ```kotlin
 dependencies {
     implementation("com.github.Hchanjune.operation-manager-kit:core:x.x.x")
-    implementation("com.github.Hchanjune.operation-manager-kit:spring-webflux:x.x.x")
+    implementation("com.github.Hchanjune.operation-manager-kit:reactive:x.x.x")
 
     implementation("org.aspectj:aspectjweaver")
     implementation("io.micrometer:micrometer-core")
@@ -66,7 +66,7 @@ operation-manager:
 
 ### 1. Annotate your components
 
-`spring-webflux` supports both `suspend fun` and `Mono`/`Flow` returning methods.
+`reactive` supports both `suspend fun` and `Mono`/`Flow` returning methods.
 
 ```kotlin
 import io.github.hchanjune.omk.core.annotations.ManagedController

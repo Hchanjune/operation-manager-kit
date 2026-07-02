@@ -1,4 +1,4 @@
-# Operation Manager Kit
+﻿# Operation Manager Kit
 
 [![JitPack](https://jitpack.io/v/Hchanjune/operation-manager-kit.svg)](https://jitpack.io/#Hchanjune/operation-manager-kit)
 [![codecov](https://codecov.io/gh/Hchanjune/operation-manager-kit/branch/main/graph/badge.svg)](https://codecov.io/gh/Hchanjune/operation-manager-kit)
@@ -15,8 +15,8 @@
 - [모듈](#모듈)
 - [호환성](#호환성)
 - [설치](#설치)
-  - [Servlet 스택 (Spring WebMVC)](#servlet-스택-spring-webmvc)
-  - [Reactive 스택 (Spring WebFlux + Kotlin Coroutines)](#reactive-스택-spring-webflux--kotlin-coroutines)
+  - [Servlet 스택 (Spring WebMVC)](#servlet-스택-servlet)
+  - [Reactive 스택 (Spring WebFlux + Kotlin Coroutines)](#reactive-스택-reactive--kotlin-coroutines)
 - [한눈에 보는 사용법](#한눈에-보는-사용법)
 - [로드맵](#로드맵)
 - [라이선스](#라이선스)
@@ -34,8 +34,8 @@
 | 모듈               | 설명                                                           | 문서                               |
 |------------------|--------------------------------------------------------------|----------------------------------|
 | `core`           | 프레임워크 독립적인 실행 엔진, 컨텍스트 모델, 프로바이더 계약                          | —                                |
-| `spring-webmvc`  | Servlet 스택 자동 설정 (AOP Aspect, 서블릿 필터, Micrometer)            | [Servlet.ko.md](Servlet.ko.md)   |
-| `spring-webflux` | Reactive 스택 자동 설정 (AOP Aspect, WebFilter, Kotlin Coroutines) | [Reactive.ko.md](Reactive.ko.md) |
+| `servlet`  | Servlet 스택 자동 설정 (AOP Aspect, 서블릿 필터, Micrometer)            | [Servlet.ko.md](Servlet.ko.md)   |
+| `reactive` | Reactive 스택 자동 설정 (AOP Aspect, WebFilter, Kotlin Coroutines) | [Reactive.ko.md](Reactive.ko.md) |
 
 → **[API 레퍼런스](API.ko.md)** — 모든 어노테이션, 클래스, 인터페이스, 설정 프로퍼티
 
@@ -73,8 +73,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.Hchanjune.operation-manager-kit:core:x.x.x")
-    implementation("com.github.Hchanjune.operation-manager-kit:spring-webmvc:x.x.x")
+    implementation("com.github.Hchanjune.operation-manager-kit:servlet:x.x.x")
 
     // AOP 지원
     implementation("org.springframework.boot:spring-boot-starter-aop")         // Spring Boot 3.x
@@ -88,8 +87,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation("com.github.Hchanjune.operation-manager-kit:core:x.x.x")
-    implementation("com.github.Hchanjune.operation-manager-kit:spring-webflux:x.x.x")
+    implementation("com.github.Hchanjune.operation-manager-kit:reactive:x.x.x")
 
     // AOP 및 Micrometer 지원
     implementation("org.aspectj:aspectjweaver")
