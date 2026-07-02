@@ -159,7 +159,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] Span-level metric instrumentation
 - [x] Micrometer integration
 - [x] OpenTelemetry SDK integration
-- [x] Messaging context propagation (`@ManagedEventHandler`)
+- [x] Messaging context propagation (`@ManagedEventHandler`) — **Kotlin only**: `handle()` must be `suspend fun` for the reactive aspect to intercept correctly
 
 ---
 

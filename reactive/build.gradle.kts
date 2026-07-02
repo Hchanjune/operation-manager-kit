@@ -10,7 +10,7 @@ val springBootVersion: String by project
 dependencies {
     api(project(":core"))
 
-    compileOnly(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
+    api(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
 
     kapt("org.springframework.boot:spring-boot-configuration-processor:$springBootVersion")
 

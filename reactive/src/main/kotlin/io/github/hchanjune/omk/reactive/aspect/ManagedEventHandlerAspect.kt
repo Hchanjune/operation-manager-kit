@@ -20,8 +20,11 @@ import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
+import kotlinx.coroutines.reactor.awaitSingleOrNull
+import org.aspectj.lang.reflect.MethodSignature
 import reactor.core.publisher.Mono
 import reactor.util.context.Context
+import kotlin.coroutines.Continuation
 
 @Aspect
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
@@ -157,6 +160,26 @@ class ManagedEventHandlerAspect(
             descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
             idProvider = spanIdProvider
         )
+
+        // suspend fun target: joinPoint.proceed() returns COROUTINE_SUSPENDED immediately without
+        // awaiting completion, so Spring's KotlinDelegate mono.block() never resolves.
+        // Use proceedAsMono + awaitSingleOrNull to properly chain the continuation.
+        val paramTypes = (joinPoint.signature as MethodSignature).method.parameterTypes
+        val isSuspendTarget = paramTypes.isNotEmpty() &&
+            Continuation::class.java.isAssignableFrom(paramTypes.last())
+
+        if (isSuspendTarget) {
+            return try {
+                proceedAsMono(joinPoint)
+                    .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newContext))
+                    .awaitSingleOrNull()
+                    .also { span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onSuccess(newContext) }
+            } catch (e: Throwable) {
+                span.end(e); newContext.pop(); newContext.end()
+                ReactiveOperations.hook?.onFailure(newContext, e)
+                throw e
+            }
+        }
 
         return try {
             val result = joinPoint.proceed()
