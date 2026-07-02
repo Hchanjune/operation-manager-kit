@@ -1,5 +1,5 @@
-operation-manager:
-  webmvc:
+﻿operation-manager:
+  servlet:
     micrometer:
       enabled: false
     logging:

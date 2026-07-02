@@ -1,5 +1,5 @@
-operation-manager:
-  webflux:
+﻿operation-manager:
+  reactive:
     micrometer:
       enabled: false
     logging:
