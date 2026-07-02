@@ -91,8 +91,10 @@ class ManagedEventHandlerAspect(
 
     private enum class AnnotatedFieldRole { TRACE_ID, CAUSATION_ID, ISSUER, EVENT_TYPE }
     private data class AnnotatedField(val field: java.lang.reflect.Field, val role: AnnotatedFieldRole)
+    private data class AnnotatedMethod(val method: java.lang.reflect.Method, val role: AnnotatedFieldRole)
 
     private val annotationFieldCache = java.util.concurrent.ConcurrentHashMap<Class<*>, List<AnnotatedField>>()
+    private val annotationMethodCache = java.util.concurrent.ConcurrentHashMap<Class<*>, List<AnnotatedMethod>>()
 
     private fun resolveAnnotatedFields(cls: Class<*>): List<AnnotatedField> =
         annotationFieldCache.getOrPut(cls) {
@@ -117,10 +119,36 @@ class ManagedEventHandlerAspect(
             result
         }
 
+    private fun resolveAnnotatedMethods(cls: Class<*>): List<AnnotatedMethod> =
+        annotationMethodCache.getOrPut(cls) {
+            val result = mutableListOf<AnnotatedMethod>()
+            val visited = mutableSetOf<Class<*>>()
+            val queue = ArrayDeque<Class<*>>()
+            var cur: Class<*>? = cls
+            while (cur != null) { queue.addAll(cur.interfaces); cur = cur.superclass }
+            while (queue.isNotEmpty()) {
+                val iface = queue.removeFirst()
+                if (!visited.add(iface)) continue
+                queue.addAll(iface.interfaces)
+                for (method in iface.declaredMethods) {
+                    val role = when {
+                        method.isAnnotationPresent(ManagedEventTraceId::class.java)    -> AnnotatedFieldRole.TRACE_ID
+                        method.isAnnotationPresent(ManagedEventCausationId::class.java) -> AnnotatedFieldRole.CAUSATION_ID
+                        method.isAnnotationPresent(ManagedEventIssuer::class.java)     -> AnnotatedFieldRole.ISSUER
+                        method.isAnnotationPresent(ManagedEventType::class.java)       -> AnnotatedFieldRole.EVENT_TYPE
+                        else -> null
+                    }
+                    if (role != null) result.add(AnnotatedMethod(method, role))
+                }
+            }
+            result
+        }
+
     private fun tryExtractFromAnnotations(arg: Any): EventMetadata? {
         return runCatching {
             val fields = resolveAnnotatedFields(arg::class.java)
-            if (fields.isEmpty()) return@runCatching null
+            val methods = resolveAnnotatedMethods(arg::class.java)
+            if (fields.isEmpty() && methods.isEmpty()) return@runCatching null
 
             var traceId: String? = null
             var causationId: String? = null
@@ -129,10 +157,19 @@ class ManagedEventHandlerAspect(
 
             for ((field, role) in fields) {
                 when (role) {
-                    AnnotatedFieldRole.TRACE_ID    -> traceId    = field.get(arg) as? String
+                    AnnotatedFieldRole.TRACE_ID     -> traceId     = field.get(arg) as? String
                     AnnotatedFieldRole.CAUSATION_ID -> causationId = field.get(arg) as? String
                     AnnotatedFieldRole.ISSUER       -> issuer      = field.get(arg) as? String
                     AnnotatedFieldRole.EVENT_TYPE   -> eventType   = field.get(arg) as? String
+                }
+            }
+
+            for ((method, role) in methods) {
+                when (role) {
+                    AnnotatedFieldRole.TRACE_ID     -> if (traceId == null)     traceId     = method.invoke(arg) as? String
+                    AnnotatedFieldRole.CAUSATION_ID -> if (causationId == null) causationId = method.invoke(arg) as? String
+                    AnnotatedFieldRole.ISSUER       -> if (issuer == null)      issuer      = method.invoke(arg) as? String
+                    AnnotatedFieldRole.EVENT_TYPE   -> if (eventType == null)   eventType   = method.invoke(arg) as? String
                 }
             }
 
