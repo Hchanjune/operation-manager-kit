@@ -54,7 +54,7 @@ internal class FilterConfiguration {
         FilterRegistrationBean(filter).apply {
             setName("managedContextPersistenceFilter")
             addUrlPatterns("/*")
-            order = -90
+            order = -101 // must run before Spring Security (DEFAULT_FILTER_ORDER = -100)
         }
 
 }

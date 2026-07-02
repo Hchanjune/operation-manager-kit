@@ -15,7 +15,7 @@ allprojects {
 
     group = "com.github.Hchanjune.operation-manager-kit"
 
-    version = "0.8.3"
+    version = "0.8.4"
 
     repositories {
         mavenCentral()
