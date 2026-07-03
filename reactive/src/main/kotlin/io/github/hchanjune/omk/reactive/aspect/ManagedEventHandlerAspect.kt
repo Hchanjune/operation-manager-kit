@@ -34,11 +34,8 @@ class ManagedEventHandlerAspect(
     private val spanIdProvider: SpanIdProvider
 ) : ReactiveAspectSupport() {
 
-    @Around("@annotation(managedEventHandler)")
-    suspend fun aroundEventHandler(
-        joinPoint: ProceedingJoinPoint,
-        managedEventHandler: ManagedEventHandler
-    ): Any? {
+    @Around("@annotation(io.github.hchanjune.omk.core.annotations.ManagedEventHandler)")
+    suspend fun aroundEventHandler(joinPoint: ProceedingJoinPoint): Any? {
         val className = joinPoint.signature.declaringType.simpleName
         val methodName = joinPoint.signature.name.substringBefore('-')
 
