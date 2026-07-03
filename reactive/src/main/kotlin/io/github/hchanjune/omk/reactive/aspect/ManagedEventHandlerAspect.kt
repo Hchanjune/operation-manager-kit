@@ -82,6 +82,7 @@ class ManagedEventHandlerAspect(
             descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
             idProvider = spanIdProvider
         )
+        eventHandlerContext.set(newContext)
         return try {
             val result = joinPoint.proceed()
             span.end(); newContext.pop(); newContext.end()
@@ -91,6 +92,8 @@ class ManagedEventHandlerAspect(
             span.end(e); newContext.pop(); newContext.end()
             ReactiveOperations.hook?.onFailure(newContext, e)
             throw e
+        } finally {
+            eventHandlerContext.remove()
         }
     }
 

@@ -14,6 +14,12 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
 abstract class ReactiveAspectSupport {
 
+    companion object {
+        // Carries ManagedContext across the blocking event-handler boundary so that
+        // inner reactive spans (e.g. @ManagedRepository inside runBlocking) can find it.
+        internal val eventHandlerContext = ThreadLocal<ManagedContext?>()
+    }
+
     protected fun isMono(joinPoint: ProceedingJoinPoint): Boolean =
         Mono::class.java.isAssignableFrom((joinPoint.signature as MethodSignature).method.returnType)
 
@@ -44,10 +50,13 @@ abstract class ReactiveAspectSupport {
     }
 
     // Read context from target's original continuation when called in normal coroutine path.
+    // Falls back to ThreadLocal so that inner reactive spans fired from a blocking event
+    // handler (runBlocking inside handle()) can still find the owning ManagedContext.
     protected fun getManagedContext(joinPoint: ProceedingJoinPoint): ManagedContext? {
-        val continuation = joinPoint.args.lastOrNull() as? Continuation<*> ?: return null
-        val reactorCtx = continuation.context[ReactorContext]?.context ?: return null
-        return reactorCtx.getOrEmpty<ManagedContext>(ReactiveOperations.CONTEXT_KEY).orElse(null)
+        val continuation = joinPoint.args.lastOrNull() as? Continuation<*>
+        val fromReactor = continuation?.context?.get(ReactorContext)?.context
+            ?.getOrEmpty<ManagedContext>(ReactiveOperations.CONTEXT_KEY)?.orElse(null)
+        return fromReactor ?: eventHandlerContext.get()
     }
 
     protected fun getManagedContext(reactorCtx: ContextView): ManagedContext? =
