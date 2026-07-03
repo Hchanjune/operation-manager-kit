@@ -708,10 +708,7 @@ class AspectsDirectTest {
     @Test
     fun `event handler aspect handles Mono return type with existing context`() {
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val ctx = context()
-        val jp = fakeMonoJp(StubEventHolder::class.java, "handleEvent")
         val jpWithCtx = fakeJp(
             StubEventHolder::class.java,
             "handleEvent",
@@ -719,7 +716,7 @@ class AspectsDirectTest {
             returnType = Mono::class.java,
             args = arrayOf(createContinuationWithContext(ctx))
         )
-        val result = runBlocking { aspect.aroundEventHandler(jpWithCtx, ann) }
+        val result = runBlocking { aspect.aroundEventHandler(jpWithCtx) }
         assertNotNull(result)
     }
 
@@ -727,10 +724,8 @@ class AspectsDirectTest {
     fun `event handler aspect proceeds without context`() {
         configureEventProviders()
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val jp = fakeJp(StubEventHolder::class.java, "handleEvent", returns = "ok")
-        val result = runBlocking { aspect.aroundEventHandler(jp, ann) }
+        val result = runBlocking { aspect.aroundEventHandler(jp) }
         assertEquals("ok", result)
     }
 
@@ -738,23 +733,19 @@ class AspectsDirectTest {
     fun `event handler aspect propagates exception without context`() {
         configureEventProviders()
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val jp = fakeJp(StubEventHolder::class.java, "handleEvent", throws = RuntimeException("evt-boom"))
-        assertFailsWith<RuntimeException> { runBlocking { aspect.aroundEventHandler(jp, ann) } }
+        assertFailsWith<RuntimeException> { runBlocking { aspect.aroundEventHandler(jp) } }
     }
 
     @Test
     fun `event handler aspect with existing context uses it`() {
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val ctx = context()
         val jp = fakeJp(
             StubEventHolder::class.java, "handleEvent", returns = "ok",
             args = arrayOf(createContinuationWithContext(ctx))
         )
-        val result = runBlocking { aspect.aroundEventHandler(jp, ann) }
+        val result = runBlocking { aspect.aroundEventHandler(jp) }
         assertEquals("ok", result)
     }
 
@@ -762,10 +753,8 @@ class AspectsDirectTest {
     fun `event handler aspect Mono path without context`() {
         configureEventProviders()
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val jp = fakeMonoJp(StubEventHolder::class.java, "handleEvent")
-        val result = runBlocking { aspect.aroundEventHandler(jp, ann) }
+        val result = runBlocking { aspect.aroundEventHandler(jp) }
         assertNotNull(result)
     }
 
@@ -773,23 +762,19 @@ class AspectsDirectTest {
     fun `event handler aspect isMono path contextOwner=true creates new context`() {
         configureEventProviders()
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val jp = fakeProperMonoJp(StubEventHolder::class.java, "handleEvent")
         // subscribe without reactor context → contextOwner=true → initializes new context
-        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>).block()
+        val result = (runBlocking { aspect.aroundEventHandler(jp) } as Mono<*>).block()
         assertEquals("mono-ok", result)
     }
 
     @Test
     fun `event handler aspect isMono path contextOwner=false uses existing context`() {
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val ctx = context()
         val jp = fakeProperMonoJp(StubEventHolder::class.java, "handleEvent")
         // subscribe with context → contextOwner=false → wraps existing context
-        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>)
+        val result = (runBlocking { aspect.aroundEventHandler(jp) } as Mono<*>)
             .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
             .block()
         assertEquals("mono-ok", result)
@@ -800,23 +785,19 @@ class AspectsDirectTest {
     fun `event handler aspect null continuation path without context creates new context`() {
         configureEventProviders()
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val jp = fakeNullContinuationJp(StubEventHolder::class.java, "handleEvent")
-        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>).block()
+        val result = runBlocking { aspect.aroundEventHandler(jp) }
         assertNotNull(result)
     }
 
     @Test
     fun `event handler aspect null continuation path with context uses existing context`() {
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val ctx = context()
         val jp = fakeNullContinuationJp(StubEventHolder::class.java, "handleEvent")
-        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>)
-            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
-            .block()
+        val reactorCtx = Context.of(ReactiveOperations.CONTEXT_KEY, ctx)
+        val corCtx = kotlinx.coroutines.reactor.ReactorContext(reactorCtx)
+        val result = runBlocking(corCtx) { aspect.aroundEventHandler(jp) }
         assertNotNull(result)
         assertNull(ctx.peek())
     }
@@ -824,15 +805,13 @@ class AspectsDirectTest {
     @Test
     fun `event handler aspect existingCtx suspend path pops span when proceed throws synchronously`() {
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val ctx = context()
         val jp = fakeJp(
             StubEventHolder::class.java, "handleEvent",
             throws = RuntimeException("evt-sync-boom"),
             args = arrayOf(createContinuationWithContext(ctx))
         )
-        assertFailsWith<RuntimeException> { runBlocking { aspect.aroundEventHandler(jp, ann) } }
+        assertFailsWith<RuntimeException> { runBlocking { aspect.aroundEventHandler(jp) } }
         assertNull(ctx.peek())
         assertNotNull(ctx.rootSpan)
     }
@@ -840,8 +819,6 @@ class AspectsDirectTest {
     @Test
     fun `event handler aspect suspend existing context when proceed returns Mono wraps with span`() {
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ann = StubEventHolder::class.java.getDeclaredMethod("handleEvent", String::class.java)
-            .getAnnotation(ManagedEventHandler::class.java)!!
         val ctx = context()
         val jp = fakeJp(
             StubEventHolder::class.java,
@@ -849,7 +826,7 @@ class AspectsDirectTest {
             returns = Mono.just("event-mono"),
             args = arrayOf(createContinuationWithContext(ctx))
         )
-        val result = (runBlocking { aspect.aroundEventHandler(jp, ann) } as Mono<*>).block()
+        val result = (runBlocking { aspect.aroundEventHandler(jp) } as Mono<*>).block()
         assertEquals("event-mono", result)
         assertNull(ctx.peek())
     }
