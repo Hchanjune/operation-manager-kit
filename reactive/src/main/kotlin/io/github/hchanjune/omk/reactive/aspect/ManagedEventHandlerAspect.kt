@@ -20,6 +20,8 @@ import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.reactor.ReactorContext
 import kotlinx.coroutines.reactor.awaitSingleOrNull
 import org.aspectj.lang.reflect.MethodSignature
 import reactor.core.publisher.Mono
@@ -40,10 +42,14 @@ class ManagedEventHandlerAspect(
         val className = joinPoint.signature.declaringType.simpleName
         val methodName = joinPoint.signature.name.substringBefore('-')
 
+        println("[OMK-DEBUG] aroundEventHandler: $className.$methodName | isMono=${isMono(joinPoint)} | isNullCont=${isNullContinuation(joinPoint)} | lastArg=${joinPoint.args.lastOrNull()?.let { it::class.simpleName } ?: "null"}")
+
         if (isMono(joinPoint)) {
+            println("[OMK-DEBUG] -> isMono path")
             val result = joinPoint.proceed() as Mono<*>
             return result.transformDeferredContextual { mono, reactorCtx ->
                 val contextOwner = !reactorCtx.hasKey(ReactiveOperations.CONTEXT_KEY)
+                println("[OMK-DEBUG] isMono subscribed: owner=$contextOwner hook=${ReactiveOperations.hook != null}")
                 if (contextOwner) {
                     val newContext = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args))
                     newContext.injectEntryPoint(className)
@@ -57,15 +63,18 @@ class ManagedEventHandlerAspect(
                     )
                     mono
                         .doOnSuccess {
+                            println("[OMK-DEBUG] isMono.doOnSuccess (owner)")
                             span.end(); newContext.pop()
                             newContext.end()
                             ReactiveOperations.hook?.onSuccess(newContext)
                         }
                         .doOnError { e ->
+                            println("[OMK-DEBUG] isMono.doOnError (owner): ${e.message}")
                             span.end(e); newContext.pop()
                             newContext.end()
                             ReactiveOperations.hook?.onFailure(newContext, e)
                         }
+                        .doFinally { sig -> println("[OMK-DEBUG] isMono.terminal (owner): $sig") }
                         .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newContext))
                 } else {
                     val ctx = reactorCtx.get<ManagedContext>(ReactiveOperations.CONTEXT_KEY)
@@ -79,16 +88,22 @@ class ManagedEventHandlerAspect(
                         idProvider = spanIdProvider
                     )
                     mono
-                        .doOnSuccess { span.end(); ctx.pop() }
-                        .doOnError { e -> span.end(e); ctx.pop() }
+                        .doOnSuccess { println("[OMK-DEBUG] isMono.doOnSuccess (nonOwner)"); span.end(); ctx.pop() }
+                        .doOnError { e -> println("[OMK-DEBUG] isMono.doOnError (nonOwner): ${e.message}"); span.end(e); ctx.pop() }
+                        .doFinally { sig -> println("[OMK-DEBUG] isMono.terminal (nonOwner): $sig") }
                 }
             }
         }
 
-        // suspend fun via null continuation (WebFlux non-Kotlin path): return instrumented Mono
+        // suspend fun via null continuation: Spring Boot 4.x (Spring Framework 7) nulls out the
+        // Continuation in joinPoint.args when invoking a suspend @Around advice, even from a
+        // runBlocking context. Returning a Mono here would leave it unsubscribed. Instead we
+        // await the Mono directly so the result flows back through the coroutine chain.
         if (isNullContinuation(joinPoint)) {
+            println("[OMK-DEBUG] -> isNullContinuation path")
             return proceedAsMono(joinPoint).transformDeferredContextual { mono, reactorCtx ->
                 val ctx = getManagedContext(reactorCtx)
+                println("[OMK-DEBUG] isNullCont subscribed: existingCtx=${ctx != null} hook=${ReactiveOperations.hook != null}")
                 if (ctx != null) {
                     ctx.injectEntryPoint(className)
                     val span = ctx.push(
@@ -99,7 +114,10 @@ class ManagedEventHandlerAspect(
                         descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
                         idProvider = spanIdProvider
                     )
-                    mono.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+                    mono
+                        .doOnSuccess { println("[OMK-DEBUG] isNullCont.doOnSuccess (nonOwner)"); span.end(); ctx.pop() }
+                        .doOnError { e -> println("[OMK-DEBUG] isNullCont.doOnError (nonOwner): ${e.message}"); span.end(e); ctx.pop() }
+                        .doFinally { sig -> println("[OMK-DEBUG] isNullCont.terminal (nonOwner): $sig") }
                 } else {
                     // No upstream context: event handler creates its own
                     val newCtx = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args))
@@ -113,17 +131,20 @@ class ManagedEventHandlerAspect(
                         idProvider = spanIdProvider
                     )
                     mono
-                        .doOnSuccess { span.end(); newCtx.pop(); newCtx.end(); ReactiveOperations.hook?.onSuccess(newCtx) }
-                        .doOnError { e -> span.end(e); newCtx.pop(); newCtx.end(); ReactiveOperations.hook?.onFailure(newCtx, e) }
+                        .doOnSuccess { println("[OMK-DEBUG] isNullCont.doOnSuccess (owner)"); span.end(); newCtx.pop(); newCtx.end(); ReactiveOperations.hook?.onSuccess(newCtx) }
+                        .doOnError { e -> println("[OMK-DEBUG] isNullCont.doOnError (owner): ${e.message}"); span.end(e); newCtx.pop(); newCtx.end(); ReactiveOperations.hook?.onFailure(newCtx, e) }
+                        .doFinally { sig -> println("[OMK-DEBUG] isNullCont.terminal (owner): $sig") }
                         .contextWrite(reactor.util.context.Context.of(ReactiveOperations.CONTEXT_KEY, newCtx))
                 }
-            }
+            }.awaitSingleOrNull()
         }
 
         // suspend fun with valid continuation
         val existingCtx = getManagedContext(joinPoint)
+        println("[OMK-DEBUG] existingCtx=${existingCtx != null}")
 
         if (existingCtx != null) {
+            println("[OMK-DEBUG] -> existingCtx path (non-owner, no hook)")
             existingCtx.injectEntryPoint(className)
             val span = existingCtx.push(
                 name = MetricName("$className.$methodName"),
@@ -167,14 +188,22 @@ class ManagedEventHandlerAspect(
         val paramTypes = (joinPoint.signature as MethodSignature).method.parameterTypes
         val isSuspendTarget = paramTypes.isNotEmpty() &&
             Continuation::class.java.isAssignableFrom(paramTypes.last())
+        println("[OMK-DEBUG] -> context-owner path | isSuspendTarget=$isSuspendTarget | hook=${ReactiveOperations.hook?.let { it::class.simpleName } ?: "NULL"}")
 
         if (isSuspendTarget) {
+            println("[OMK-DEBUG] -> isSuspendTarget path (proceedAsMono+awaitSingleOrNull)")
             return try {
                 proceedAsMono(joinPoint)
                     .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newContext))
+                    .doFinally { sig -> println("[OMK-DEBUG] isSuspendTarget.terminal: $sig") }
                     .awaitSingleOrNull()
-                    .also { span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onSuccess(newContext) }
+                    .also {
+                        println("[OMK-DEBUG] onSuccess: hook=${ReactiveOperations.hook?.let { it::class.simpleName } ?: "NULL"}")
+                        span.end(); newContext.pop(); newContext.end()
+                        ReactiveOperations.hook?.onSuccess(newContext)
+                    }
             } catch (e: Throwable) {
+                println("[OMK-DEBUG] onFailure: ${e::class.simpleName}: ${e.message}")
                 span.end(e); newContext.pop(); newContext.end()
                 ReactiveOperations.hook?.onFailure(newContext, e)
                 throw e
