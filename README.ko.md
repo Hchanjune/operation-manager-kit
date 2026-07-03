@@ -159,7 +159,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] Span 수준 메트릭 계측
 - [x] Micrometer 연동
 - [x] OpenTelemetry SDK 연동
-- [x] 메시징 컨텍스트 전파 (`@ManagedEventHandler`) — **Kotlin 전용**: reactive 스택에서는 `handle()`이 반드시 `suspend fun`이어야 AOP가 정상 동작함
+- [x] 메시징 컨텍스트 전파 (`@ManagedEventHandler`) — `handle()`은 반드시 일반(non-suspend) `fun`이어야 함. 내부에서 suspend 함수를 호출할 경우 구현체 내부에서 `runBlocking { }`으로 감쌀 것.
 
 ---
 

@@ -14,21 +14,13 @@ import io.github.hchanjune.omk.core.metric.MetricPolicy
 import io.github.hchanjune.omk.core.metric.MetricTags
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.reactive.ReactiveOperations
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.reactor.awaitSingleOrNull
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
-import org.aspectj.lang.reflect.MethodSignature
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import reactor.core.publisher.Mono
 import reactor.util.context.Context
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 @Aspect
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
@@ -41,15 +33,11 @@ class ManagedEventHandlerAspect(
         val className = joinPoint.signature.declaringType.simpleName
         val methodName = joinPoint.signature.name.substringBefore('-')
 
-        println("[OMK-DEBUG] aroundEventHandler: $className.$methodName | isMono=${isMono(joinPoint)} | lastArg=${joinPoint.args.lastOrNull()?.let { it::class.simpleName } ?: "null"}")
-
         // ── Mono return type ──────────────────────────────────────────────────────
         if (isMono(joinPoint)) {
-            println("[OMK-DEBUG] -> isMono path")
             val result = joinPoint.proceed() as Mono<*>
             return result.transformDeferredContextual { mono, reactorCtx ->
                 val contextOwner = !reactorCtx.hasKey(ReactiveOperations.CONTEXT_KEY)
-                println("[OMK-DEBUG] isMono subscribed: owner=$contextOwner hook=${ReactiveOperations.hook != null}")
                 if (contextOwner) {
                     val newContext = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args))
                     newContext.injectEntryPoint(className)
@@ -62,17 +50,8 @@ class ManagedEventHandlerAspect(
                         idProvider = spanIdProvider
                     )
                     mono
-                        .doOnSuccess {
-                            println("[OMK-DEBUG] isMono.doOnSuccess (owner)")
-                            span.end(); newContext.pop(); newContext.end()
-                            ReactiveOperations.hook?.onSuccess(newContext)
-                        }
-                        .doOnError { e ->
-                            println("[OMK-DEBUG] isMono.doOnError (owner): ${e.message}")
-                            span.end(e); newContext.pop(); newContext.end()
-                            ReactiveOperations.hook?.onFailure(newContext, e)
-                        }
-                        .doFinally { sig -> println("[OMK-DEBUG] isMono.terminal (owner): $sig") }
+                        .doOnSuccess { span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onSuccess(newContext) }
+                        .doOnError { e -> span.end(e); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onFailure(newContext, e) }
                         .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newContext))
                 } else {
                     val ctx = reactorCtx.get<ManagedContext>(ReactiveOperations.CONTEXT_KEY)
@@ -86,101 +65,13 @@ class ManagedEventHandlerAspect(
                         idProvider = spanIdProvider
                     )
                     mono
-                        .doOnSuccess { println("[OMK-DEBUG] isMono.doOnSuccess (nonOwner)"); span.end(); ctx.pop() }
-                        .doOnError { e -> println("[OMK-DEBUG] isMono.doOnError (nonOwner): ${e.message}"); span.end(e); ctx.pop() }
-                        .doFinally { sig -> println("[OMK-DEBUG] isMono.terminal (nonOwner): $sig") }
+                        .doOnSuccess { span.end(); ctx.pop() }
+                        .doOnError { e -> span.end(e); ctx.pop() }
                 }
             }
         }
 
-        // ── suspend fun target — bridge via original Continuation ─────────────────
-        val paramTypes = (joinPoint.signature as MethodSignature).method.parameterTypes
-        val isSuspendTarget = paramTypes.isNotEmpty() &&
-            Continuation::class.java.isAssignableFrom(paramTypes.last())
-
-        if (isSuspendTarget) {
-            @Suppress("UNCHECKED_CAST")
-            val cont = joinPoint.args.last() as Continuation<Any?>
-            val existingCtx = getManagedContext(joinPoint)
-            println("[OMK-DEBUG] -> suspend path | hasExistingCtx=${existingCtx != null} | hook=${ReactiveOperations.hook?.let { it::class.simpleName } ?: "NULL"}")
-
-            val instrumented: Mono<*>
-            if (existingCtx != null) {
-                existingCtx.injectEntryPoint(className)
-                val span = existingCtx.push(
-                    name = MetricName("$className.$methodName"),
-                    kind = MetricKind.TIMER,
-                    policy = MetricPolicy.defaults(),
-                    tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                    descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                    idProvider = spanIdProvider
-                )
-                instrumented = proceedAsMono(joinPoint)
-                    .doOnSuccess { span.end(); existingCtx.pop() }
-                    .doOnError { e -> span.end(e); existingCtx.pop() }
-                    .doFinally { sig -> println("[OMK-DEBUG] suspend.terminal (nonOwner): $sig") }
-            } else {
-                val newCtx = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args))
-                newCtx.injectEntryPoint(className)
-                val span = newCtx.push(
-                    name = MetricName("$className.$methodName"),
-                    kind = MetricKind.TIMER,
-                    policy = MetricPolicy.defaults(),
-                    tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                    descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                    idProvider = spanIdProvider
-                )
-                instrumented = proceedAsMono(joinPoint)
-                    .doOnSuccess {
-                        println("[OMK-DEBUG] suspend.doOnSuccess (owner)")
-                        span.end(); newCtx.pop(); newCtx.end()
-                        ReactiveOperations.hook?.onSuccess(newCtx)
-                    }
-                    .doOnError { e ->
-                        println("[OMK-DEBUG] suspend.doOnError (owner): ${e.message}")
-                        span.end(e); newCtx.pop(); newCtx.end()
-                        ReactiveOperations.hook?.onFailure(newCtx, e)
-                    }
-                    .doFinally { sig -> println("[OMK-DEBUG] suspend.terminal (owner): $sig") }
-                    .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newCtx))
-            }
-
-            CoroutineScope(cont.context).launch {
-                try {
-                    cont.resume(instrumented.awaitSingleOrNull())
-                } catch (e: Throwable) {
-                    cont.resumeWithException(e)
-                }
-            }
-            return COROUTINE_SUSPENDED
-        }
-
-        // ── plain synchronous target ──────────────────────────────────────────────
-        val existingCtx = getManagedContext(joinPoint)
-        println("[OMK-DEBUG] -> sync path | hasExistingCtx=${existingCtx != null}")
-
-        if (existingCtx != null) {
-            existingCtx.injectEntryPoint(className)
-            val span = existingCtx.push(
-                name = MetricName("$className.$methodName"),
-                kind = MetricKind.TIMER,
-                policy = MetricPolicy.defaults(),
-                tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                idProvider = spanIdProvider
-            )
-            val result = try {
-                joinPoint.proceed()
-            } catch (e: Throwable) {
-                span.end(e); existingCtx.pop(); throw e
-            }
-            return if (result is Mono<*>) {
-                result.doOnSuccess { span.end(); existingCtx.pop() }.doOnError { e -> span.end(e); existingCtx.pop() }
-            } else {
-                span.end(); existingCtx.pop(); result
-            }
-        }
-
+        // ── synchronous / blocking target ─────────────────────────────────────────
         val newContext = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args))
         newContext.injectEntryPoint(className)
         val span = newContext.push(

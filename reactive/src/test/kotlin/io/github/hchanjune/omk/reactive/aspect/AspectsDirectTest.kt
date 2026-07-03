@@ -10,7 +10,6 @@ import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.reactive.ReactiveOperations
-import kotlinx.coroutines.runBlocking
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.reactive.TestSupport
@@ -64,7 +63,7 @@ private class MonoStub {
 }
 private val MONO_METHOD = MonoStub::class.java.getDeclaredMethod("monoMethod")
 
-// Stub with a real suspend method — used so isNullContinuation() returns true.
+// Stub with a real suspend method — used so isNullContinuation() returns true in other aspects.
 // Must NOT be private: CoroutinesUtils invokes the method via reflection from a different package,
 // which requires the declaring class to be publicly accessible.
 class SuspendStub {
@@ -692,7 +691,16 @@ class AspectsDirectTest {
         assertTrue(result is Mono<*>)
     }
 
-    // ── ManagedEventHandlerAspect ─────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun createContinuationWithContext(ctx: ManagedContext): Continuation<Any?> {
+        val reactorContext = Context.of(ReactiveOperations.CONTEXT_KEY, ctx)
+        val coroutineContext = kotlinx.coroutines.reactor.ReactorContext(reactorContext)
+        return object : Continuation<Any?> {
+            override val context = coroutineContext
+            override fun resumeWith(result: Result<Any?>) {}
+        }
+    }
 
     private fun configureEventProviders() {
         ReactiveOperations.configureEventProviders(
@@ -705,23 +713,10 @@ class AspectsDirectTest {
         )
     }
 
-    @Test
-    fun `event handler aspect handles Mono return type with existing context`() {
-        val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ctx = context()
-        val jpWithCtx = fakeJp(
-            StubEventHolder::class.java,
-            "handleEvent",
-            returns = Mono.just("event-ok"),
-            returnType = Mono::class.java,
-            args = arrayOf(createContinuationWithContext(ctx))
-        )
-        val result = aspect.aroundEventHandler(jpWithCtx)
-        assertNotNull(result)
-    }
+    // ── ManagedEventHandlerAspect ─────────────────────────────────────────────
 
     @Test
-    fun `event handler aspect proceeds without context`() {
+    fun `event handler aspect sync path proceeds and returns result`() {
         configureEventProviders()
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
         val jp = fakeJp(StubEventHolder::class.java, "handleEvent", returns = "ok")
@@ -730,7 +725,7 @@ class AspectsDirectTest {
     }
 
     @Test
-    fun `event handler aspect propagates exception without context`() {
+    fun `event handler aspect sync path propagates exception`() {
         configureEventProviders()
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
         val jp = fakeJp(StubEventHolder::class.java, "handleEvent", throws = RuntimeException("evt-boom"))
@@ -738,32 +733,10 @@ class AspectsDirectTest {
     }
 
     @Test
-    fun `event handler aspect with existing context uses it`() {
-        val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ctx = context()
-        val jp = fakeJp(
-            StubEventHolder::class.java, "handleEvent", returns = "ok",
-            args = arrayOf(createContinuationWithContext(ctx))
-        )
-        val result = aspect.aroundEventHandler(jp)
-        assertEquals("ok", result)
-    }
-
-    @Test
-    fun `event handler aspect Mono path without context`() {
-        configureEventProviders()
-        val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val jp = fakeMonoJp(StubEventHolder::class.java, "handleEvent")
-        val result = aspect.aroundEventHandler(jp)
-        assertNotNull(result)
-    }
-
-    @Test
     fun `event handler aspect isMono path contextOwner=true creates new context`() {
         configureEventProviders()
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
         val jp = fakeProperMonoJp(StubEventHolder::class.java, "handleEvent")
-        // subscribe without reactor context → contextOwner=true → initializes new context
         val result = (aspect.aroundEventHandler(jp) as Mono<*>).block()
         assertEquals("mono-ok", result)
     }
@@ -773,51 +746,10 @@ class AspectsDirectTest {
         val aspect = ManagedEventHandlerAspect(spanIdProvider)
         val ctx = context()
         val jp = fakeProperMonoJp(StubEventHolder::class.java, "handleEvent")
-        // subscribe with context → contextOwner=false → wraps existing context
         val result = (aspect.aroundEventHandler(jp) as Mono<*>)
             .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
             .block()
         assertEquals("mono-ok", result)
         assertNull(ctx.peek())
-    }
-
-    @Test
-    fun `event handler aspect existingCtx path pops span when proceed throws`() {
-        val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ctx = context()
-        val jp = fakeJp(
-            StubEventHolder::class.java, "handleEvent",
-            throws = RuntimeException("evt-sync-boom"),
-            args = arrayOf(createContinuationWithContext(ctx))
-        )
-        assertFailsWith<RuntimeException> { aspect.aroundEventHandler(jp) }
-        assertNull(ctx.peek())
-        assertNotNull(ctx.rootSpan)
-    }
-
-    @Test
-    fun `event handler aspect existingCtx when proceed returns Mono wraps with span`() {
-        val aspect = ManagedEventHandlerAspect(spanIdProvider)
-        val ctx = context()
-        val jp = fakeJp(
-            StubEventHolder::class.java,
-            "handleEvent",
-            returns = Mono.just("event-mono"),
-            args = arrayOf(createContinuationWithContext(ctx))
-        )
-        val result = (aspect.aroundEventHandler(jp) as Mono<*>).block()
-        assertEquals("event-mono", result)
-        assertNull(ctx.peek())
-    }
-
-    // ── Helper ────────────────────────────────────────────────────────────────
-
-    private fun createContinuationWithContext(ctx: ManagedContext): kotlin.coroutines.Continuation<Any?> {
-        val reactorContext = Context.of(io.github.hchanjune.omk.reactive.ReactiveOperations.CONTEXT_KEY, ctx)
-        val coroutineContext = kotlinx.coroutines.reactor.ReactorContext(reactorContext)
-        return object : kotlin.coroutines.Continuation<Any?> {
-            override val context = coroutineContext
-            override fun resumeWith(result: Result<Any?>) {}
-        }
     }
 }
