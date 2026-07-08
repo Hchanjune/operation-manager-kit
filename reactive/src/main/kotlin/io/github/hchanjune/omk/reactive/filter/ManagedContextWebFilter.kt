@@ -9,6 +9,7 @@ import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.reactive.ReactiveOperations
 import org.springframework.http.HttpMethod
+import org.springframework.http.server.reactive.ServerHttpRequest
 import org.springframework.web.server.ServerWebExchange
 import org.springframework.web.server.WebFilter
 import org.springframework.web.server.WebFilterChain
@@ -38,6 +39,7 @@ class ManagedContextWebFilter(
             injectTraceId(extractedTraceId ?: if (generateWhenMissing) traceIdProvider.provideTraceId() else "")
             injectCausationId(extractedCausationId ?: if (generateWhenMissing) causationIdProvider.provideCausationId() else "")
             injectIssuer(issuerProvider.currentIssuer())
+            injectIp(resolveClientIp(request))
             injectProtocol("HTTP")
             injectType("API")
             injectHttpInfo(uri = request.uri.path, method = request.method.name())
@@ -63,5 +65,16 @@ class ManagedContextWebFilter(
 
         return chain.filter(exchange)
             .contextWrite(reactor.util.context.Context.of(ReactiveOperations.CONTEXT_KEY, context))
+    }
+
+    /** 프록시/로드밸런서 뒤에 있을 수 있으니 X-Forwarded-For를 우선 확인하고, 없으면 소켓 주소를 쓴다. */
+    private fun resolveClientIp(request: ServerHttpRequest): String {
+        val forwardedFor = request.headers.getFirst("X-Forwarded-For")
+            ?.split(",")
+            ?.firstOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+
+        return forwardedFor ?: request.remoteAddress?.address?.hostAddress ?: ""
     }
 }

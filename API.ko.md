@@ -154,6 +154,9 @@ class ManagedContext
 | `traceId`        | `String`              | 분산 트레이스 ID (W3C 또는 커스텀)                   |
 | `causationId`    | `String`              | 부모 span / 인과관계 ID                         |
 | `issuer`         | `String`              | 인증된 사용자명, 또는 `"anonymous"`                |
+| `ip`             | `String`              | 클라이언트 IP (`X-Forwarded-For` 첫 값, 없으면 remote address) |
+| `deviceId`       | `String`              | `"NOT_SUPPORTED_YET"` — 예약됨, 아직 채워지지 않음     |
+| `deviceInfo`     | `String`              | `"NOT_SUPPORTED_YET"` — 예약됨, 아직 채워지지 않음     |
 | `protocol`       | `ManagedProtocolType` | `HTTP`, `MESSAGING`, `RPC`, `DB` 등        |
 | `type`           | `String`              | 오퍼레이션 타입: `"API"`, `"EVENT"`, `"BATCH"` 등 |
 | `uri`            | `String`              | HTTP 요청 URI                               |

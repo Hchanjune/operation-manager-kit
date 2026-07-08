@@ -20,10 +20,22 @@ class ManagedContext(
 ) {
 
     var traceId: String = ""
+        private set
 
     var causationId: String = ""
+        private set
 
     var issuer: String = ""
+        private set
+
+    var ip: String = ""
+        private set
+
+    var deviceId: String = "NOT_SUPPORTED_YET"
+        private set
+
+    var deviceInfo: String = "NOT_SUPPORTED_YET"
+        private set
 
     var executionScope: ExecutionScope = ExecutionScope.PRIMARY
         private set
@@ -106,6 +118,18 @@ class ManagedContext(
 
     fun injectIssuer(issuer: String) {
         this.issuer = issuer
+    }
+
+    fun injectIp(ip: String) {
+        this.ip = ip
+    }
+
+    fun injectDeviceId(deviceId: String) {
+        this.deviceId = deviceId
+    }
+
+    fun injectDeviceInfo(deviceInfo: String) {
+        this.deviceInfo = deviceInfo
     }
 
     fun injectProtocol(protocol: String) {
@@ -198,6 +222,7 @@ class ManagedContext(
         child.traceId = this.traceId
         child.causationId = this.causationId
         child.issuer = this.issuer
+        child.ip = this.ip
         child.protocol = this.protocol
         child.type = this.type
         child.uri = this.uri

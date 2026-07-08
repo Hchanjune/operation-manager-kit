@@ -13,6 +13,7 @@ import io.github.hchanjune.omk.reactive.TestSupport.spanIdProvider
 import org.springframework.http.HttpStatus
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest
 import org.springframework.mock.web.server.MockServerWebExchange
+import java.net.InetSocketAddress
 import org.springframework.web.server.ServerWebExchange
 import org.springframework.web.server.WebFilterChain
 import reactor.core.publisher.Mono
@@ -173,6 +174,46 @@ class ManagedContextWebFilterTest {
         val filter = filterWithCapture(issuer = "john.doe") { capturedCtx = it }
         runFilter(filter, exchange(), okChain())
         assertEquals("john.doe", capturedCtx?.issuer)
+    }
+
+    // ── IP ────────────────────────────────────────────────────────────────
+
+    private fun exchangeWithRemoteAddress(host: String, port: Int = 12345): MockServerWebExchange =
+        MockServerWebExchange.from(
+            MockServerHttpRequest.get("/test")
+                .remoteAddress(InetSocketAddress(host, port))
+                .build()
+        )
+
+    private fun exchangeWithForwardedFor(forwardedFor: String): MockServerWebExchange =
+        MockServerWebExchange.from(
+            MockServerHttpRequest.get("/test")
+                .header("X-Forwarded-For", forwardedFor)
+                .build()
+        )
+
+    @Test
+    fun `filter injects ip from X-Forwarded-For header when present`() {
+        var capturedCtx: ManagedContext? = null
+        val filter = filterWithCapture { capturedCtx = it }
+        runFilter(filter, exchangeWithForwardedFor("203.0.113.5"), okChain())
+        assertEquals("203.0.113.5", capturedCtx?.ip)
+    }
+
+    @Test
+    fun `filter takes the first entry when X-Forwarded-For has multiple hops`() {
+        var capturedCtx: ManagedContext? = null
+        val filter = filterWithCapture { capturedCtx = it }
+        runFilter(filter, exchangeWithForwardedFor("203.0.113.5, 70.41.3.18, 150.172.238.178"), okChain())
+        assertEquals("203.0.113.5", capturedCtx?.ip)
+    }
+
+    @Test
+    fun `filter falls back to remote address when X-Forwarded-For is absent`() {
+        var capturedCtx: ManagedContext? = null
+        val filter = filterWithCapture { capturedCtx = it }
+        runFilter(filter, exchangeWithRemoteAddress("127.0.0.1"), okChain())
+        assertEquals("127.0.0.1", capturedCtx?.ip)
     }
 
     @Test

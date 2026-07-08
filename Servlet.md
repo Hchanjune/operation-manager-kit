@@ -178,6 +178,7 @@ class MyEnrichmentHook : OperationHook {
 | `json`          | `true`  | JSON format (recommended for production)   |
 | `spans`         | `false` | Append span tree to pretty output          |
 | `response`      | `true`  | Include the operation block's return value |
+| `ip`            | `false` | Include the client IP (opt-in — IP is treated as PII in many jurisdictions) |
 | `success-level` | `INFO`  | Log level for successful operations        |
 | `failure-level` | `ERROR` | Log level for failed operations            |
 | `client-error-level` | `WARN` | Log level for `onSuccess` calls whose `outcome` is not `SUCCESS` (e.g. `UNAUTHENTICATED`, `FORBIDDEN`, `CLIENT_ERROR`) |

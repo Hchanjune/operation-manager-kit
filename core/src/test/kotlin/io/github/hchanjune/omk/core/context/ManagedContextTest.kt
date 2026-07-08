@@ -147,6 +147,27 @@ class ManagedContextTest {
         assertTrue(ctx.isMetricsRecorded())
     }
 
+    // ── IP / device ────────────────────────────────────────────────────────
+
+    @Test
+    fun `ip defaults to empty string`() {
+        assertEquals("", ctx().ip)
+    }
+
+    @Test
+    fun `injectIp sets the ip field`() {
+        val ctx = ctx()
+        ctx.injectIp("203.0.113.5")
+        assertEquals("203.0.113.5", ctx.ip)
+    }
+
+    @Test
+    fun `deviceId and deviceInfo default to NOT_SUPPORTED_YET until implemented`() {
+        val ctx = ctx()
+        assertEquals("NOT_SUPPORTED_YET", ctx.deviceId)
+        assertEquals("NOT_SUPPORTED_YET", ctx.deviceInfo)
+    }
+
     // ── Execution scope ───────────────────────────────────────────────────
 
     @Test
@@ -176,6 +197,7 @@ class ManagedContextTest {
             injectTraceId("trace-1")
             injectCausationId("causation-1")
             injectIssuer("user-1")
+            injectIp("127.0.0.1")
             injectProtocol("HTTP")
             injectType("REST")
             injectHttpInfo("/orders", "POST")
@@ -191,6 +213,7 @@ class ManagedContextTest {
         assertEquals("trace-1",       fork.traceId)
         assertEquals("causation-1",   fork.causationId)
         assertEquals("user-1",        fork.issuer)
+        assertEquals("127.0.0.1",     fork.ip)
         assertEquals("OrderController", fork.entrypoint)
         assertEquals("OrderService",  fork.service)
         assertEquals("CreateOrder",   fork.operation)

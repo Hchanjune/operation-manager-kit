@@ -229,6 +229,7 @@ class MyEnrichmentHook : OperationHook {
 | `json`          | `true`  | JSON 포맷 (프로덕션 권장)          |
 | `spans`         | `false` | pretty 출력에 span 트리 포함      |
 | `response`      | `true`  | Operations 블록의 반환값을 로그에 포함 |
+| `ip`            | `false` | 클라이언트 IP를 로그에 포함 (옵트인 — IP는 여러 국가에서 개인정보로 취급됨) |
 | `success-level` | `INFO`  | 성공 시 로그 레벨                 |
 | `failure-level` | `ERROR` | 실패 시 로그 레벨                 |
 | `client-error-level` | `WARN` | `outcome`이 `SUCCESS`가 아닌 `onSuccess` 호출(`UNAUTHENTICATED`, `FORBIDDEN`, `CLIENT_ERROR` 등)의 로그 레벨 |

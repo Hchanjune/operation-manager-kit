@@ -51,6 +51,7 @@ class ManagedContextPersistenceFilter(
                     uri = request.requestURI,
                     method = request.method,
                 )
+                this.injectIp(resolveClientIp(request))
             }.also { context ->
                 request.setAttribute(KEY, context)
             }
@@ -93,5 +94,16 @@ class ManagedContextPersistenceFilter(
             Operations.clear()
         }
 
+    }
+
+    /** 프록시/로드밸런서 뒤에 있을 수 있으니 X-Forwarded-For를 우선 확인하고, 없으면 소켓 주소를 쓴다. */
+    private fun resolveClientIp(request: HttpServletRequest): String {
+        val forwardedFor = request.getHeader("X-Forwarded-For")
+            ?.split(",")
+            ?.firstOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+
+        return forwardedFor ?: request.remoteAddr ?: ""
     }
 }

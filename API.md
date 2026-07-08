@@ -154,6 +154,9 @@ class ManagedContext
 | `traceId`        | `String`              | Distributed trace ID (W3C or custom)                     |
 | `causationId`    | `String`              | Parent span / causation ID                               |
 | `issuer`         | `String`              | Authenticated user name, or `"anonymous"`                |
+| `ip`             | `String`              | Client IP (`X-Forwarded-For` first hop, else remote address) |
+| `deviceId`       | `String`              | `"NOT_SUPPORTED_YET"` — reserved, not populated yet       |
+| `deviceInfo`     | `String`              | `"NOT_SUPPORTED_YET"` — reserved, not populated yet       |
 | `protocol`       | `ManagedProtocolType` | `HTTP`, `MESSAGING`, `RPC`, `DB`, etc.                   |
 | `type`           | `String`              | Operation type: `"API"`, `"EVENT"`, `"BATCH"`, etc.      |
 | `uri`            | `String`              | HTTP request URI                                         |

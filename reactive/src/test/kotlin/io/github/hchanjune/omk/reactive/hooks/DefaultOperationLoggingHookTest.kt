@@ -14,6 +14,7 @@ class DefaultOperationLoggingHookTest {
         pretty: Boolean = true,
         json: Boolean = true,
         spans: Boolean = false,
+        ip: Boolean = false,
         successLevel: LogLevel = LogLevel.INFO,
         failureLevel: LogLevel = LogLevel.ERROR
     ): Pair<CapturingLogger, DefaultOperationLoggingHook> {
@@ -25,6 +26,7 @@ class DefaultOperationLoggingHookTest {
                 pretty = pretty,
                 json = json,
                 spans = spans,
+                ip = ip,
                 successLevel = successLevel,
                 failureLevel = failureLevel
             )
@@ -188,6 +190,24 @@ class DefaultOperationLoggingHookTest {
         val ex = RuntimeException("empty-stack")
         ex.stackTrace = emptyArray()
         hook.onFailure(context(), ex)
+    }
+
+    @Test
+    fun `ip is omitted from output when props ip is false`() {
+        val (logger, hook) = hook(pretty = true, json = true, ip = false)
+        val ctx = context().apply { injectIp("203.0.113.5") }
+        hook.onSuccess(ctx)
+        val output = logger.messages.joinToString("")
+        assertTrue(!output.contains("203.0.113.5"))
+    }
+
+    @Test
+    fun `ip appears in pretty and json output when props ip is true`() {
+        val (logger, hook) = hook(pretty = true, json = true, ip = true)
+        val ctx = context().apply { injectIp("203.0.113.5") }
+        hook.onSuccess(ctx)
+        val output = logger.messages.joinToString("")
+        assertTrue(output.contains("203.0.113.5"))
     }
 
     @Test

@@ -151,6 +151,44 @@ class ManagedContextPersistenceFilterTest {
         assertEquals("", capturedTrace)
     }
 
+    // ── IP ────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `injects ip from X-Forwarded-For header when present`() {
+        var capturedIp = ""
+        val req = MockHttpServletRequest().apply {
+            addHeader("X-Forwarded-For", "203.0.113.5")
+        }
+        makeFilter().doFilter(req, MockHttpServletResponse(), FilterChain { _, _ ->
+            capturedIp = Operations.context.ip
+        })
+        assertEquals("203.0.113.5", capturedIp)
+    }
+
+    @Test
+    fun `takes the first entry when X-Forwarded-For has multiple hops`() {
+        var capturedIp = ""
+        val req = MockHttpServletRequest().apply {
+            addHeader("X-Forwarded-For", "203.0.113.5, 70.41.3.18, 150.172.238.178")
+        }
+        makeFilter().doFilter(req, MockHttpServletResponse(), FilterChain { _, _ ->
+            capturedIp = Operations.context.ip
+        })
+        assertEquals("203.0.113.5", capturedIp)
+    }
+
+    @Test
+    fun `falls back to remote address when X-Forwarded-For is absent`() {
+        var capturedIp = ""
+        val req = MockHttpServletRequest().apply {
+            remoteAddr = "127.0.0.1"
+        }
+        makeFilter().doFilter(req, MockHttpServletResponse(), FilterChain { _, _ ->
+            capturedIp = Operations.context.ip
+        })
+        assertEquals("127.0.0.1", capturedIp)
+    }
+
     // ── error dispatch ───────────────────────────────────────────────────────
 
     @Test

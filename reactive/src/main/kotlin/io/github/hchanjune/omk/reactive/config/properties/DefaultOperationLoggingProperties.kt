@@ -10,6 +10,7 @@ data class DefaultOperationLoggingProperties(
     var json: Boolean = true,
     var spans: Boolean = false,
     var response: Boolean = true,
+    var ip: Boolean = false,
     var successLevel: LogLevel = LogLevel.INFO,
     var failureLevel: LogLevel = LogLevel.ERROR,
     var clientErrorLevel: LogLevel = LogLevel.WARN,
