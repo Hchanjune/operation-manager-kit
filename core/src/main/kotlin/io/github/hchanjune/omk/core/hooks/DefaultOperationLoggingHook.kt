@@ -1,20 +1,21 @@
-﻿package io.github.hchanjune.omk.servlet.hooks
+package io.github.hchanjune.omk.core.hooks
 
 import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.context.ManagedContext
-import io.github.hchanjune.omk.core.metric.MetricLayer
 import io.github.hchanjune.omk.core.metric.MetricSpan
-import io.github.hchanjune.omk.servlet.config.properties.DefaultOperationLoggingProperties
 import org.slf4j.Logger
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
-import kotlin.text.iterator
 
+/**
+ * The default operation logging hook, shared by the servlet and reactive stacks.
+ * Renders the completed [ManagedContext] as a pretty box and/or a single-line JSON record.
+ */
 class DefaultOperationLoggingHook(
     private val prettyLogger: Logger,
     private val jsonLogger: Logger,
-    private val props: DefaultOperationLoggingProperties
+    private val props: OperationLoggingSettings
 ) : OperationLoggingHook {
 
     override fun onSuccess(context: ManagedContext) {
@@ -80,16 +81,16 @@ class DefaultOperationLoggingHook(
             appendLine("├─ Timestamp   : ${context.timestamp}")
 
             exception?.let {
-            appendLine("├─ Exception   : ${it::class.simpleName}: ${it.message}")
-            val frames = it.stackTrace.take(20)
-            if (frames.isNotEmpty()) {
-                appendLine("├─ Stacktrace  : ${frames[0]}")
-                frames.drop(1).forEach { e -> appendLine("│               $e") }
-            }
+                appendLine("├─ Exception   : ${it::class.simpleName}: ${it.message}")
+                val frames = it.stackTrace.take(20)
+                if (frames.isNotEmpty()) {
+                    appendLine("├─ Stacktrace  : ${frames[0]}")
+                    frames.drop(1).forEach { e -> appendLine("│               $e") }
+                }
             }
 
             if (context.hookRecords.isNotEmpty()) {
-            appendLine("├─ Hooks       : ${context.hookRecords.joinToString(", ") { r -> "${r.hookName}=${if (r.success) "OK" else "FAIL"}" }}")
+                appendLine("├─ Hooks       : ${context.hookRecords.joinToString(", ") { r -> "${r.hookName}=${if (r.success) "OK" else "FAIL"}" }}")
             }
 
             if (props.spans) {
@@ -208,10 +209,6 @@ class DefaultOperationLoggingHook(
         span.children.forEach { child -> appendSpanTree(child, depth + 1) }
     }
 
-    companion object {
-        private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneOffset.UTC)
-    }
-
     private fun rootCause(t: Throwable): Throwable {
         var cur: Throwable = t
         val seen = HashSet<Throwable>(8)
@@ -224,5 +221,7 @@ class DefaultOperationLoggingHook(
         return cur
     }
 
-
+    companion object {
+        private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneOffset.UTC)
+    }
 }

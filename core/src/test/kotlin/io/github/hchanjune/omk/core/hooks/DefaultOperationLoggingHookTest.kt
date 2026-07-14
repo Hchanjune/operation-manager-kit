@@ -1,14 +1,41 @@
-﻿package io.github.hchanjune.omk.servlet.hooks
+package io.github.hchanjune.omk.core.hooks
 
-import io.github.hchanjune.omk.servlet.TestSupport.buildTree
-import io.github.hchanjune.omk.servlet.TestSupport.context
-import io.github.hchanjune.omk.servlet.config.properties.DefaultOperationLoggingProperties
+import io.github.hchanjune.omk.core.context.ManagedContext
+import io.github.hchanjune.omk.core.metric.SpanSupport
+import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class DefaultOperationLoggingHookTest {
+
+    private val spanIdProvider = SpanIdProvider { "log-test-span" }
+
+    private data class TestLoggingSettings(
+        override val enabled: Boolean = true,
+        override val pretty: Boolean = false,
+        override val json: Boolean = true,
+        override val spans: Boolean = false,
+        override val response: Boolean = true,
+        override val ip: Boolean = false,
+        override val successLevel: LogLevel = LogLevel.INFO,
+        override val failureLevel: LogLevel = LogLevel.ERROR,
+        override val clientErrorLevel: LogLevel = LogLevel.WARN,
+    ) : OperationLoggingSettings
+
+    private fun context(): ManagedContext =
+        ManagedContext(spanIdProvider = spanIdProvider).apply {
+            injectTraceId("test-trace")
+            injectCausationId("test-cause")
+            start()
+        }
+
+    private fun ManagedContext.buildTree() {
+        val span = SpanSupport.pushEntrySpan(this, "TestClass", "testMethod", spanIdProvider)
+        span.end()
+        pop()
+    }
 
     private fun hook(
         pretty: Boolean = true,
@@ -22,7 +49,7 @@ class DefaultOperationLoggingHookTest {
         val hook = DefaultOperationLoggingHook(
             prettyLogger = capturing,
             jsonLogger = capturing,
-            props = DefaultOperationLoggingProperties(
+            props = TestLoggingSettings(
                 pretty = pretty,
                 json = json,
                 spans = spans,
@@ -87,14 +114,6 @@ class DefaultOperationLoggingHookTest {
     }
 
     @Test
-    fun `onSuccess with NONE level produces no output`() {
-        val (logger, hook) = hook(pretty = true, json = true, successLevel = LogLevel.NONE)
-        val ctx = context().apply { buildTree() }
-        hook.onSuccess(ctx)
-        assertTrue(logger.messages.isEmpty())
-    }
-
-    @Test
     fun `defaultLogging=false suppresses clean success output`() {
         val (logger, hook) = hook(pretty = true, json = true)
         val ctx = context().apply { defaultLogging = false }
@@ -130,6 +149,14 @@ class DefaultOperationLoggingHookTest {
         }
         hook.onSuccess(ctx)
         assertTrue(logger.messages.isNotEmpty())
+    }
+
+    @Test
+    fun `onSuccess with NONE level produces no output`() {
+        val (logger, hook) = hook(pretty = true, json = true, successLevel = LogLevel.NONE)
+        val ctx = context().apply { buildTree() }
+        hook.onSuccess(ctx)
+        assertTrue(logger.messages.isEmpty())
     }
 
     @Test
@@ -231,7 +258,7 @@ class DefaultOperationLoggingHookTest {
     @Test
     fun `log does not write when TRACE level is disabled`() {
         val disabled = DisabledLogger()
-        val hook = DefaultOperationLoggingHook(disabled, disabled, DefaultOperationLoggingProperties(
+        val hook = DefaultOperationLoggingHook(disabled, disabled, TestLoggingSettings(
             pretty = true, json = false, successLevel = LogLevel.TRACE
         ))
         hook.onSuccess(context())
@@ -241,7 +268,7 @@ class DefaultOperationLoggingHookTest {
     @Test
     fun `log does not write when DEBUG level is disabled`() {
         val disabled = DisabledLogger()
-        val hook = DefaultOperationLoggingHook(disabled, disabled, DefaultOperationLoggingProperties(
+        val hook = DefaultOperationLoggingHook(disabled, disabled, TestLoggingSettings(
             pretty = true, json = false, successLevel = LogLevel.DEBUG
         ))
         hook.onSuccess(context())
@@ -251,7 +278,7 @@ class DefaultOperationLoggingHookTest {
     @Test
     fun `log does not write when INFO level is disabled`() {
         val disabled = DisabledLogger()
-        val hook = DefaultOperationLoggingHook(disabled, disabled, DefaultOperationLoggingProperties(
+        val hook = DefaultOperationLoggingHook(disabled, disabled, TestLoggingSettings(
             pretty = true, json = false, successLevel = LogLevel.INFO
         ))
         hook.onSuccess(context())
@@ -261,7 +288,7 @@ class DefaultOperationLoggingHookTest {
     @Test
     fun `log does not write when WARN level is disabled`() {
         val disabled = DisabledLogger()
-        val hook = DefaultOperationLoggingHook(disabled, disabled, DefaultOperationLoggingProperties(
+        val hook = DefaultOperationLoggingHook(disabled, disabled, TestLoggingSettings(
             pretty = false, json = true, failureLevel = LogLevel.WARN
         ))
         hook.onFailure(context(), RuntimeException())
@@ -271,7 +298,7 @@ class DefaultOperationLoggingHookTest {
     @Test
     fun `log does not write when ERROR level is disabled`() {
         val disabled = DisabledLogger()
-        val hook = DefaultOperationLoggingHook(disabled, disabled, DefaultOperationLoggingProperties(
+        val hook = DefaultOperationLoggingHook(disabled, disabled, TestLoggingSettings(
             pretty = false, json = true, failureLevel = LogLevel.ERROR
         ))
         hook.onFailure(context(), RuntimeException())

@@ -1,3 +1,4 @@
-﻿package io.github.hchanjune.omk.reactive.hooks
+package io.github.hchanjune.omk.reactive.hooks
 
-enum class LogLevel { TRACE, DEBUG, INFO, WARN, ERROR, NONE }
+// Moved to core; alias kept for source compatibility.
+typealias LogLevel = io.github.hchanjune.omk.core.hooks.LogLevel

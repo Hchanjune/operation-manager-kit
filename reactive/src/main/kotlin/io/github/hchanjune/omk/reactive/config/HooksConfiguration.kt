@@ -1,12 +1,12 @@
 ﻿package io.github.hchanjune.omk.reactive.config
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.hooks.DefaultOperationLoggingHook
+import io.github.hchanjune.omk.core.hooks.OperationLoggingHook
 import io.github.hchanjune.omk.core.metric.MetricsRecorder
 import io.github.hchanjune.omk.reactive.config.properties.DefaultOperationLoggingProperties
 import io.github.hchanjune.omk.reactive.hooks.CompositeOperationHook
-import io.github.hchanjune.omk.reactive.hooks.DefaultOperationLoggingHook
 import io.github.hchanjune.omk.reactive.hooks.MetricsOperationHook
-import io.github.hchanjune.omk.reactive.hooks.OperationLoggingHook
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean

@@ -1,5 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.hooks
+package io.github.hchanjune.omk.servlet.hooks
 
-import io.github.hchanjune.omk.core.OperationHook
-
-interface OperationLoggingHook: OperationHook
+// Moved to core; alias kept for source compatibility.
+typealias OperationLoggingHook = io.github.hchanjune.omk.core.hooks.OperationLoggingHook
