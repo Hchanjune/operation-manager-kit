@@ -1,12 +1,7 @@
 package io.github.hchanjune.omk.servlet.aspect
 
 import io.github.hchanjune.omk.core.annotations.ManagedCacheRepository
-import io.github.hchanjune.omk.core.metric.MetricDescriptor
-import io.github.hchanjune.omk.core.metric.MetricKind
-import io.github.hchanjune.omk.core.metric.MetricLayer
-import io.github.hchanjune.omk.core.metric.MetricName
-import io.github.hchanjune.omk.core.metric.MetricPolicy
-import io.github.hchanjune.omk.core.metric.MetricTags
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.servlet.Operations
 import org.aspectj.lang.ProceedingJoinPoint
@@ -31,26 +26,8 @@ class ManagedCacheRepositoryAspect(
         val context = Operations.context
         val className = joinPoint.signature.declaringType.simpleName
         val methodName = joinPoint.signature.name.substringBefore('-')
-        val spanName = "$className.$methodName"
 
-        val tags = MetricTags.Builder()
-            .put("cache", className)
-            .put("method", methodName)
-            .put("operation", context.operation)
-            .build()
-
-        val span = context.push(
-            name = MetricName(spanName),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = tags,
-            descriptor = MetricDescriptor(
-                operation = context.operation,
-                useCase = context.useCase,
-                layer = MetricLayer.CACHE
-            ),
-            idProvider = spanIdProvider
-        )
+        val span = SpanSupport.pushCacheSpan(context, className, methodName, spanIdProvider)
 
         return try {
             val result = joinPoint.proceed()

@@ -5,7 +5,7 @@ import io.github.hchanjune.omk.core.annotations.ManagedEventIssuer
 import io.github.hchanjune.omk.core.annotations.ManagedEventTraceId
 import io.github.hchanjune.omk.core.annotations.ManagedEventType
 import io.github.hchanjune.omk.core.event.EventMetadata
-import io.github.hchanjune.omk.core.provider.SpanIdProvider
+import io.github.hchanjune.omk.core.event.EventMetadataExtractor
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.springframework.messaging.support.GenericMessage
 import kotlin.test.Test
@@ -56,37 +56,22 @@ private class NoTraceFields(val issuer: String = "x")
 
 class ManagedEventHandlerAspectMetadataTest {
 
-    private val aspect = ManagedEventHandlerAspect(SpanIdProvider { "test-id" })
+    private fun extractMetadata(vararg args: Any?): EventMetadata =
+        EventMetadataExtractor.extract(arrayOf(*args))
 
-    private fun extractMetadata(vararg args: Any?): EventMetadata {
-        val method = aspect::class.java.getDeclaredMethod("extractMetadata", Array<Any?>::class.java)
+    private fun invokeExtractor(name: String, arg: Any): EventMetadata? {
+        val method = EventMetadataExtractor::class.java.getDeclaredMethod(name, Any::class.java)
         method.isAccessible = true
-        return method.invoke(aspect, args as Any?) as EventMetadata
+        return method.invoke(EventMetadataExtractor, arg) as? EventMetadata
     }
 
-    private fun tryAnnotations(arg: Any): EventMetadata? {
-        val method = aspect::class.java.getDeclaredMethod("tryExtractFromAnnotations", Any::class.java)
-        method.isAccessible = true
-        return method.invoke(aspect, arg) as? EventMetadata
-    }
+    private fun tryAnnotations(arg: Any): EventMetadata? = invokeExtractor("tryExtractFromAnnotations", arg)
 
-    private fun tryReflection(arg: Any): EventMetadata? {
-        val method = aspect::class.java.getDeclaredMethod("tryExtractFromReflection", Any::class.java)
-        method.isAccessible = true
-        return method.invoke(aspect, arg) as? EventMetadata
-    }
+    private fun tryReflection(arg: Any): EventMetadata? = invokeExtractor("tryExtractFromReflection", arg)
 
-    private fun tryMessage(arg: Any): EventMetadata? {
-        val method = aspect::class.java.getDeclaredMethod("tryExtractFromMessage", Any::class.java)
-        method.isAccessible = true
-        return method.invoke(aspect, arg) as? EventMetadata
-    }
+    private fun tryMessage(arg: Any): EventMetadata? = invokeExtractor("tryExtractFromMessage", arg)
 
-    private fun tryConsumerRecord(arg: Any): EventMetadata? {
-        val method = aspect::class.java.getDeclaredMethod("tryExtractFromConsumerRecord", Any::class.java)
-        method.isAccessible = true
-        return method.invoke(aspect, arg) as? EventMetadata
-    }
+    private fun tryConsumerRecord(arg: Any): EventMetadata? = invokeExtractor("tryExtractFromConsumerRecord", arg)
 
     // ── Annotation extraction ─────────────────────────────────────────────
 

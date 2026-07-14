@@ -3,13 +3,9 @@ package io.github.hchanjune.omk.reactive.aspect
 import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.annotations.ManagedSchedule
 import io.github.hchanjune.omk.core.context.ManagedContext
-import io.github.hchanjune.omk.core.metric.MetricDescriptor
-import io.github.hchanjune.omk.core.metric.MetricKind
-import io.github.hchanjune.omk.core.metric.MetricLayer
-import io.github.hchanjune.omk.core.metric.MetricName
-import io.github.hchanjune.omk.core.metric.MetricPolicy
-import io.github.hchanjune.omk.core.metric.MetricTags
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
+import io.github.hchanjune.omk.core.support.Results
 import io.github.hchanjune.omk.reactive.ReactiveOperations
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
@@ -39,17 +35,10 @@ class ManagedScheduleAspect(
                 if (contextOwner) {
                     val newContext = ReactiveOperations.initializeForSchedule(runtime)
                     newContext.injectEntryPoint(className)
-                    val span = newContext.push(
-                        name = MetricName("$className.$methodName"),
-                        kind = MetricKind.TIMER,
-                        policy = MetricPolicy.defaults(),
-                        tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                        descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                        idProvider = spanIdProvider
-                    )
+                    val span = SpanSupport.pushEntrySpan(newContext, className, methodName, spanIdProvider)
                     mono
                         .doOnSuccess { value ->
-                            if (managedSchedule.quietWhenEmpty && isEmptyResult(value)) newContext.defaultLogging = false
+                            if (managedSchedule.quietWhenEmpty && Results.isEmpty(value)) newContext.defaultLogging = false
                             span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onSuccess(newContext)
                         }
                         .doOnError { e -> span.end(e); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e) }
@@ -57,14 +46,7 @@ class ManagedScheduleAspect(
                 } else {
                     val ctx = reactorCtx.get<ManagedContext>(ReactiveOperations.CONTEXT_KEY)
                     ctx.injectEntryPoint(className)
-                    val span = ctx.push(
-                        name = MetricName("$className.$methodName"),
-                        kind = MetricKind.TIMER,
-                        policy = MetricPolicy.defaults(),
-                        tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                        descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                        idProvider = spanIdProvider
-                    )
+                    val span = SpanSupport.pushEntrySpan(ctx, className, methodName, spanIdProvider)
                     mono
                         .doOnSuccess { span.end(); ctx.pop() }
                         .doOnError { e -> span.end(e); ctx.pop() }
@@ -75,18 +57,11 @@ class ManagedScheduleAspect(
         // ── synchronous / blocking target (typical @Scheduled fun) ────────────────
         val newContext = ReactiveOperations.initializeForSchedule(runtime)
         newContext.injectEntryPoint(className)
-        val span = newContext.push(
-            name = MetricName("$className.$methodName"),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-            descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-            idProvider = spanIdProvider
-        )
+        val span = SpanSupport.pushEntrySpan(newContext, className, methodName, spanIdProvider)
         eventHandlerContext.set(newContext)
         return try {
             val result = joinPoint.proceed()
-            if (managedSchedule.quietWhenEmpty && isEmptyResult(result)) newContext.defaultLogging = false
+            if (managedSchedule.quietWhenEmpty && Results.isEmpty(result)) newContext.defaultLogging = false
             span.end(); newContext.pop(); newContext.end()
             ReactiveOperations.hookFor(newContext)?.onSuccess(newContext)
             result
@@ -99,14 +74,4 @@ class ManagedScheduleAspect(
         }
     }
 
-    private fun isEmptyResult(result: Any?): Boolean = when (result) {
-        null, Unit -> true
-        is Number -> result.toLong() == 0L
-        is Boolean -> !result
-        is Collection<*> -> result.isEmpty()
-        is Map<*, *> -> result.isEmpty()
-        is Array<*> -> result.isEmpty()
-        is CharSequence -> result.isEmpty()
-        else -> false
-    }
 }

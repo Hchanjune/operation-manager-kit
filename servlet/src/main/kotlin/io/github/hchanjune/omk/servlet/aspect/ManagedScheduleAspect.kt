@@ -2,13 +2,9 @@ package io.github.hchanjune.omk.servlet.aspect
 
 import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.annotations.ManagedSchedule
-import io.github.hchanjune.omk.core.metric.MetricDescriptor
-import io.github.hchanjune.omk.core.metric.MetricKind
-import io.github.hchanjune.omk.core.metric.MetricLayer
-import io.github.hchanjune.omk.core.metric.MetricName
-import io.github.hchanjune.omk.core.metric.MetricPolicy
-import io.github.hchanjune.omk.core.metric.MetricTags
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
+import io.github.hchanjune.omk.core.support.Results
 import io.github.hchanjune.omk.servlet.Operations
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
@@ -40,23 +36,13 @@ class ManagedScheduleAspect(
 
         context.injectEntryPoint(className)
 
-        val span = context.push(
-            name = MetricName("$className.$methodName"),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = MetricTags.Builder()
-                .put("entrypoint", className)
-                .put("method", methodName)
-                .build(),
-            descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-            idProvider = spanIdProvider
-        )
+        val span = SpanSupport.pushEntrySpan(context, className, methodName, spanIdProvider)
 
         return try {
             val result = joinPoint.proceed()
             // Quiet only when this aspect owns the context — silencing a shared outer
             // context would suppress the enclosing operation's log as well.
-            if (contextOwner && managedSchedule.quietWhenEmpty && isEmptyResult(result)) {
+            if (contextOwner && managedSchedule.quietWhenEmpty && Results.isEmpty(result)) {
                 context.defaultLogging = false
             }
             span.end()
@@ -77,17 +63,6 @@ class ManagedScheduleAspect(
         } finally {
             if (contextOwner) Operations.clear()
         }
-    }
-
-    private fun isEmptyResult(result: Any?): Boolean = when (result) {
-        null, Unit -> true
-        is Number -> result.toLong() == 0L
-        is Boolean -> !result
-        is Collection<*> -> result.isEmpty()
-        is Map<*, *> -> result.isEmpty()
-        is Array<*> -> result.isEmpty()
-        is CharSequence -> result.isEmpty()
-        else -> false
     }
 
 }

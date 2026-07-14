@@ -2,12 +2,7 @@ package io.github.hchanjune.omk.reactive.aspect
 
 import io.github.hchanjune.omk.core.annotations.ManagedCacheRepository
 import io.github.hchanjune.omk.core.context.ManagedContext
-import io.github.hchanjune.omk.core.metric.MetricDescriptor
-import io.github.hchanjune.omk.core.metric.MetricKind
-import io.github.hchanjune.omk.core.metric.MetricLayer
-import io.github.hchanjune.omk.core.metric.MetricName
-import io.github.hchanjune.omk.core.metric.MetricPolicy
-import io.github.hchanjune.omk.core.metric.MetricTags
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
@@ -65,16 +60,5 @@ class ManagedCacheRepositoryAspect(
         }
 
     private fun buildSpan(ctx: ManagedContext, className: String, methodName: String) =
-        ctx.push(
-            name = MetricName("$className.$methodName"),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = MetricTags.Builder()
-                .put("cache", className)
-                .put("method", methodName)
-                .put("operation", ctx.operation)
-                .build(),
-            descriptor = MetricDescriptor(operation = ctx.operation, useCase = ctx.useCase, layer = MetricLayer.CACHE),
-            idProvider = spanIdProvider
-        )
+        SpanSupport.pushCacheSpan(ctx, className, methodName, spanIdProvider)
 }
