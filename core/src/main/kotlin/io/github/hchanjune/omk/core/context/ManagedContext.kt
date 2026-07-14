@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.core.context
 
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.contants.ExecutionScope
 import io.github.hchanjune.omk.core.contants.ManagedProtocolType
 import io.github.hchanjune.omk.core.contants.OperationOutcome
@@ -92,6 +93,11 @@ class ManagedContext(
     // Set to false inside an Operations { } block to silence the default success log
     // for this execution only. Failures (and captured exceptions) are always logged.
     var defaultLogging: Boolean = true
+
+    // The configuration bundle of the Spring context that opened this ManagedContext.
+    // Attached by entry points (filter, event/schedule aspects); reads fall back to the
+    // static default runtime when absent. Wiring detail — not for application code.
+    var runtime: OperationRuntime? = null
 
     val timestamp: Instant = Instant.now(clock)
 
@@ -239,6 +245,7 @@ class ManagedContext(
         child.useCase = this.useCase
         child.message = this.message
         child.defaultLogging = this.defaultLogging
+        child.runtime = this.runtime
         child.executionScope = ExecutionScope.ASYNC
         child.isAsyncHookEnabled = this.isAsyncHookEnabled
         child.push(

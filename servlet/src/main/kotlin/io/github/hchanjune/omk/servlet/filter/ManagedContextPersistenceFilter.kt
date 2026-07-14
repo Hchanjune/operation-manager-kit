@@ -1,6 +1,7 @@
 ﻿package io.github.hchanjune.omk.servlet.filter
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
@@ -22,7 +23,8 @@ class ManagedContextPersistenceFilter(
     private val causationIdProvider: CausationIdProvider,
     private val compositeHook: OperationHook,
     private val generateWhenMissing: Boolean = true,
-    private val excludeOptions: Boolean = false
+    private val excludeOptions: Boolean = false,
+    private val runtime: OperationRuntime? = null,
 ): OncePerRequestFilter() {
 
     companion object {
@@ -53,6 +55,7 @@ class ManagedContextPersistenceFilter(
                 )
                 this.injectIp(resolveClientIp(request))
             }.also { context ->
+                context.runtime = runtime
                 request.setAttribute(KEY, context)
             }
 

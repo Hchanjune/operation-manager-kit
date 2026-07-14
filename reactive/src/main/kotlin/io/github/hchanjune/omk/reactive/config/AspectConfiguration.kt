@@ -1,5 +1,6 @@
 ﻿package io.github.hchanjune.omk.reactive.config
 
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.reactive.aspect.ManagedCacheRepositoryAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedControllerAspect
@@ -23,14 +24,14 @@ internal class AspectConfiguration {
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = "operation-manager.reactive.context-aspect", name = ["enabled"], havingValue = "true", matchIfMissing = true)
-    fun managedEventHandlerAspect(spanIdProvider: SpanIdProvider): ManagedEventHandlerAspect =
-        ManagedEventHandlerAspect(spanIdProvider = spanIdProvider)
+    fun managedEventHandlerAspect(spanIdProvider: SpanIdProvider, operationRuntime: OperationRuntime): ManagedEventHandlerAspect =
+        ManagedEventHandlerAspect(spanIdProvider = spanIdProvider, runtime = operationRuntime)
 
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = "operation-manager.reactive.context-aspect", name = ["enabled"], havingValue = "true", matchIfMissing = true)
-    fun managedScheduleAspect(spanIdProvider: SpanIdProvider): ManagedScheduleAspect =
-        ManagedScheduleAspect(spanIdProvider = spanIdProvider)
+    fun managedScheduleAspect(spanIdProvider: SpanIdProvider, operationRuntime: OperationRuntime): ManagedScheduleAspect =
+        ManagedScheduleAspect(spanIdProvider = spanIdProvider, runtime = operationRuntime)
 
     @Bean
     @ConditionalOnMissingBean

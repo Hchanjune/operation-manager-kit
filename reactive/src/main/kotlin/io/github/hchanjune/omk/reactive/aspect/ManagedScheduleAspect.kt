@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.reactive.aspect
 
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.annotations.ManagedSchedule
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
@@ -21,7 +22,8 @@ import reactor.util.context.Context
 @Aspect
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 class ManagedScheduleAspect(
-    private val spanIdProvider: SpanIdProvider
+    private val spanIdProvider: SpanIdProvider,
+    private val runtime: OperationRuntime? = null,
 ) : ReactiveAspectSupport() {
 
     @Around("@annotation(managedSchedule)")
@@ -35,7 +37,7 @@ class ManagedScheduleAspect(
             return result.transformDeferredContextual { mono, reactorCtx ->
                 val contextOwner = !reactorCtx.hasKey(ReactiveOperations.CONTEXT_KEY)
                 if (contextOwner) {
-                    val newContext = ReactiveOperations.initializeForSchedule()
+                    val newContext = ReactiveOperations.initializeForSchedule(runtime)
                     newContext.injectEntryPoint(className)
                     val span = newContext.push(
                         name = MetricName("$className.$methodName"),
@@ -48,9 +50,9 @@ class ManagedScheduleAspect(
                     mono
                         .doOnSuccess { value ->
                             if (managedSchedule.quietWhenEmpty && isEmptyResult(value)) newContext.defaultLogging = false
-                            span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onSuccess(newContext)
+                            span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onSuccess(newContext)
                         }
-                        .doOnError { e -> span.end(e); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onFailure(newContext, e) }
+                        .doOnError { e -> span.end(e); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e) }
                         .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newContext))
                 } else {
                     val ctx = reactorCtx.get<ManagedContext>(ReactiveOperations.CONTEXT_KEY)
@@ -71,7 +73,7 @@ class ManagedScheduleAspect(
         }
 
         // ── synchronous / blocking target (typical @Scheduled fun) ────────────────
-        val newContext = ReactiveOperations.initializeForSchedule()
+        val newContext = ReactiveOperations.initializeForSchedule(runtime)
         newContext.injectEntryPoint(className)
         val span = newContext.push(
             name = MetricName("$className.$methodName"),
@@ -86,11 +88,11 @@ class ManagedScheduleAspect(
             val result = joinPoint.proceed()
             if (managedSchedule.quietWhenEmpty && isEmptyResult(result)) newContext.defaultLogging = false
             span.end(); newContext.pop(); newContext.end()
-            ReactiveOperations.hook?.onSuccess(newContext)
+            ReactiveOperations.hookFor(newContext)?.onSuccess(newContext)
             result
         } catch (e: Throwable) {
             span.end(e); newContext.pop(); newContext.end()
-            ReactiveOperations.hook?.onFailure(newContext, e)
+            ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e)
             throw e
         } finally {
             eventHandlerContext.remove()

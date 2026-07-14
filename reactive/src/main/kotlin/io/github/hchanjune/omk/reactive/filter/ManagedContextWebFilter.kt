@@ -1,6 +1,7 @@
 ﻿package io.github.hchanjune.omk.reactive.filter
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.IssuerProvider
@@ -23,7 +24,8 @@ class ManagedContextWebFilter(
     private val compositeHook: OperationHook,
     private val issuerProvider: IssuerProvider = IssuerProvider { "anonymous" },
     private val generateWhenMissing: Boolean = true,
-    private val excludeOptions: Boolean = false
+    private val excludeOptions: Boolean = false,
+    private val operationRuntime: OperationRuntime? = null,
 ) : WebFilter {
 
     override fun filter(exchange: ServerWebExchange, chain: WebFilterChain): Mono<Void> {
@@ -43,6 +45,7 @@ class ManagedContextWebFilter(
             injectProtocol("HTTP")
             injectType("API")
             injectHttpInfo(uri = request.uri.path, method = request.method.name())
+            runtime = operationRuntime
         }
 
         context.start()

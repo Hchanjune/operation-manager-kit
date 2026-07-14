@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.reactive.aspect
 
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.annotations.ManagedEventCausationId
 import io.github.hchanjune.omk.core.annotations.ManagedEventIssuer
 import io.github.hchanjune.omk.core.annotations.ManagedEventTraceId
@@ -25,7 +26,8 @@ import reactor.util.context.Context
 @Aspect
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 class ManagedEventHandlerAspect(
-    private val spanIdProvider: SpanIdProvider
+    private val spanIdProvider: SpanIdProvider,
+    private val runtime: OperationRuntime? = null,
 ) : ReactiveAspectSupport() {
 
     @Around("@annotation(io.github.hchanjune.omk.core.annotations.ManagedEventHandler)")
@@ -39,7 +41,7 @@ class ManagedEventHandlerAspect(
             return result.transformDeferredContextual { mono, reactorCtx ->
                 val contextOwner = !reactorCtx.hasKey(ReactiveOperations.CONTEXT_KEY)
                 if (contextOwner) {
-                    val newContext = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args))
+                    val newContext = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args), runtime)
                     newContext.injectEntryPoint(className)
                     val span = newContext.push(
                         name = MetricName("$className.$methodName"),
@@ -50,8 +52,8 @@ class ManagedEventHandlerAspect(
                         idProvider = spanIdProvider
                     )
                     mono
-                        .doOnSuccess { span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onSuccess(newContext) }
-                        .doOnError { e -> span.end(e); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onFailure(newContext, e) }
+                        .doOnSuccess { span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onSuccess(newContext) }
+                        .doOnError { e -> span.end(e); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e) }
                         .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newContext))
                 } else {
                     val ctx = reactorCtx.get<ManagedContext>(ReactiveOperations.CONTEXT_KEY)
@@ -72,7 +74,7 @@ class ManagedEventHandlerAspect(
         }
 
         // ── synchronous / blocking target ─────────────────────────────────────────
-        val newContext = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args))
+        val newContext = ReactiveOperations.initializeForEvent(extractMetadata(joinPoint.args), runtime)
         newContext.injectEntryPoint(className)
         val span = newContext.push(
             name = MetricName("$className.$methodName"),
@@ -86,11 +88,11 @@ class ManagedEventHandlerAspect(
         return try {
             val result = joinPoint.proceed()
             span.end(); newContext.pop(); newContext.end()
-            ReactiveOperations.hook?.onSuccess(newContext)
+            ReactiveOperations.hookFor(newContext)?.onSuccess(newContext)
             result
         } catch (e: Throwable) {
             span.end(e); newContext.pop(); newContext.end()
-            ReactiveOperations.hook?.onFailure(newContext, e)
+            ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e)
             throw e
         } finally {
             eventHandlerContext.remove()

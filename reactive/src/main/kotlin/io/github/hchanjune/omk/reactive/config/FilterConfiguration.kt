@@ -1,6 +1,7 @@
 ﻿package io.github.hchanjune.omk.reactive.config
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.IssuerProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
@@ -34,6 +35,7 @@ internal class FilterConfiguration {
         issuerProvider: IssuerProvider,
         telemetryProperties: TelemetryConfigureProperties,
         properties: OperationManagerReactiveConfigProperties,
+        operationRuntime: OperationRuntime,
     ): ManagedContextWebFilter = ManagedContextWebFilter(
         contextProvider = contextProvider,
         propagationProvider = propagationProvider,
@@ -42,6 +44,7 @@ internal class FilterConfiguration {
         compositeHook = compositeHook,
         issuerProvider = issuerProvider,
         generateWhenMissing = telemetryProperties.propagation.generateWhenMissing,
-        excludeOptions = properties.contextFilter.excludeOptions
+        excludeOptions = properties.contextFilter.excludeOptions,
+        operationRuntime = operationRuntime,
     )
 }

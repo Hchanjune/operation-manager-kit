@@ -1,6 +1,7 @@
 ﻿package io.github.hchanjune.omk.reactive.config
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.reactive.config.auto.OperationManagerReactiveAutoConfiguration
 import io.github.hchanjune.omk.reactive.config.properties.DefaultOperationLoggingProperties
 import io.github.hchanjune.omk.reactive.config.properties.OperationManagerReactiveConfigProperties
@@ -183,7 +184,8 @@ class ConfigurationTest {
         assertNotNull(config.managedOperationAspect(spanId))
         assertNotNull(config.managedMetricAspect(spanId))
         assertNotNull(config.managedRepositoryAspect(spanId))
-        assertNotNull(config.managedEventHandlerAspect(spanId))
+        assertNotNull(config.managedEventHandlerAspect(spanId, OperationRuntime()))
+        assertNotNull(config.managedScheduleAspect(spanId, OperationRuntime()))
     }
 
     // ── FilterConfiguration ───────────────────────────────────────────────────
@@ -200,7 +202,8 @@ class ConfigurationTest {
             compositeHook = HooksConfiguration().operationCompositeHook(emptyObjectProvider()),
             issuerProvider = provConfig.fallbackIssuerProvider(),
             telemetryProperties = defaultTelemetryProps,
-            properties = OperationManagerReactiveConfigProperties()
+            properties = OperationManagerReactiveConfigProperties(),
+            operationRuntime = OperationRuntime()
         )
         assertNotNull(filter)
     }
@@ -211,13 +214,15 @@ class ConfigurationTest {
     fun `OperationConfiguration initializes ReactiveOperations`() {
         val provConfig = ProviderConfiguration(defaultTelemetryProps)
         val spanId = provConfig.spanIdProvider()
-        val result = OperationConfiguration().reactiveOperationInitializer(
+        val runtime = OperationConfiguration().operationRuntime(
             compositeHook = HooksConfiguration().operationCompositeHook(emptyObjectProvider()),
             contextProvider = provConfig.managedContextProvider(spanId),
             traceIdProvider = provConfig.traceIdProvider(),
             causationIdProvider = provConfig.causationIdProvider(),
             telemetryProperties = defaultTelemetryProps
         )
+        assertNotNull(runtime.hook)
+        val result = OperationConfiguration().reactiveOperationInitializer(runtime)
         assertNotNull(result)
     }
 

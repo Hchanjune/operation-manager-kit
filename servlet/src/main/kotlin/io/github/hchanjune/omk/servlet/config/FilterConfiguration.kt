@@ -1,6 +1,7 @@
 ﻿package io.github.hchanjune.omk.servlet.config
 
 import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TelemetryPropagationProvider
@@ -31,6 +32,7 @@ internal class FilterConfiguration {
         compositeHook: OperationHook,
         telemetryProperties: TelemetryConfigureProperties,
         properties: OperationManagerServletConfigProperties,
+        operationRuntime: OperationRuntime,
     ): ManagedContextPersistenceFilter = ManagedContextPersistenceFilter(
         contextProvider = contextProvider,
         propagationProvider = propagationProvider,
@@ -38,7 +40,8 @@ internal class FilterConfiguration {
         causationIdProvider = causationIdProvider,
         compositeHook = compositeHook,
         generateWhenMissing = telemetryProperties.propagation.generateWhenMissing,
-        excludeOptions = properties.contextFilter.excludeOptions
+        excludeOptions = properties.contextFilter.excludeOptions,
+        runtime = operationRuntime,
     )
 
     @Bean

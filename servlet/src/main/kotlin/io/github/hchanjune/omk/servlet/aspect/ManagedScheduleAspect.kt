@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.servlet.aspect
 
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.annotations.ManagedSchedule
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
@@ -18,7 +19,8 @@ import org.springframework.core.annotation.Order
 @Aspect
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 class ManagedScheduleAspect(
-    private val spanIdProvider: SpanIdProvider
+    private val spanIdProvider: SpanIdProvider,
+    private val runtime: OperationRuntime? = null,
 ) {
 
     @Around("@annotation(managedSchedule)")
@@ -29,7 +31,7 @@ class ManagedScheduleAspect(
         val contextOwner = !Operations.hasContext
 
         if (contextOwner) {
-            Operations.initializeForSchedule()
+            Operations.initializeForSchedule(runtime)
         }
 
         val context = Operations.context

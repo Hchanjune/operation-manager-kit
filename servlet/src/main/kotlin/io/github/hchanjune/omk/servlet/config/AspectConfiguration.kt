@@ -1,5 +1,6 @@
 ﻿package io.github.hchanjune.omk.servlet.config
 
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.servlet.aspect.ManagedCacheRepositoryAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedEventHandlerAspect
@@ -33,8 +34,9 @@ internal class AspectConfiguration {
     )
     fun managedEventHandlerAspect(
         spanIdProvider: SpanIdProvider,
+        operationRuntime: OperationRuntime,
     ): ManagedEventHandlerAspect =
-        ManagedEventHandlerAspect(spanIdProvider = spanIdProvider)
+        ManagedEventHandlerAspect(spanIdProvider = spanIdProvider, runtime = operationRuntime)
 
     /**
      * ###### ManagedScheduleAspect
@@ -49,8 +51,9 @@ internal class AspectConfiguration {
     )
     fun managedScheduleAspect(
         spanIdProvider: SpanIdProvider,
+        operationRuntime: OperationRuntime,
     ): ManagedScheduleAspect =
-        ManagedScheduleAspect(spanIdProvider = spanIdProvider)
+        ManagedScheduleAspect(spanIdProvider = spanIdProvider, runtime = operationRuntime)
 
     /**
      * ###### ManagedControllerAspect

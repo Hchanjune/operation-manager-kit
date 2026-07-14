@@ -1,7 +1,8 @@
-﻿package io.github.hchanjune.omk.reactive
+package io.github.hchanjune.omk.reactive
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.OperationResult
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.event.EventMetadata
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
@@ -20,13 +21,17 @@ object ReactiveOperations {
 
     private val logger = LoggerFactory.getLogger(ReactiveOperations::class.java)
 
-    private var eventContextProvider: ManagedContextProvider? = null
-    private var eventTraceIdProvider: TraceIdProvider? = null
-    private var eventCausationIdProvider: CausationIdProvider? = null
-    private var eventGenerateWhenMissing: Boolean = true
+    // Configuration reads resolve through the runtime attached to the current context first
+    // (set by the entry point that opened it), falling back to this static default. The
+    // default is what configure*() writes to, so single-context apps behave exactly as before;
+    // multiple Spring contexts in one JVM stop clobbering each other's configuration.
+    private var defaultRuntime = OperationRuntime()
 
-    var hook: OperationHook? = null
-        private set
+    val hook: OperationHook?
+        get() = defaultRuntime.hook
+
+    internal fun hookFor(context: ManagedContext): OperationHook? =
+        context.runtime?.hook ?: defaultRuntime.hook
 
     suspend operator fun <T> invoke(block: suspend ManagedContext.() -> T): OperationResult<T> {
         val managedContext = currentCoroutineContext()[ReactorContext]?.context
@@ -53,10 +58,10 @@ object ReactiveOperations {
     // a warn log instead of failing the business logic. The context is not written to the
     // Reactor context, so it is never propagated to other executions.
     private fun detachedContext(): ManagedContext =
-        (eventContextProvider?.provide() ?: ManagedContext(spanIdProvider = DETACHED_SPAN_ID_PROVIDER))
+        (defaultRuntime.contextProvider?.provide() ?: ManagedContext(spanIdProvider = DETACHED_SPAN_ID_PROVIDER))
             .apply {
-                eventTraceIdProvider?.let { injectTraceId(it.provideTraceId()) }
-                eventCausationIdProvider?.let { injectCausationId(it.provideCausationId()) }
+                defaultRuntime.traceIdProvider?.let { injectTraceId(it.provideTraceId()) }
+                defaultRuntime.causationIdProvider?.let { injectCausationId(it.provideCausationId()) }
                 start()
             }
 
@@ -72,7 +77,7 @@ object ReactiveOperations {
     }
 
     fun configureHook(hook: OperationHook) {
-        this.hook = hook
+        defaultRuntime.hook = hook
     }
 
     fun configureEventProviders(
@@ -81,39 +86,47 @@ object ReactiveOperations {
         causationIdProvider: CausationIdProvider,
         generateWhenMissing: Boolean
     ) {
-        this.eventContextProvider = contextProvider
-        this.eventTraceIdProvider = traceIdProvider
-        this.eventCausationIdProvider = causationIdProvider
-        this.eventGenerateWhenMissing = generateWhenMissing
+        defaultRuntime.contextProvider = contextProvider
+        defaultRuntime.traceIdProvider = traceIdProvider
+        defaultRuntime.causationIdProvider = causationIdProvider
+        defaultRuntime.generateWhenMissing = generateWhenMissing
     }
 
-    internal fun initializeForEvent(metadata: EventMetadata): ManagedContext {
-        val provider = eventContextProvider
+    internal fun configureDefaultRuntime(runtime: OperationRuntime) {
+        defaultRuntime = runtime
+    }
+
+    internal fun initializeForEvent(metadata: EventMetadata, runtime: OperationRuntime? = null): ManagedContext {
+        val rt = runtime ?: defaultRuntime
+        val provider = rt.contextProvider
             ?: error("Event providers not configured. Ensure OMK WebFlux is properly set up.")
         return provider.provide().apply {
             injectTraceId(
-                metadata.traceId ?: if (eventGenerateWhenMissing) eventTraceIdProvider?.provideTraceId() ?: "" else ""
+                metadata.traceId ?: if (rt.generateWhenMissing) rt.traceIdProvider?.provideTraceId() ?: "" else ""
             )
             injectCausationId(
-                metadata.causationId ?: if (eventGenerateWhenMissing) eventCausationIdProvider?.provideCausationId() ?: "" else ""
+                metadata.causationId ?: if (rt.generateWhenMissing) rt.causationIdProvider?.provideCausationId() ?: "" else ""
             )
             metadata.issuer?.let { injectIssuer(it) }
             metadata.eventType?.let { injectType(it) }
             injectProtocol("MESSAGING")
             markAsEvent()
+            this.runtime = rt
             start()
         }
     }
 
-    internal fun initializeForSchedule(): ManagedContext {
-        val provider = eventContextProvider
+    internal fun initializeForSchedule(runtime: OperationRuntime? = null): ManagedContext {
+        val rt = runtime ?: defaultRuntime
+        val provider = rt.contextProvider
             ?: error("Event providers not configured. Ensure OMK WebFlux is properly set up.")
         return provider.provide().apply {
-            injectTraceId(eventTraceIdProvider?.provideTraceId() ?: "")
-            injectCausationId(eventCausationIdProvider?.provideCausationId() ?: "")
+            injectTraceId(rt.traceIdProvider?.provideTraceId() ?: "")
+            injectCausationId(rt.causationIdProvider?.provideCausationId() ?: "")
             injectType("SCHEDULED")
             injectProtocol("SCHEDULED")
             markAsScheduled()
+            this.runtime = rt
             start()
         }
     }

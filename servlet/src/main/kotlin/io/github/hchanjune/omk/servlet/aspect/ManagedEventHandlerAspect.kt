@@ -5,6 +5,7 @@ import io.github.hchanjune.omk.core.annotations.ManagedEventHandler
 import io.github.hchanjune.omk.core.annotations.ManagedEventIssuer
 import io.github.hchanjune.omk.core.annotations.ManagedEventTraceId
 import io.github.hchanjune.omk.core.annotations.ManagedEventType
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.event.EventMetadata
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
@@ -23,7 +24,8 @@ import org.springframework.core.annotation.Order
 @Aspect
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 class ManagedEventHandlerAspect(
-    private val spanIdProvider: SpanIdProvider
+    private val spanIdProvider: SpanIdProvider,
+    private val runtime: OperationRuntime? = null,
 ) {
 
     @Around("@annotation(managedEventHandler)")
@@ -34,7 +36,7 @@ class ManagedEventHandlerAspect(
         val contextOwner = !Operations.hasContext
 
         if (contextOwner) {
-            Operations.initializeForEvent(extractMetadata(joinPoint.args))
+            Operations.initializeForEvent(extractMetadata(joinPoint.args), runtime)
         }
 
         val context = Operations.context

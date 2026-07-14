@@ -2,8 +2,12 @@
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.OperationResult
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.event.EventMetadata
+import io.github.hchanjune.omk.core.provider.CausationIdProvider
+import io.github.hchanjune.omk.core.provider.ManagedContextProvider
+import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.reactive.TestSupport.context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.reactor.mono
@@ -123,10 +127,10 @@ class ReactiveOperationsTest {
 
     @Test
     fun `initializeForEvent throws when providers not configured`() {
-        val field = ReactiveOperations::class.java.getDeclaredField("eventContextProvider")
+        val field = ReactiveOperations::class.java.getDeclaredField("defaultRuntime")
         field.isAccessible = true
         val previous = field.get(ReactiveOperations)
-        field.set(ReactiveOperations, null)
+        field.set(ReactiveOperations, OperationRuntime())
 
         try {
             assertFailsWith<IllegalStateException> {
@@ -135,5 +139,33 @@ class ReactiveOperationsTest {
         } finally {
             field.set(ReactiveOperations, previous)
         }
+    }
+
+    // ── runtime isolation ─────────────────────────────────────────────────────
+
+    @Test
+    fun `hookFor prefers context-attached runtime hook over default`() {
+        val defaultHook = object : OperationHook {}
+        val runtimeHook = object : OperationHook {}
+        ReactiveOperations.configureHook(defaultHook)
+
+        val ctx = context().apply { runtime = OperationRuntime().apply { hook = runtimeHook } }
+        assertEquals(runtimeHook, ReactiveOperations.hookFor(ctx))
+
+        val plainCtx = context()
+        assertEquals(defaultHook, ReactiveOperations.hookFor(plainCtx))
+    }
+
+    @Test
+    fun `initializeForEvent with explicit runtime uses its providers and attaches it`() {
+        val rt = OperationRuntime().apply {
+            contextProvider = object : ManagedContextProvider { override fun provide() = context() }
+            traceIdProvider = object : TraceIdProvider { override fun provideTraceId() = "rt-trace" }
+            causationIdProvider = object : CausationIdProvider { override fun provideCausationId() = "rt-cause" }
+        }
+        val ctx = ReactiveOperations.initializeForEvent(EventMetadata(), rt)
+        assertEquals("rt-trace", ctx.traceId)
+        assertEquals("rt-cause", ctx.causationId)
+        assertEquals(rt, ctx.runtime)
     }
 }

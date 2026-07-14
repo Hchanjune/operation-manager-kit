@@ -1,6 +1,8 @@
 ﻿package io.github.hchanjune.omk.servlet
 
 import io.github.hchanjune.omk.core.OperationExecutor
+import io.github.hchanjune.omk.core.OperationHook
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.event.EventMetadata
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
@@ -80,6 +82,45 @@ class OperationsTest {
         val ctx = Operations.context
         assertEquals("detached-trace", ctx.traceId)
         assertEquals("detached-cause", ctx.causationId)
+    }
+
+    @Test
+    fun `hook resolves from context-attached runtime over default`() {
+        val defaultHook = object : OperationHook {}
+        val runtimeHook = object : OperationHook {}
+        Operations.configureHook(defaultHook)
+
+        val ctx = ManagedContext(spanIdProvider = spanIdProvider).apply {
+            runtime = OperationRuntime().apply { hook = runtimeHook }
+        }
+        Operations.applyContext(ctx)
+        assertEquals(runtimeHook, Operations.hook)
+
+        Operations.clear()
+        assertEquals(defaultHook, Operations.hook)
+    }
+
+    @Test
+    fun `initializeForEvent with explicit runtime uses its providers and attaches it`() {
+        val rt = OperationRuntime().apply {
+            contextProvider = contextProvider()
+            traceIdProvider = object : TraceIdProvider { override fun provideTraceId() = "rt-trace" }
+            causationIdProvider = object : CausationIdProvider { override fun provideCausationId() = "rt-cause" }
+        }
+        Operations.initializeForEvent(EventMetadata(null, null, null, null), rt)
+        assertEquals("rt-trace", Operations.context.traceId)
+        assertEquals("rt-cause", Operations.context.causationId)
+        assertEquals(rt, Operations.context.runtime)
+    }
+
+    @Test
+    fun `invoke uses executor from context-attached runtime`() {
+        val ctx = ManagedContext(spanIdProvider = spanIdProvider).apply {
+            runtime = OperationRuntime().apply { executor = OperationExecutor() }
+        }
+        Operations.applyContext(ctx)
+        val result = Operations { "runtime-executed" }
+        assertEquals("runtime-executed", result.data)
     }
 
     @Test

@@ -1,8 +1,9 @@
-﻿package io.github.hchanjune.omk.servlet
+package io.github.hchanjune.omk.servlet
 
 import io.github.hchanjune.omk.core.OperationExecutor
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.OperationResult
+import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.context.ManagedContextHolder
 import io.github.hchanjune.omk.core.event.EventMetadata
@@ -18,17 +19,17 @@ object Operations: ManagedContextHolder {
 
     private val contextHolder = ThreadLocal<ManagedContext>()
 
-    private lateinit var executor: OperationExecutor
-    private var eventContextProvider: ManagedContextProvider? = null
-    private var eventTraceIdProvider: TraceIdProvider? = null
-    private var eventCausationIdProvider: CausationIdProvider? = null
-    private var eventGenerateWhenMissing: Boolean = true
+    // Configuration reads resolve through the runtime attached to the current context first
+    // (set by the entry point that opened it), falling back to this static default. The
+    // default is what configure*() writes to, so single-context apps behave exactly as before;
+    // multiple Spring contexts in one JVM stop clobbering each other's configuration.
+    private var defaultRuntime = OperationRuntime()
 
-    override var hook: OperationHook? = null
-        private set
+    override val hook: OperationHook?
+        get() = contextHolder.get()?.runtime?.hook ?: defaultRuntime.hook
 
-    override var defaultAsyncHookEnabled: Boolean = false
-        private set
+    override val defaultAsyncHookEnabled: Boolean
+        get() = defaultRuntime.defaultAsyncHookEnabled
 
     override val context: ManagedContext
         get() = contextHolder.get()
@@ -45,10 +46,10 @@ object Operations: ManagedContextHolder {
     // log instead of failing the business logic. The context is not stored in the holder,
     // so it is never leaked to other executions on the same thread.
     private fun detachedContext(): ManagedContext =
-        (eventContextProvider?.provide() ?: ManagedContext(spanIdProvider = DETACHED_SPAN_ID_PROVIDER))
+        (defaultRuntime.contextProvider?.provide() ?: ManagedContext(spanIdProvider = DETACHED_SPAN_ID_PROVIDER))
             .apply {
-                eventTraceIdProvider?.let { injectTraceId(it.provideTraceId()) }
-                eventCausationIdProvider?.let { injectCausationId(it.provideCausationId()) }
+                defaultRuntime.traceIdProvider?.let { injectTraceId(it.provideTraceId()) }
+                defaultRuntime.causationIdProvider?.let { injectCausationId(it.provideCausationId()) }
                 start()
             }
 
@@ -62,7 +63,8 @@ object Operations: ManagedContextHolder {
     }
 
     override fun initialize(context: ManagedContext) {
-        if (defaultAsyncHookEnabled) context.enableAsyncHook()
+        if (context.runtime == null) context.runtime = defaultRuntime
+        if (context.runtime?.defaultAsyncHookEnabled == true) context.enableAsyncHook()
         contextHolder.set(context)
         context.start()
     }
@@ -72,39 +74,49 @@ object Operations: ManagedContextHolder {
     }
 
     override fun <T> invoke(block: ManagedContext.() -> T): OperationResult<T> {
-        val exe = executor
-        return exe.run(context, block)
+        val ctx = context
+        val exe = ctx.runtime?.executor ?: defaultRuntime.executor
+            ?: error("OperationExecutor not configured. Ensure OMK is properly set up.")
+        return exe.run(ctx, block)
     }
 
-    override fun initializeForEvent(metadata: EventMetadata) {
-        val provider = eventContextProvider
+    override fun initializeForEvent(metadata: EventMetadata) = initializeForEvent(metadata, null)
+
+    fun initializeForEvent(metadata: EventMetadata, runtime: OperationRuntime?) {
+        val rt = runtime ?: defaultRuntime
+        val provider = rt.contextProvider
             ?: error("Event providers not configured. Ensure OMK is properly set up.")
         val context = provider.provide().apply {
-            injectTraceId(metadata.traceId ?: if (eventGenerateWhenMissing) eventTraceIdProvider?.provideTraceId() ?: "" else "")
-            injectCausationId(metadata.causationId ?: if (eventGenerateWhenMissing) eventCausationIdProvider?.provideCausationId() ?: "" else "")
+            injectTraceId(metadata.traceId ?: if (rt.generateWhenMissing) rt.traceIdProvider?.provideTraceId() ?: "" else "")
+            injectCausationId(metadata.causationId ?: if (rt.generateWhenMissing) rt.causationIdProvider?.provideCausationId() ?: "" else "")
             metadata.issuer?.let { injectIssuer(it) }
             metadata.eventType?.let { injectType(it) }
             injectProtocol("MESSAGING")
             markAsEvent()
         }
+        context.runtime = rt
         initialize(context)
     }
 
-    override fun initializeForSchedule() {
-        val provider = eventContextProvider
+    override fun initializeForSchedule() = initializeForSchedule(null)
+
+    fun initializeForSchedule(runtime: OperationRuntime?) {
+        val rt = runtime ?: defaultRuntime
+        val provider = rt.contextProvider
             ?: error("Event providers not configured. Ensure OMK is properly set up.")
         val context = provider.provide().apply {
-            injectTraceId(eventTraceIdProvider?.provideTraceId() ?: "")
-            injectCausationId(eventCausationIdProvider?.provideCausationId() ?: "")
+            injectTraceId(rt.traceIdProvider?.provideTraceId() ?: "")
+            injectCausationId(rt.causationIdProvider?.provideCausationId() ?: "")
             injectType("SCHEDULED")
             injectProtocol("SCHEDULED")
             markAsScheduled()
         }
+        context.runtime = rt
         initialize(context)
     }
 
     override fun configure(executor: OperationExecutor) {
-        this.executor = executor
+        defaultRuntime.executor = executor
     }
 
     override fun configureEventProviders(
@@ -113,18 +125,22 @@ object Operations: ManagedContextHolder {
         causationIdProvider: CausationIdProvider,
         generateWhenMissing: Boolean
     ) {
-        this.eventContextProvider = contextProvider
-        this.eventTraceIdProvider = traceIdProvider
-        this.eventCausationIdProvider = causationIdProvider
-        this.eventGenerateWhenMissing = generateWhenMissing
+        defaultRuntime.contextProvider = contextProvider
+        defaultRuntime.traceIdProvider = traceIdProvider
+        defaultRuntime.causationIdProvider = causationIdProvider
+        defaultRuntime.generateWhenMissing = generateWhenMissing
     }
 
     override fun configureHook(hook: OperationHook) {
-        this.hook = hook
+        defaultRuntime.hook = hook
     }
 
     override fun configureDefaultAsyncHookEnabled(enabled: Boolean) {
-        this.defaultAsyncHookEnabled = enabled
+        defaultRuntime.defaultAsyncHookEnabled = enabled
+    }
+
+    internal fun configureDefaultRuntime(runtime: OperationRuntime) {
+        defaultRuntime = runtime
     }
 
     override fun clear() {
