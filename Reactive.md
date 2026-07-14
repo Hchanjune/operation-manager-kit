@@ -171,6 +171,7 @@ Context state is cumulative:
 | `@ManagedOperation`    | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span                    |
 | `@ManagedMetric`       | Method | Instruments any method as a named APPLICATION-layer child span                                     |
 | `@ManagedEventHandler` | Method | Opens an ENTRY-layer span for messaging handlers; auto-extracts trace context from event arguments |
+| `@ManagedSchedule`     | Method | Opens an ENTRY-layer span for scheduler-triggered methods (e.g. `@Scheduled`); generates a fresh trace context |
 
 > `@ManagedRepository` targets class-level annotations. Because Spring Data reactive repositories are interfaces, applying `@ManagedRepository` directly to a `CoroutineCrudRepository` interface will not take effect. Consider using `@ManagedMetric` on individual service methods that call the repository instead.
 
@@ -267,6 +268,7 @@ class MyEnrichmentHook : OperationHook {
 ```
 @ManagedController    ──  [ENT] root span
 @ManagedEventHandler  ──  [ENT] root span  (executionScope = EVENT)
+@ManagedSchedule      ──  [ENT] root span  (executionScope = SCHEDULED)
     └── @ManagedOperation  ──  [APP] child span
             └── @ManagedMetric      ──  [APP] child span
             └── @ManagedRepository  ──  [DB]  child span
@@ -453,6 +455,6 @@ implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-start
 - **Spring AOP self-invocation**: AOP aspects do not intercept internal method calls within the same class.
 - **`@ManagedRepository` on interfaces**: Spring Data reactive repositories are interfaces — `@ManagedRepository` has no effect on them directly. Use `@ManagedMetric` on service methods instead.
 - **Event loop thread**: In a properly non-blocking application, spans will show the same `reactor-http-nio-*` thread. This is expected behavior — switching to `Dispatchers.IO` is only necessary for blocking operations.
-- **`ReactiveOperations` scope**: Calling `ReactiveOperations { }` outside a managed HTTP request scope throws `IllegalStateException`.
+- **`ReactiveOperations` scope**: Calling `ReactiveOperations { }` outside a managed scope logs a WARN and proceeds with a detached (unmanaged) context — the business logic runs, but spans and hooks are not recorded. Annotate the entry point (`@ManagedSchedule`, `@ManagedEventHandler`) to get a real managed scope.
 
 ---

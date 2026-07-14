@@ -42,6 +42,7 @@ class ManagedContext(
 
     val isAsync: Boolean get() = executionScope == ExecutionScope.ASYNC
     val isEvent: Boolean get() = executionScope == ExecutionScope.EVENT
+    val isScheduled: Boolean get() = executionScope == ExecutionScope.SCHEDULED
 
     var isAsyncHookEnabled: Boolean = false
         private set
@@ -49,6 +50,7 @@ class ManagedContext(
     fun enableAsyncHook() { isAsyncHookEnabled = true }
     fun disableAsyncHook() { isAsyncHookEnabled = false }
     fun markAsEvent() { executionScope = ExecutionScope.EVENT }
+    fun markAsScheduled() { executionScope = ExecutionScope.SCHEDULED }
 
     // HTTP, GRPC, KAFKA, LOCAL
     var protocol: ManagedProtocolType = ManagedProtocolType.UNSUPPORTED
@@ -86,6 +88,10 @@ class ManagedContext(
         private set
 
     var message: String = "Operation Managed"
+
+    // Set to false inside an Operations { } block to silence the default success log
+    // for this execution only. Failures (and captured exceptions) are always logged.
+    var defaultLogging: Boolean = true
 
     val timestamp: Instant = Instant.now(clock)
 
@@ -232,6 +238,7 @@ class ManagedContext(
         child.operation = this.operation
         child.useCase = this.useCase
         child.message = this.message
+        child.defaultLogging = this.defaultLogging
         child.executionScope = ExecutionScope.ASYNC
         child.isAsyncHookEnabled = this.isAsyncHookEnabled
         child.push(

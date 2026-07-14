@@ -160,6 +160,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] Micrometer integration
 - [x] OpenTelemetry SDK integration
 - [x] Messaging context propagation (`@ManagedEventHandler`) — `handle()` must be a plain (non-suspend) `fun`. If the body calls suspend functions, wrap them in `runBlocking { }` inside the implementation.
+- [x] Scheduler context creation (`@ManagedSchedule`) — opens a fresh trace context for scheduler-triggered methods (e.g. `@Scheduled`) that have no incoming request or message.
 
 ---
 

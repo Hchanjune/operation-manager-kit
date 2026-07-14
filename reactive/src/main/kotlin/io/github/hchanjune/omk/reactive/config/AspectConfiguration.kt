@@ -6,6 +6,7 @@ import io.github.hchanjune.omk.reactive.aspect.ManagedEventHandlerAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedMetricAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedOperationAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedRepositoryAspect
+import io.github.hchanjune.omk.reactive.aspect.ManagedScheduleAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedServiceAspect
 import org.aspectj.lang.annotation.Aspect
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
@@ -23,6 +24,12 @@ internal class AspectConfiguration {
     @ConditionalOnProperty(prefix = "operation-manager.reactive.context-aspect", name = ["enabled"], havingValue = "true", matchIfMissing = true)
     fun managedEventHandlerAspect(spanIdProvider: SpanIdProvider): ManagedEventHandlerAspect =
         ManagedEventHandlerAspect(spanIdProvider = spanIdProvider)
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "operation-manager.reactive.context-aspect", name = ["enabled"], havingValue = "true", matchIfMissing = true)
+    fun managedScheduleAspect(spanIdProvider: SpanIdProvider): ManagedScheduleAspect =
+        ManagedScheduleAspect(spanIdProvider = spanIdProvider)
 
     @Bean
     @ConditionalOnMissingBean

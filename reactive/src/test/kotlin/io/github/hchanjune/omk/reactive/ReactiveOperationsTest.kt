@@ -62,20 +62,19 @@ class ReactiveOperationsTest {
     }
 
     @Test
-    fun `suspend invoke throws when no ReactorContext present`() {
-        assertFailsWith<IllegalStateException> {
-            runBlocking { callSuspend { "fail" } }
-        }
+    fun `suspend invoke proceeds unmanaged when no ReactorContext present`() {
+        val result = runBlocking { callSuspend { "unmanaged-ok" } }
+        assertEquals("unmanaged-ok", result.data)
     }
 
     @Test
-    fun `suspend invoke throws when ManagedContext not in ReactorContext`() {
-        val mono = mono(Dispatchers.Unconfined) { callSuspend { "fail" } }
+    fun `suspend invoke proceeds unmanaged when ManagedContext not in ReactorContext`() {
+        val mono = mono(Dispatchers.Unconfined) { callSuspend { "unmanaged-ok" } }
             .contextWrite(Context.of("other-key", "value"))
 
         StepVerifier.create(mono)
-            .expectError(IllegalStateException::class.java)
-            .verify()
+            .expectNextMatches { it.data == "unmanaged-ok" }
+            .verifyComplete()
     }
 
     // ── Mono invoke ───────────────────────────────────────────────────────────
@@ -102,13 +101,13 @@ class ReactiveOperationsTest {
     }
 
     @Test
-    fun `mono invoke fails when no ManagedContext`() {
+    fun `mono invoke proceeds unmanaged when no ManagedContext`() {
         StepVerifier.create(
-            callMono<String> { Mono.just("fail") }
+            callMono<String> { Mono.just("unmanaged-ok") }
                 .contextWrite(Context.empty())
         )
-            .expectError(IllegalStateException::class.java)
-            .verify()
+            .expectNextMatches { it.data == "unmanaged-ok" }
+            .verifyComplete()
     }
 
     // ── configureHook ─────────────────────────────────────────────────────────

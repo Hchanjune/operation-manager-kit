@@ -8,9 +8,13 @@ import io.github.hchanjune.omk.core.context.ManagedContextHolder
 import io.github.hchanjune.omk.core.event.EventMetadata
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
+import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
+import org.slf4j.LoggerFactory
 
 object Operations: ManagedContextHolder {
+
+    private val logger = LoggerFactory.getLogger(Operations::class.java)
 
     private val contextHolder = ThreadLocal<ManagedContext>()
 
@@ -28,7 +32,27 @@ object Operations: ManagedContextHolder {
 
     override val context: ManagedContext
         get() = contextHolder.get()
-            ?: error("No ManagedContext found. Operations.context must be called within a managed request scope by omk.")
+            ?: detachedContext().also {
+                logger.warn(
+                    "No ManagedContext found. Proceeding with a detached (unmanaged) context — " +
+                        "spans and hooks will not be recorded for this execution. " +
+                        "Annotate the entry point (@ManagedSchedule, @ManagedEventHandler) " +
+                        "or ensure the OMK context filter covers this request."
+                )
+            }
+
+    // Fallback when code runs outside a managed scope: observability degrades to a warn
+    // log instead of failing the business logic. The context is not stored in the holder,
+    // so it is never leaked to other executions on the same thread.
+    private fun detachedContext(): ManagedContext =
+        (eventContextProvider?.provide() ?: ManagedContext(spanIdProvider = DETACHED_SPAN_ID_PROVIDER))
+            .apply {
+                eventTraceIdProvider?.let { injectTraceId(it.provideTraceId()) }
+                eventCausationIdProvider?.let { injectCausationId(it.provideCausationId()) }
+                start()
+            }
+
+    private val DETACHED_SPAN_ID_PROVIDER = SpanIdProvider { "detached" }
 
     override val hasContext: Boolean
         get() = contextHolder.get() != null
@@ -62,6 +86,19 @@ object Operations: ManagedContextHolder {
             metadata.eventType?.let { injectType(it) }
             injectProtocol("MESSAGING")
             markAsEvent()
+        }
+        initialize(context)
+    }
+
+    override fun initializeForSchedule() {
+        val provider = eventContextProvider
+            ?: error("Event providers not configured. Ensure OMK is properly set up.")
+        val context = provider.provide().apply {
+            injectTraceId(eventTraceIdProvider?.provideTraceId() ?: "")
+            injectCausationId(eventCausationIdProvider?.provideCausationId() ?: "")
+            injectType("SCHEDULED")
+            injectProtocol("SCHEDULED")
+            markAsScheduled()
         }
         initialize(context)
     }

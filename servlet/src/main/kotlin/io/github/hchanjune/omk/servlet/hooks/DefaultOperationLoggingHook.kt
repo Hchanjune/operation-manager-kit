@@ -18,8 +18,11 @@ class DefaultOperationLoggingHook(
 ) : OperationLoggingHook {
 
     override fun onSuccess(context: ManagedContext) {
-        val level = if (context.outcome == OperationOutcome.SUCCESS) props.successLevel else props.clientErrorLevel
         val exception = context.capturedException
+        // defaultLogging=false silences only the clean success path; client errors and
+        // captured exceptions are still logged.
+        if (!context.defaultLogging && context.outcome == OperationOutcome.SUCCESS && exception == null) return
+        val level = if (context.outcome == OperationOutcome.SUCCESS) props.successLevel else props.clientErrorLevel
         if (props.pretty) log(prettyLogger, level) { prettyContext(context, exception) }
         if (props.json)   log(jsonLogger,   level) { jsonContext(context, exception) }
     }

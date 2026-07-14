@@ -15,6 +15,7 @@
   - [`@ManagedOperation`](#managedoperation)
   - [`@ManagedMetric`](#managedmetric)
   - [`@ManagedEventHandler`](#managedeventhandler)
+  - [`@ManagedSchedule`](#managedschedule)
   - [Event field annotations](#event-field-annotations)
 - [ManagedContext](#managedcontext)
 - [Operations (WebMVC)](#operations-webmvc)
@@ -116,6 +117,21 @@ Applied to a messaging handler method (Kafka, Spring Messaging, etc.). Opens an 
 
 ---
 
+### `@ManagedSchedule`
+
+```kotlin
+@Target(AnnotationTarget.FUNCTION)
+annotation class ManagedSchedule(val description: String = "")
+```
+
+Applied to a scheduler-triggered method (e.g. `@Scheduled`). Scheduled executions have no incoming request or message to carry trace context, so this opens an **ENTRY-layer** span with a freshly generated `traceId`/`causationId`, sets `executionScope` to `SCHEDULED`, and sets `protocol`/`type` to `SCHEDULED`.
+
+| Parameter     | Type     | Default | Description               |
+|---------------|----------|---------|---------------------------|
+| `description` | `String` | `""`    | Human-readable description |
+
+---
+
 ### Event field annotations
 
 Applied to fields in event/domain objects for automatic trace context extraction.
@@ -180,6 +196,7 @@ class ManagedContext
 | Field                | Type      | Description                                                                      |
 |----------------------|-----------|----------------------------------------------------------------------------------|
 | `message`            | `String`  | Free-form label; set in a hook before `DefaultOperationLoggingHook` (Order < 50) |
+| `defaultLogging`     | `Boolean` | Set to `false` inside an `Operations { }` block to silence the default success log for this execution only; failures, client errors, and captured exceptions are still logged. Useful for noisy paths such as frequent `@ManagedSchedule` jobs (e.g. `defaultLogging = processed > 0`) |
 | `isAsyncHookEnabled` | `Boolean` | Whether hooks fire for async children of this context                            |
 
 ### Methods
@@ -213,7 +230,7 @@ object Operations
 
 | Property     | Type             | Description                                                                       |
 |--------------|------------------|-----------------------------------------------------------------------------------|
-| `context`    | `ManagedContext` | Current context. Throws `IllegalStateException` if called outside a managed scope |
+| `context`    | `ManagedContext` | Current context. Outside a managed scope it logs a WARN and returns a detached (unmanaged) context instead of failing — spans/hooks are not recorded for that execution |
 | `hasContext` | `Boolean`        | `true` if a context exists on the current thread                                  |
 | `hook`       | `OperationHook?` | Composite hook instance                                                           |
 
@@ -400,9 +417,10 @@ Used with `Operations.initializeForEvent()` and `ReactiveOperations.initializeFo
 
 ```kotlin
 enum class ExecutionScope {
-    PRIMARY,  // Main HTTP / event loop thread
-    ASYNC,    // @Async thread or forked coroutine
-    EVENT     // @ManagedEventHandler
+    PRIMARY,   // Main HTTP / event loop thread
+    ASYNC,     // @Async thread or forked coroutine
+    EVENT,     // @ManagedEventHandler
+    SCHEDULED  // @ManagedSchedule
 }
 ```
 
@@ -412,7 +430,7 @@ enum class ExecutionScope {
 
 ```kotlin
 enum class ManagedProtocolType {
-    HTTP, RPC, MESSAGING, FAAS, DB, UNSUPPORTED
+    HTTP, RPC, MESSAGING, SCHEDULED, FAAS, DB, UNSUPPORTED
 }
 ```
 

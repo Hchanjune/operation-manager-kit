@@ -119,6 +119,7 @@ println(result.data) // "OK"
 | `@ManagedOperation`    | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span                    |
 | `@ManagedMetric`       | Method | Instruments any method as a named APPLICATION-layer child span                                     |
 | `@ManagedEventHandler` | Method | Opens an ENTRY-layer span for messaging handlers; auto-extracts trace context from event arguments |
+| `@ManagedSchedule`     | Method | Opens an ENTRY-layer span for scheduler-triggered methods (e.g. `@Scheduled`); generates a fresh trace context |
 
 ---
 
@@ -215,6 +216,7 @@ class MyEnrichmentHook : OperationHook {
 ```
 @ManagedController    ──  [ENT] root span
 @ManagedEventHandler  ──  [ENT] root span  (executionScope = EVENT)
+@ManagedSchedule      ──  [ENT] root span  (executionScope = SCHEDULED)
     └── @ManagedOperation  ──  [APP] child span
             └── @ManagedMetric      ──  [APP] child span
             └── @ManagedRepository  ──  [DB]  child span
@@ -420,7 +422,7 @@ management:
 ## Notes & Limitations
 
 - **Spring AOP self-invocation**: AOP aspects do not intercept internal method calls within the same class.
-- **`Operations.context` scope**: Calling outside a managed scope throws `IllegalStateException`.
+- **`Operations.context` scope**: Calling outside a managed scope logs a WARN and returns a detached (unmanaged) context — the business logic proceeds, but spans and hooks are not recorded. Annotate the entry point (`@ManagedSchedule`, `@ManagedEventHandler`) to get a real managed scope.
 - **Streaming responses**: The `traceparent` response header may not be delivered for streaming or async responses.
 - **Thread-local context**: `ManagedContext` is stored in `ThreadLocal`. Kotlin coroutines require explicit propagation via `ManagedContextElement`.
 

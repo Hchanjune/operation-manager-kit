@@ -160,6 +160,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] Micrometer 연동
 - [x] OpenTelemetry SDK 연동
 - [x] 메시징 컨텍스트 전파 (`@ManagedEventHandler`) — `handle()`은 반드시 일반(non-suspend) `fun`이어야 함. 내부에서 suspend 함수를 호출할 경우 구현체 내부에서 `runBlocking { }`으로 감쌀 것.
+- [x] 스케줄러 컨텍스트 생성 (`@ManagedSchedule`) — 요청/메시지가 없는 스케줄러 실행(예: `@Scheduled`)에 새 트레이스 컨텍스트를 생성.
 
 ---
 

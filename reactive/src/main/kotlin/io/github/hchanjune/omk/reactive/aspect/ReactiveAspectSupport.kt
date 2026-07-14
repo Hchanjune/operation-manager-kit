@@ -15,8 +15,9 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 abstract class ReactiveAspectSupport {
 
     companion object {
-        // Carries ManagedContext across the blocking event-handler boundary so that
-        // inner reactive spans (e.g. @ManagedRepository inside runBlocking) can find it.
+        // Carries ManagedContext across blocking entry-point boundaries (event handler,
+        // scheduled task) so that inner reactive spans (e.g. @ManagedRepository inside
+        // runBlocking) can find it.
         internal val eventHandlerContext = ThreadLocal<ManagedContext?>()
     }
 

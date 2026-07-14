@@ -3,6 +3,7 @@
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.servlet.aspect.ManagedEventHandlerAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedOperationAspect
+import io.github.hchanjune.omk.servlet.aspect.ManagedScheduleAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedControllerAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedMetricAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedRepositoryAspect
@@ -33,6 +34,22 @@ internal class AspectConfiguration {
         spanIdProvider: SpanIdProvider,
     ): ManagedEventHandlerAspect =
         ManagedEventHandlerAspect(spanIdProvider = spanIdProvider)
+
+    /**
+     * ###### ManagedScheduleAspect
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+        prefix = "operation-manager.servlet.context-aspect",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    fun managedScheduleAspect(
+        spanIdProvider: SpanIdProvider,
+    ): ManagedScheduleAspect =
+        ManagedScheduleAspect(spanIdProvider = spanIdProvider)
 
     /**
      * ###### ManagedControllerAspect

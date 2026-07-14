@@ -5,7 +5,9 @@ import io.github.hchanjune.omk.core.annotations.ManagedEventHandler
 import io.github.hchanjune.omk.core.annotations.ManagedMetric
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
 import io.github.hchanjune.omk.core.annotations.ManagedRepository
+import io.github.hchanjune.omk.core.annotations.ManagedSchedule
 import io.github.hchanjune.omk.core.annotations.ManagedService
+import io.github.hchanjune.omk.core.contants.ManagedProtocolType
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
@@ -39,6 +41,10 @@ private class StubController
 
 private class StubEventHolder {
     @ManagedEventHandler fun handleEvent(payload: String) {}
+}
+
+private class StubScheduleHolder {
+    @ManagedSchedule fun runJob() {}
 }
 
 @ManagedService
@@ -747,6 +753,57 @@ class AspectsDirectTest {
         val ctx = context()
         val jp = fakeProperMonoJp(StubEventHolder::class.java, "handleEvent")
         val result = (aspect.aroundEventHandler(jp) as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertEquals("mono-ok", result)
+        assertNull(ctx.peek())
+    }
+
+    // ── ManagedScheduleAspect ─────────────────────────────────────────────────
+
+    @Test
+    fun `initializeForSchedule creates context with generated ids and SCHEDULED scope`() {
+        configureEventProviders()
+        val ctx = ReactiveOperations.initializeForSchedule()
+        assertEquals("evt-trace", ctx.traceId)
+        assertEquals("evt-cause", ctx.causationId)
+        assertTrue(ctx.isScheduled)
+        assertEquals(ManagedProtocolType.SCHEDULED, ctx.protocol)
+        assertEquals("SCHEDULED", ctx.type)
+    }
+
+    @Test
+    fun `schedule aspect sync path proceeds and returns result`() {
+        configureEventProviders()
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val jp = fakeJp(StubScheduleHolder::class.java, "runJob", returns = "done")
+        val result = aspect.aroundSchedule(jp)
+        assertEquals("done", result)
+    }
+
+    @Test
+    fun `schedule aspect sync path propagates exception`() {
+        configureEventProviders()
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val jp = fakeJp(StubScheduleHolder::class.java, "runJob", throws = RuntimeException("sch-boom"))
+        assertFailsWith<RuntimeException> { aspect.aroundSchedule(jp) }
+    }
+
+    @Test
+    fun `schedule aspect isMono path contextOwner=true creates new context`() {
+        configureEventProviders()
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val jp = fakeProperMonoJp(StubScheduleHolder::class.java, "runJob")
+        val result = (aspect.aroundSchedule(jp) as Mono<*>).block()
+        assertEquals("mono-ok", result)
+    }
+
+    @Test
+    fun `schedule aspect isMono path contextOwner=false uses existing context`() {
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val ctx = context()
+        val jp = fakeProperMonoJp(StubScheduleHolder::class.java, "runJob")
+        val result = (aspect.aroundSchedule(jp) as Mono<*>)
             .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
             .block()
         assertEquals("mono-ok", result)

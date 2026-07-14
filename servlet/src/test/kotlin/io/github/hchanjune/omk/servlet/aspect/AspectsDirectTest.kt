@@ -5,7 +5,9 @@ import io.github.hchanjune.omk.core.annotations.ManagedEventHandler
 import io.github.hchanjune.omk.core.annotations.ManagedMetric
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
 import io.github.hchanjune.omk.core.annotations.ManagedRepository
+import io.github.hchanjune.omk.core.annotations.ManagedSchedule
 import io.github.hchanjune.omk.core.annotations.ManagedService
+import io.github.hchanjune.omk.core.contants.ManagedProtocolType
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.event.EventMetadata
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
@@ -35,6 +37,11 @@ private class StubController
 private class StubEventHolder {
     @ManagedEventHandler
     fun handleEvent(payload: String) {}
+}
+
+private class StubScheduleHolder {
+    @ManagedSchedule
+    fun runJob() {}
 }
 
 @ManagedService
@@ -337,6 +344,58 @@ class AspectsDirectTest {
         val result = aspect.aroundEventHandler(jp, ann)
         assertEquals("result", result)
         assertTrue(!Operations.hasContext)
+    }
+
+    // ── ManagedScheduleAspect ─────────────────────────────────────────────────
+
+    @Test
+    fun `initializeForSchedule creates context with generated ids and SCHEDULED scope`() {
+        configureEventProviders()
+        Operations.initializeForSchedule()
+        val ctx = Operations.context
+        assertEquals("evt-trace", ctx.traceId)
+        assertEquals("evt-cause", ctx.causationId)
+        assertTrue(ctx.isScheduled)
+        assertEquals(ManagedProtocolType.SCHEDULED, ctx.protocol)
+        assertEquals("SCHEDULED", ctx.type)
+    }
+
+    @Test
+    fun `schedule aspect initializes and clears context when no existing context`() {
+        configureEventProviders()
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val ann = StubScheduleHolder::class.java.getDeclaredMethod("runJob")
+            .getAnnotation(ManagedSchedule::class.java)!!
+        val jp = fakeJp(StubScheduleHolder::class.java, methodName = "runJob", returns = "done")
+        val result = aspect.aroundSchedule(jp, ann)
+        assertEquals("done", result)
+        assertTrue(!Operations.hasContext)
+    }
+
+    @Test
+    fun `schedule aspect clears context after exception when contextOwner is true`() {
+        configureEventProviders()
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val ann = StubScheduleHolder::class.java.getDeclaredMethod("runJob")
+            .getAnnotation(ManagedSchedule::class.java)!!
+        val jp = fakeJp(StubScheduleHolder::class.java, methodName = "runJob", throws = RuntimeException("sch-fail"))
+        assertFailsWith<RuntimeException> { aspect.aroundSchedule(jp, ann) }
+        assertTrue(!Operations.hasContext)
+    }
+
+    @Test
+    fun `schedule aspect uses existing context when contextOwner is false`() {
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val ann = StubScheduleHolder::class.java.getDeclaredMethod("runJob")
+            .getAnnotation(ManagedSchedule::class.java)!!
+        val ctx = TestSupport.context()
+        Operations.applyContext(ctx)
+        val jp = fakeJp(StubScheduleHolder::class.java, methodName = "runJob", returns = "ok")
+        val result = aspect.aroundSchedule(jp, ann)
+        assertEquals("ok", result)
+        assertEquals("StubScheduleHolder", ctx.entrypoint)
+        assertNull(ctx.peek())
+        assertTrue(Operations.hasContext)
     }
 
     @Test

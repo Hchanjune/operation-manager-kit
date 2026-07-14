@@ -15,6 +15,7 @@
   - [`@ManagedOperation`](#managedoperation)
   - [`@ManagedMetric`](#managedmetric)
   - [`@ManagedEventHandler`](#managedeventhandler)
+  - [`@ManagedSchedule`](#managedschedule)
   - [이벤트 필드 어노테이션](#이벤트-필드-어노테이션)
 - [ManagedContext](#managedcontext)
 - [Operations (WebMVC)](#operations-webmvc)
@@ -116,6 +117,21 @@ annotation class ManagedEventHandler
 
 ---
 
+### `@ManagedSchedule`
+
+```kotlin
+@Target(AnnotationTarget.FUNCTION)
+annotation class ManagedSchedule(val description: String = "")
+```
+
+스케줄러로 시작되는 메서드(예: `@Scheduled`)에 적용합니다. 스케줄 실행은 트레이스 컨텍스트를 전달할 요청/메시지가 없으므로, 새로 생성한 `traceId`/`causationId`로 **ENTRY 레이어** span을 열고 `executionScope`를 `SCHEDULED`, `protocol`/`type`을 `SCHEDULED`로 설정합니다.
+
+| 파라미터          | 타입       | 기본값  | 설명       |
+|---------------|----------|------|----------|
+| `description` | `String` | `""` | 설명용 텍스트 |
+
+---
+
 ### 이벤트 필드 어노테이션
 
 이벤트/도메인 객체의 필드에 적용하여 트레이스 컨텍스트를 자동 추출합니다.
@@ -180,6 +196,7 @@ class ManagedContext
 | 필드                   | 타입        | 설명                                                           |
 |----------------------|-----------|--------------------------------------------------------------|
 | `message`            | `String`  | 자유 형식 레이블. `DefaultOperationLoggingHook`(Order 50) 이전 훅에서 설정 |
+| `defaultLogging`     | `Boolean` | `Operations { }` 블록 안에서 `false`로 설정하면 해당 실행의 기본 성공 로그만 침묵. 실패/클라이언트 에러/캡처된 예외는 항상 로깅됨. 자주 도는 `@ManagedSchedule` 잡 같은 시끄러운 경로에 유용 (예: `defaultLogging = processed > 0`) |
 | `isAsyncHookEnabled` | `Boolean` | async 자식 컨텍스트에서 훅 실행 여부                                      |
 
 ### 메서드
@@ -213,7 +230,7 @@ object Operations
 
 | 프로퍼티         | 타입               | 설명                                                 |
 |--------------|------------------|----------------------------------------------------|
-| `context`    | `ManagedContext` | 현재 컨텍스트. 관리 범위 밖에서 호출하면 `IllegalStateException` 발생 |
+| `context`    | `ManagedContext` | 현재 컨텍스트. 관리 범위 밖에서 호출하면 실패하는 대신 WARN 로그 후 detached(비관리) 컨텍스트를 반환 — 해당 실행의 span/훅은 기록되지 않음 |
 | `hasContext` | `Boolean`        | 현재 스레드에 컨텍스트가 있으면 `true`                           |
 | `hook`       | `OperationHook?` | CompositeOperationHook 인스턴스                        |
 
@@ -400,9 +417,10 @@ data class EventMetadata(
 
 ```kotlin
 enum class ExecutionScope {
-    PRIMARY,  // 메인 HTTP / 이벤트 루프 스레드
-    ASYNC,    // @Async 스레드 또는 포크된 코루틴
-    EVENT     // @ManagedEventHandler
+    PRIMARY,   // 메인 HTTP / 이벤트 루프 스레드
+    ASYNC,     // @Async 스레드 또는 포크된 코루틴
+    EVENT,     // @ManagedEventHandler
+    SCHEDULED  // @ManagedSchedule
 }
 ```
 
@@ -412,7 +430,7 @@ enum class ExecutionScope {
 
 ```kotlin
 enum class ManagedProtocolType {
-    HTTP, RPC, MESSAGING, FAAS, DB, UNSUPPORTED
+    HTTP, RPC, MESSAGING, SCHEDULED, FAAS, DB, UNSUPPORTED
 }
 ```
 

@@ -119,6 +119,7 @@ println(result.data) // "OK"
 | `@ManagedOperation`    | 메서드 | `operation`, `useCase` 값 주입; APPLICATION 레이어 span 생성 |
 | `@ManagedMetric`       | 메서드 | 임의 메서드를 이름이 있는 APPLICATION 레이어 자식 span으로 계측          |
 | `@ManagedEventHandler` | 메서드 | 메시징 핸들러에 ENTRY 레이어 span 생성; 이벤트 인자에서 트레이스 컨텍스트 자동 추출 |
+| `@ManagedSchedule`     | 메서드 | 스케줄러로 시작되는 메서드(예: `@Scheduled`)에 ENTRY 레이어 span 생성; 새 트레이스 컨텍스트 생성 |
 
 ---
 
@@ -215,6 +216,7 @@ class MyEnrichmentHook : OperationHook {
 ```
 @ManagedController    ──  [ENT] 루트 span
 @ManagedEventHandler  ──  [ENT] 루트 span  (executionScope = EVENT)
+@ManagedSchedule      ──  [ENT] 루트 span  (executionScope = SCHEDULED)
     └── @ManagedOperation  ──  [APP] 자식 span
             └── @ManagedMetric      ──  [APP] 자식 span
             └── @ManagedRepository  ──  [DB]  자식 span
@@ -420,7 +422,7 @@ management:
 ## 주의사항 및 제한
 
 - **Spring AOP 자기 호출**: 동일 클래스 내부의 메서드 호출은 AOP Aspect가 인터셉트하지 않습니다.
-- **`Operations.context` 범위**: 관리 범위 밖에서 호출하면 `IllegalStateException`이 발생합니다.
+- **`Operations.context` 범위**: 관리 범위 밖에서 호출하면 WARN 로그 후 detached(비관리) 컨텍스트를 반환합니다 — 비즈니스 로직은 그대로 실행되지만 span/훅은 기록되지 않습니다. 진짜 관리 범위가 필요하면 진입점에 어노테이션(`@ManagedSchedule`, `@ManagedEventHandler`)을 붙이세요.
 - **스트리밍 응답**: `traceparent` 응답 헤더는 스트리밍 또는 비동기 응답에서 전달되지 않을 수 있습니다.
 - **스레드 로컬 컨텍스트**: `ManagedContext`는 `ThreadLocal`에 저장됩니다. Kotlin 코루틴은 `ManagedContextElement`를 통한 명시적 전파가 필요합니다.
 

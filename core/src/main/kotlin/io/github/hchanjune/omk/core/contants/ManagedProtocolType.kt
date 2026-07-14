@@ -4,6 +4,7 @@ enum class ManagedProtocolType {
     HTTP,
     RPC,
     MESSAGING,
+    SCHEDULED,
     FAAS,
     DB,
     UNSUPPORTED;

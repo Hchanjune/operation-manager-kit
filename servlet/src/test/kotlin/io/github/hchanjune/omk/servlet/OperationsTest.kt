@@ -1,5 +1,6 @@
 ﻿package io.github.hchanjune.omk.servlet
 
+import io.github.hchanjune.omk.core.OperationExecutor
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.event.EventMetadata
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
@@ -50,6 +51,35 @@ class OperationsTest {
         val ctx = ManagedContext(spanIdProvider = spanIdProvider)
         Operations.initialize(ctx)
         assertTrue(!ctx.isAsyncHookEnabled)
+    }
+
+    @Test
+    fun `context returns detached context when none is set`() {
+        val ctx = Operations.context
+        assertTrue(!Operations.hasContext)
+        // each access yields an independent detached context — nothing leaks to the holder
+        assertTrue(ctx !== Operations.context)
+    }
+
+    @Test
+    fun `invoke proceeds unmanaged when no context is set`() {
+        Operations.configure(OperationExecutor())
+        val result = Operations { "unmanaged-data" }
+        assertEquals("unmanaged-data", result.data)
+        assertTrue(!Operations.hasContext)
+    }
+
+    @Test
+    fun `detached context uses configured event providers for ids`() {
+        Operations.configureEventProviders(
+            contextProvider = contextProvider(),
+            traceIdProvider = object : TraceIdProvider { override fun provideTraceId() = "detached-trace" },
+            causationIdProvider = object : CausationIdProvider { override fun provideCausationId() = "detached-cause" },
+            generateWhenMissing = true
+        )
+        val ctx = Operations.context
+        assertEquals("detached-trace", ctx.traceId)
+        assertEquals("detached-cause", ctx.causationId)
     }
 
     @Test

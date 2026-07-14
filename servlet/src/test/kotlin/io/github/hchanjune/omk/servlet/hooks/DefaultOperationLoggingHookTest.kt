@@ -95,6 +95,44 @@ class DefaultOperationLoggingHookTest {
     }
 
     @Test
+    fun `defaultLogging=false suppresses clean success output`() {
+        val (logger, hook) = hook(pretty = true, json = true)
+        val ctx = context().apply { defaultLogging = false }
+        hook.onSuccess(ctx)
+        assertTrue(logger.messages.isEmpty())
+    }
+
+    @Test
+    fun `defaultLogging=false still logs onFailure`() {
+        val (logger, hook) = hook(pretty = false, json = true)
+        val ctx = context().apply { defaultLogging = false }
+        hook.onFailure(ctx, RuntimeException("still-logged"))
+        assertTrue(logger.messages.isNotEmpty())
+    }
+
+    @Test
+    fun `defaultLogging=false still logs success with captured exception`() {
+        val (logger, hook) = hook(pretty = false, json = true)
+        val ctx = context().apply {
+            defaultLogging = false
+            recordException(RuntimeException("captured"))
+        }
+        hook.onSuccess(ctx)
+        assertTrue(logger.messages.isNotEmpty())
+    }
+
+    @Test
+    fun `defaultLogging=false still logs client error outcome`() {
+        val (logger, hook) = hook(pretty = false, json = true)
+        val ctx = context().apply {
+            defaultLogging = false
+            injectStatusCode(404)
+        }
+        hook.onSuccess(ctx)
+        assertTrue(logger.messages.isNotEmpty())
+    }
+
+    @Test
     fun `onSuccess does not throw when context has no spans`() {
         val (_, hook) = hook()
         hook.onSuccess(context())

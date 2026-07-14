@@ -15,6 +15,7 @@ interface ManagedContextHolder {
     val defaultAsyncHookEnabled: Boolean
     fun initialize(context: ManagedContext)
     fun initializeForEvent(metadata: EventMetadata)
+    fun initializeForSchedule()
     fun complete()
     fun configure(executor: OperationExecutor)
     fun configureHook(hook: OperationHook)
