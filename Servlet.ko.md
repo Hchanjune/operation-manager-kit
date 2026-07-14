@@ -116,6 +116,7 @@ println(result.data) // "OK"
 | `@ManagedController`   | 클래스 | 핸들러 메서드마다 ENTRY 레이어 루트 span 생성; entrypoint 주입        |
 | `@ManagedService`      | 클래스 | 서비스 클래스명을 컨텍스트의 service에 주입                          |
 | `@ManagedRepository`   | 클래스 | 리포지토리의 모든 메서드를 DB 레이어 자식 span으로 계측                   |
+| `@ManagedCacheRepository` | 클래스 | 캐시 접근 클래스의 모든 메서드를 CACHE 레이어 자식 span으로 계측 (`[CAC]`) |
 | `@ManagedOperation`    | 메서드 | `operation`, `useCase` 값 주입; APPLICATION 레이어 span 생성 |
 | `@ManagedMetric`       | 메서드 | 임의 메서드를 이름이 있는 APPLICATION 레이어 자식 span으로 계측          |
 | `@ManagedEventHandler` | 메서드 | 메시징 핸들러에 ENTRY 레이어 span 생성; 이벤트 인자에서 트레이스 컨텍스트 자동 추출 |
@@ -218,8 +219,9 @@ class MyEnrichmentHook : OperationHook {
 @ManagedEventHandler  ──  [ENT] 루트 span  (executionScope = EVENT)
 @ManagedSchedule      ──  [ENT] 루트 span  (executionScope = SCHEDULED)
     └── @ManagedOperation  ──  [APP] 자식 span
-            └── @ManagedMetric      ──  [APP] 자식 span
-            └── @ManagedRepository  ──  [DB]  자식 span
+            └── @ManagedMetric           ──  [APP] 자식 span
+            └── @ManagedRepository       ──  [DB]  자식 span
+            └── @ManagedCacheRepository  ──  [CAC] 자식 span
 ```
 
 요청이 완료될 때 `MetricsOperationHook`(Order 60)이 Micrometer에 `omk.span.duration`으로 기록합니다.

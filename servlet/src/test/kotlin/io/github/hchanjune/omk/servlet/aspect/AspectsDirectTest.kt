@@ -1,5 +1,6 @@
 ﻿package io.github.hchanjune.omk.servlet.aspect
 
+import io.github.hchanjune.omk.core.annotations.ManagedCacheRepository
 import io.github.hchanjune.omk.core.annotations.ManagedController
 import io.github.hchanjune.omk.core.annotations.ManagedEventHandler
 import io.github.hchanjune.omk.core.annotations.ManagedMetric
@@ -49,6 +50,9 @@ private class StubService
 
 @ManagedRepository
 private class StubRepo
+
+@ManagedCacheRepository
+private class StubCacheRepo
 
 private class StubMetricHolder {
     @ManagedMetric("explicit-metric")
@@ -249,6 +253,40 @@ class AspectsDirectTest {
         val jp = fakeJp(StubRepo::class.java, methodName = "findAll")
         aspect.aroundRepositoryMethod(jp, ann)
         assertNull(ctx.peek())
+    }
+
+    // ── ManagedCacheRepositoryAspect ──────────────────────────────────────────
+
+    @Test
+    fun `cache repository aspect proceeds without context`() {
+        val aspect = ManagedCacheRepositoryAspect(spanIdProvider)
+        val ann = StubCacheRepo::class.java.getAnnotation(ManagedCacheRepository::class.java)!!
+        val jp = fakeJp(StubCacheRepo::class.java, returns = "cached-value")
+        val result = aspect.aroundCacheRepositoryMethod(jp, ann)
+        assertEquals("cached-value", result)
+    }
+
+    @Test
+    fun `cache repository aspect propagates exception`() {
+        val aspect = ManagedCacheRepositoryAspect(spanIdProvider)
+        val ann = StubCacheRepo::class.java.getAnnotation(ManagedCacheRepository::class.java)!!
+        val ctx = TestSupport.context()
+        Operations.applyContext(ctx)
+        val jp = fakeJp(StubCacheRepo::class.java, throws = RuntimeException("cache-boom"))
+        assertFailsWith<RuntimeException> { aspect.aroundCacheRepositoryMethod(jp, ann) }
+        assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `cache repository aspect pushes CACHE layer span and pops on success`() {
+        val aspect = ManagedCacheRepositoryAspect(spanIdProvider)
+        val ann = StubCacheRepo::class.java.getAnnotation(ManagedCacheRepository::class.java)!!
+        val ctx = TestSupport.context()
+        Operations.applyContext(ctx)
+        val jp = fakeJp(StubCacheRepo::class.java, methodName = "get")
+        aspect.aroundCacheRepositoryMethod(jp, ann)
+        assertNull(ctx.peek())
+        assertEquals(io.github.hchanjune.omk.core.metric.MetricLayer.CACHE, ctx.rootSpan?.descriptor?.layer)
     }
 
     // ── ManagedMetricAspect ───────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 ﻿package io.github.hchanjune.omk.reactive.config
 
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
+import io.github.hchanjune.omk.reactive.aspect.ManagedCacheRepositoryAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedControllerAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedEventHandlerAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedMetricAspect
@@ -60,4 +61,10 @@ internal class AspectConfiguration {
     @ConditionalOnProperty(prefix = "operation-manager.reactive.context-aspect", name = ["enabled"], havingValue = "true", matchIfMissing = true)
     fun managedRepositoryAspect(spanIdProvider: SpanIdProvider): ManagedRepositoryAspect =
         ManagedRepositoryAspect(spanIdProvider)
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "operation-manager.reactive.context-aspect", name = ["enabled"], havingValue = "true", matchIfMissing = true)
+    fun managedCacheRepositoryAspect(spanIdProvider: SpanIdProvider): ManagedCacheRepositoryAspect =
+        ManagedCacheRepositoryAspect(spanIdProvider)
 }

@@ -71,6 +71,7 @@ class OtelOperationHook(private val tracer: Tracer) : OperationHook {
         MetricLayer.ENTRY       -> SpanKind.SERVER
         MetricLayer.APPLICATION -> SpanKind.INTERNAL
         MetricLayer.DB          -> SpanKind.CLIENT
+        MetricLayer.CACHE       -> SpanKind.CLIENT
         MetricLayer.EXTERNAL    -> SpanKind.CLIENT
     }
 }

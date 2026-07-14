@@ -1,6 +1,7 @@
 ﻿package io.github.hchanjune.omk.servlet.config
 
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
+import io.github.hchanjune.omk.servlet.aspect.ManagedCacheRepositoryAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedEventHandlerAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedOperationAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedScheduleAspect
@@ -123,5 +124,19 @@ internal class AspectConfiguration {
     )
     fun managedRepositoryAspect(spanIdProvider: SpanIdProvider): ManagedRepositoryAspect =
         ManagedRepositoryAspect(spanIdProvider)
+
+    /**
+     * ###### ManagedCacheRepositoryAspect
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+        prefix = "operation-manager.servlet.context-aspect",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    fun managedCacheRepositoryAspect(spanIdProvider: SpanIdProvider): ManagedCacheRepositoryAspect =
+        ManagedCacheRepositoryAspect(spanIdProvider)
 
 }

@@ -12,6 +12,7 @@
   - [`@ManagedController`](#managedcontroller)
   - [`@ManagedService`](#managedservice)
   - [`@ManagedRepository`](#managedrepository)
+  - [`@ManagedCacheRepository`](#managedcacherepository)
   - [`@ManagedOperation`](#managedoperation)
   - [`@ManagedMetric`](#managedmetric)
   - [`@ManagedEventHandler`](#managedeventhandler)
@@ -67,6 +68,17 @@ annotation class ManagedRepository
 Applied to a `@Repository` class. Instruments every method as a **DB-layer** child span.
 
 > Not applicable to Spring Data repository interfaces (`JpaRepository`, `CoroutineCrudRepository`, etc.) — use `@ManagedMetric` on the service method instead.
+
+---
+
+### `@ManagedCacheRepository`
+
+```kotlin
+@Target(AnnotationTarget.CLASS)
+annotation class ManagedCacheRepository(val description: String = "")
+```
+
+Applied to a cache access class (e.g. a Redis-backed cache repository). Instruments every method as a **CACHE-layer** child span — same mechanics as `@ManagedRepository`, but rendered as `[CAC]` instead of `[DB ]` so cache traffic is distinguishable from database traffic in span trees and metrics.
 
 ---
 
@@ -369,7 +381,7 @@ class MetricSpan
 | `startTime`        | `Long?`            | Start time (epoch millis)                                |
 | `durationMs`       | `Long?`            | Duration in milliseconds; `null` until `end()` is called |
 | `outcome`          | `MetricOutcome?`   | Result; `null` until ended                               |
-| `descriptor.layer` | `MetricLayer`      | `ENTRY`, `APPLICATION`, or `DB`                          |
+| `descriptor.layer` | `MetricLayer`      | `ENTRY`, `APPLICATION`, `DB`, `CACHE`, or `EXTERNAL`     |
 | `children`         | `List<MetricSpan>` | Child spans                                              |
 | `parent`           | `MetricSpan?`      | Parent span                                              |
 

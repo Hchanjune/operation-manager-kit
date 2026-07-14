@@ -116,6 +116,7 @@ println(result.data) // "OK"
 | `@ManagedController`   | Class  | Opens an ENTRY-layer root span per handler method; injects entrypoint into context                 |
 | `@ManagedService`      | Class  | Injects service name into context                                                                  |
 | `@ManagedRepository`   | Class  | Instruments all methods on a repository as DB-layer child spans                                    |
+| `@ManagedCacheRepository` | Class | Instruments all methods on a cache access class as CACHE-layer child spans (`[CAC]`)              |
 | `@ManagedOperation`    | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span                    |
 | `@ManagedMetric`       | Method | Instruments any method as a named APPLICATION-layer child span                                     |
 | `@ManagedEventHandler` | Method | Opens an ENTRY-layer span for messaging handlers; auto-extracts trace context from event arguments |
@@ -218,8 +219,9 @@ class MyEnrichmentHook : OperationHook {
 @ManagedEventHandler  ──  [ENT] root span  (executionScope = EVENT)
 @ManagedSchedule      ──  [ENT] root span  (executionScope = SCHEDULED)
     └── @ManagedOperation  ──  [APP] child span
-            └── @ManagedMetric      ──  [APP] child span
-            └── @ManagedRepository  ──  [DB]  child span
+            └── @ManagedMetric           ──  [APP] child span
+            └── @ManagedRepository       ──  [DB]  child span
+            └── @ManagedCacheRepository  ──  [CAC] child span
 ```
 
 Spans are flushed by `MetricsOperationHook` (Order 60) when the request completes, recorded to Micrometer as `omk.span.duration`.

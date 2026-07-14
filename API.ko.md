@@ -12,6 +12,7 @@
   - [`@ManagedController`](#managedcontroller)
   - [`@ManagedService`](#managedservice)
   - [`@ManagedRepository`](#managedrepository)
+  - [`@ManagedCacheRepository`](#managedcacherepository)
   - [`@ManagedOperation`](#managedoperation)
   - [`@ManagedMetric`](#managedmetric)
   - [`@ManagedEventHandler`](#managedeventhandler)
@@ -67,6 +68,17 @@ annotation class ManagedRepository
 `@Repository` 클래스에 적용합니다. 모든 메서드를 **DB 레이어** 자식 span으로 계측합니다.
 
 > Spring Data 리포지토리 인터페이스(`JpaRepository`, `CoroutineCrudRepository` 등)에는 직접 적용할 수 없습니다. 대신 서비스 메서드에 `@ManagedMetric`을 사용하세요.
+
+---
+
+### `@ManagedCacheRepository`
+
+```kotlin
+@Target(AnnotationTarget.CLASS)
+annotation class ManagedCacheRepository(val description: String = "")
+```
+
+캐시 접근 클래스(예: Redis 기반 캐시 리포지토리)에 적용합니다. 모든 메서드를 **CACHE 레이어** 자식 span으로 계측합니다 — 동작은 `@ManagedRepository`와 동일하지만 `[DB ]` 대신 `[CAC]`로 표시되어 span 트리와 메트릭에서 캐시 트래픽을 DB 트래픽과 구분할 수 있습니다.
 
 ---
 
@@ -369,7 +381,7 @@ class MetricSpan
 | `startTime`        | `Long?`            | 시작 시간 (epoch 밀리초)                 |
 | `durationMs`       | `Long?`            | 소요 시간 (밀리초). `end()` 호출 전엔 `null` |
 | `outcome`          | `MetricOutcome?`   | 실행 결과. 종료 전엔 `null`               |
-| `descriptor.layer` | `MetricLayer`      | `ENTRY`, `APPLICATION`, 또는 `DB`   |
+| `descriptor.layer` | `MetricLayer`      | `ENTRY`, `APPLICATION`, `DB`, `CACHE`, 또는 `EXTERNAL` |
 | `children`         | `List<MetricSpan>` | 자식 span 목록                        |
 | `parent`           | `MetricSpan?`      | 부모 span                           |
 

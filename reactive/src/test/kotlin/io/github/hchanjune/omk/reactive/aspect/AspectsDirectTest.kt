@@ -1,5 +1,6 @@
 ﻿package io.github.hchanjune.omk.reactive.aspect
 
+import io.github.hchanjune.omk.core.annotations.ManagedCacheRepository
 import io.github.hchanjune.omk.core.annotations.ManagedController
 import io.github.hchanjune.omk.core.annotations.ManagedEventHandler
 import io.github.hchanjune.omk.core.annotations.ManagedMetric
@@ -52,6 +53,9 @@ private class StubService
 
 @ManagedRepository
 private class StubRepo
+
+@ManagedCacheRepository
+private class StubCacheRepo
 
 private class StubMetricHolder {
     @ManagedMetric("explicit-metric") fun named() {}
@@ -753,6 +757,41 @@ class AspectsDirectTest {
         val ctx = context()
         val jp = fakeProperMonoJp(StubEventHolder::class.java, "handleEvent")
         val result = (aspect.aroundEventHandler(jp) as Mono<*>)
+            .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
+            .block()
+        assertEquals("mono-ok", result)
+        assertNull(ctx.peek())
+    }
+
+    // ── ManagedCacheRepositoryAspect ──────────────────────────────────────────
+
+    @Test
+    fun `cache repository aspect proceeds without context`() {
+        val aspect = ManagedCacheRepositoryAspect(spanIdProvider)
+        val ann = StubCacheRepo::class.java.getAnnotation(ManagedCacheRepository::class.java)!!
+        val jp = fakeJp(StubCacheRepo::class.java, returns = "cached-value")
+        val result = aspect.aroundCacheRepository(jp, ann)
+        assertEquals("cached-value", result)
+    }
+
+    @Test
+    fun `cache repository aspect pushes CACHE layer span when context present`() {
+        val aspect = ManagedCacheRepositoryAspect(spanIdProvider)
+        val ann = StubCacheRepo::class.java.getAnnotation(ManagedCacheRepository::class.java)!!
+        val ctx = context()
+        val jp = fakeJp(StubCacheRepo::class.java, methodName = "get", args = arrayOf(createContinuationWithContext(ctx)))
+        aspect.aroundCacheRepository(jp, ann)
+        assertNull(ctx.peek())
+        assertEquals(io.github.hchanjune.omk.core.metric.MetricLayer.CACHE, ctx.rootSpan?.descriptor?.layer)
+    }
+
+    @Test
+    fun `cache repository aspect isMono path with reactor context pushes and pops span`() {
+        val aspect = ManagedCacheRepositoryAspect(spanIdProvider)
+        val ann = StubCacheRepo::class.java.getAnnotation(ManagedCacheRepository::class.java)!!
+        val ctx = context()
+        val jp = fakeProperMonoJp(StubCacheRepo::class.java, "get")
+        val result = (aspect.aroundCacheRepository(jp, ann) as Mono<*>)
             .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
             .block()
         assertEquals("mono-ok", result)
