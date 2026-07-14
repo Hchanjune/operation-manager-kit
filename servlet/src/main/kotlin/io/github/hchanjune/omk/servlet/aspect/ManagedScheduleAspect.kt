@@ -52,6 +52,11 @@ class ManagedScheduleAspect(
 
         return try {
             val result = joinPoint.proceed()
+            // Quiet only when this aspect owns the context — silencing a shared outer
+            // context would suppress the enclosing operation's log as well.
+            if (contextOwner && managedSchedule.quietWhenEmpty && isEmptyResult(result)) {
+                context.defaultLogging = false
+            }
             span.end()
             context.pop()
             if (contextOwner) {
@@ -70,6 +75,17 @@ class ManagedScheduleAspect(
         } finally {
             if (contextOwner) Operations.clear()
         }
+    }
+
+    private fun isEmptyResult(result: Any?): Boolean = when (result) {
+        null, Unit -> true
+        is Number -> result.toLong() == 0L
+        is Boolean -> !result
+        is Collection<*> -> result.isEmpty()
+        is Map<*, *> -> result.isEmpty()
+        is Array<*> -> result.isEmpty()
+        is CharSequence -> result.isEmpty()
+        else -> false
     }
 
 }

@@ -46,7 +46,13 @@ private class StubEventHolder {
 
 private class StubScheduleHolder {
     @ManagedSchedule fun runJob() {}
+    @ManagedSchedule(quietWhenEmpty = true) fun pollBatch(): Int = 0
 }
+
+private val SCHEDULE_ANN = StubScheduleHolder::class.java.getDeclaredMethod("runJob")
+    .getAnnotation(ManagedSchedule::class.java)!!
+private val QUIET_SCHEDULE_ANN = StubScheduleHolder::class.java.getDeclaredMethod("pollBatch")
+    .getAnnotation(ManagedSchedule::class.java)!!
 
 @ManagedService
 private class StubService
@@ -816,7 +822,7 @@ class AspectsDirectTest {
         configureEventProviders()
         val aspect = ManagedScheduleAspect(spanIdProvider)
         val jp = fakeJp(StubScheduleHolder::class.java, "runJob", returns = "done")
-        val result = aspect.aroundSchedule(jp)
+        val result = aspect.aroundSchedule(jp, SCHEDULE_ANN)
         assertEquals("done", result)
     }
 
@@ -825,7 +831,7 @@ class AspectsDirectTest {
         configureEventProviders()
         val aspect = ManagedScheduleAspect(spanIdProvider)
         val jp = fakeJp(StubScheduleHolder::class.java, "runJob", throws = RuntimeException("sch-boom"))
-        assertFailsWith<RuntimeException> { aspect.aroundSchedule(jp) }
+        assertFailsWith<RuntimeException> { aspect.aroundSchedule(jp, SCHEDULE_ANN) }
     }
 
     @Test
@@ -833,7 +839,7 @@ class AspectsDirectTest {
         configureEventProviders()
         val aspect = ManagedScheduleAspect(spanIdProvider)
         val jp = fakeProperMonoJp(StubScheduleHolder::class.java, "runJob")
-        val result = (aspect.aroundSchedule(jp) as Mono<*>).block()
+        val result = (aspect.aroundSchedule(jp, SCHEDULE_ANN) as Mono<*>).block()
         assertEquals("mono-ok", result)
     }
 
@@ -842,10 +848,36 @@ class AspectsDirectTest {
         val aspect = ManagedScheduleAspect(spanIdProvider)
         val ctx = context()
         val jp = fakeProperMonoJp(StubScheduleHolder::class.java, "runJob")
-        val result = (aspect.aroundSchedule(jp) as Mono<*>)
+        val result = (aspect.aroundSchedule(jp, SCHEDULE_ANN) as Mono<*>)
             .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, ctx))
             .block()
         assertEquals("mono-ok", result)
         assertNull(ctx.peek())
+    }
+
+    @Test
+    fun `schedule aspect quietWhenEmpty silences defaultLogging on empty result`() {
+        configureEventProviders()
+        var captured: ManagedContext? = null
+        ReactiveOperations.configureHook(object : io.github.hchanjune.omk.core.OperationHook {
+            override fun onSuccess(context: ManagedContext) { captured = context }
+        })
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val jp = fakeJp(StubScheduleHolder::class.java, "pollBatch", returns = 0)
+        aspect.aroundSchedule(jp, QUIET_SCHEDULE_ANN)
+        assertEquals(false, captured?.defaultLogging)
+    }
+
+    @Test
+    fun `schedule aspect quietWhenEmpty keeps defaultLogging on non-empty result`() {
+        configureEventProviders()
+        var captured: ManagedContext? = null
+        ReactiveOperations.configureHook(object : io.github.hchanjune.omk.core.OperationHook {
+            override fun onSuccess(context: ManagedContext) { captured = context }
+        })
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val jp = fakeJp(StubScheduleHolder::class.java, "pollBatch", returns = 7)
+        aspect.aroundSchedule(jp, QUIET_SCHEDULE_ANN)
+        assertEquals(true, captured?.defaultLogging)
     }
 }

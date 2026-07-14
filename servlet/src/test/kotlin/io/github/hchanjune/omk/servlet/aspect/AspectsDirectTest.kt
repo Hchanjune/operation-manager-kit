@@ -43,6 +43,9 @@ private class StubEventHolder {
 private class StubScheduleHolder {
     @ManagedSchedule
     fun runJob() {}
+
+    @ManagedSchedule(quietWhenEmpty = true)
+    fun pollBatch(): Int = 0
 }
 
 @ManagedService
@@ -419,6 +422,36 @@ class AspectsDirectTest {
         val jp = fakeJp(StubScheduleHolder::class.java, methodName = "runJob", throws = RuntimeException("sch-fail"))
         assertFailsWith<RuntimeException> { aspect.aroundSchedule(jp, ann) }
         assertTrue(!Operations.hasContext)
+    }
+
+    @Test
+    fun `schedule aspect quietWhenEmpty silences defaultLogging on empty result`() {
+        configureEventProviders()
+        var captured: ManagedContext? = null
+        Operations.configureHook(object : io.github.hchanjune.omk.core.OperationHook {
+            override fun onSuccess(context: ManagedContext) { captured = context }
+        })
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val ann = StubScheduleHolder::class.java.getDeclaredMethod("pollBatch")
+            .getAnnotation(ManagedSchedule::class.java)!!
+        val jp = fakeJp(StubScheduleHolder::class.java, methodName = "pollBatch", returns = 0)
+        aspect.aroundSchedule(jp, ann)
+        assertEquals(false, captured?.defaultLogging)
+    }
+
+    @Test
+    fun `schedule aspect quietWhenEmpty keeps defaultLogging on non-empty result`() {
+        configureEventProviders()
+        var captured: ManagedContext? = null
+        Operations.configureHook(object : io.github.hchanjune.omk.core.OperationHook {
+            override fun onSuccess(context: ManagedContext) { captured = context }
+        })
+        val aspect = ManagedScheduleAspect(spanIdProvider)
+        val ann = StubScheduleHolder::class.java.getDeclaredMethod("pollBatch")
+            .getAnnotation(ManagedSchedule::class.java)!!
+        val jp = fakeJp(StubScheduleHolder::class.java, methodName = "pollBatch", returns = 7)
+        aspect.aroundSchedule(jp, ann)
+        assertEquals(true, captured?.defaultLogging)
     }
 
     @Test

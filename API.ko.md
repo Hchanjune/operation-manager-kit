@@ -133,14 +133,18 @@ annotation class ManagedEventHandler
 
 ```kotlin
 @Target(AnnotationTarget.FUNCTION)
-annotation class ManagedSchedule(val description: String = "")
+annotation class ManagedSchedule(
+    val description: String = "",
+    val quietWhenEmpty: Boolean = false
+)
 ```
 
 스케줄러로 시작되는 메서드(예: `@Scheduled`)에 적용합니다. 스케줄 실행은 트레이스 컨텍스트를 전달할 요청/메시지가 없으므로, 새로 생성한 `traceId`/`causationId`로 **ENTRY 레이어** span을 열고 `executionScope`를 `SCHEDULED`, `protocol`/`type`을 `SCHEDULED`로 설정합니다.
 
-| 파라미터          | 타입       | 기본값  | 설명       |
-|---------------|----------|------|----------|
-| `description` | `String` | `""` | 설명용 텍스트 |
+| 파라미터             | 타입        | 기본값     | 설명       |
+|------------------|-----------|---------|----------|
+| `description`    | `String`  | `""`    | 설명용 텍스트 |
+| `quietWhenEmpty` | `Boolean` | `false` | 메서드 반환값이 "빈" 값(null, `Unit`, `0`, `false`, 빈 Collection/Map/Array/CharSequence)이면 기본 성공 로그를 침묵. 고빈도 폴러에서 처리 건수나 배치를 반환하게 하면 의미 있는 실행만 로깅됨. 실패는 항상 로깅되고 span/메트릭은 그대로 기록 |
 
 ---
 

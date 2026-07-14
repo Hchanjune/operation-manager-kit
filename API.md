@@ -133,14 +133,18 @@ Applied to a messaging handler method (Kafka, Spring Messaging, etc.). Opens an 
 
 ```kotlin
 @Target(AnnotationTarget.FUNCTION)
-annotation class ManagedSchedule(val description: String = "")
+annotation class ManagedSchedule(
+    val description: String = "",
+    val quietWhenEmpty: Boolean = false
+)
 ```
 
 Applied to a scheduler-triggered method (e.g. `@Scheduled`). Scheduled executions have no incoming request or message to carry trace context, so this opens an **ENTRY-layer** span with a freshly generated `traceId`/`causationId`, sets `executionScope` to `SCHEDULED`, and sets `protocol`/`type` to `SCHEDULED`.
 
-| Parameter     | Type     | Default | Description               |
-|---------------|----------|---------|---------------------------|
-| `description` | `String` | `""`    | Human-readable description |
+| Parameter        | Type      | Default | Description               |
+|------------------|-----------|---------|---------------------------|
+| `description`    | `String`  | `""`    | Human-readable description |
+| `quietWhenEmpty` | `Boolean` | `false` | Silences the default success log when the method returns an "empty" result (null, `Unit`, `0`, `false`, or an empty Collection/Map/Array/CharSequence). Return the processed count or batch from a high-frequency poller so only meaningful runs are logged. Failures are always logged; spans and metrics are recorded either way |
 
 ---
 

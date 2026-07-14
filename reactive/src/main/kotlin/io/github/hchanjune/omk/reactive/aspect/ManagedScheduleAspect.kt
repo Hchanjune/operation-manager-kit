@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.reactive.aspect
 
+import io.github.hchanjune.omk.core.annotations.ManagedSchedule
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
 import io.github.hchanjune.omk.core.metric.MetricKind
@@ -23,8 +24,8 @@ class ManagedScheduleAspect(
     private val spanIdProvider: SpanIdProvider
 ) : ReactiveAspectSupport() {
 
-    @Around("@annotation(io.github.hchanjune.omk.core.annotations.ManagedSchedule)")
-    fun aroundSchedule(joinPoint: ProceedingJoinPoint): Any? {
+    @Around("@annotation(managedSchedule)")
+    fun aroundSchedule(joinPoint: ProceedingJoinPoint, managedSchedule: ManagedSchedule): Any? {
         val className = joinPoint.signature.declaringType.simpleName
         val methodName = joinPoint.signature.name.substringBefore('-')
 
@@ -45,7 +46,10 @@ class ManagedScheduleAspect(
                         idProvider = spanIdProvider
                     )
                     mono
-                        .doOnSuccess { span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onSuccess(newContext) }
+                        .doOnSuccess { value ->
+                            if (managedSchedule.quietWhenEmpty && isEmptyResult(value)) newContext.defaultLogging = false
+                            span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onSuccess(newContext)
+                        }
                         .doOnError { e -> span.end(e); newContext.pop(); newContext.end(); ReactiveOperations.hook?.onFailure(newContext, e) }
                         .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newContext))
                 } else {
@@ -80,6 +84,7 @@ class ManagedScheduleAspect(
         eventHandlerContext.set(newContext)
         return try {
             val result = joinPoint.proceed()
+            if (managedSchedule.quietWhenEmpty && isEmptyResult(result)) newContext.defaultLogging = false
             span.end(); newContext.pop(); newContext.end()
             ReactiveOperations.hook?.onSuccess(newContext)
             result
@@ -90,5 +95,16 @@ class ManagedScheduleAspect(
         } finally {
             eventHandlerContext.remove()
         }
+    }
+
+    private fun isEmptyResult(result: Any?): Boolean = when (result) {
+        null, Unit -> true
+        is Number -> result.toLong() == 0L
+        is Boolean -> !result
+        is Collection<*> -> result.isEmpty()
+        is Map<*, *> -> result.isEmpty()
+        is Array<*> -> result.isEmpty()
+        is CharSequence -> result.isEmpty()
+        else -> false
     }
 }
