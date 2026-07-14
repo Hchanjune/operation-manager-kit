@@ -36,6 +36,8 @@
 
 ## Annotations
 
+> All class-level annotations (`@ManagedController`, `@ManagedService`, `@ManagedRepository`, `@ManagedCacheRepository`) are `@Inherited` — annotating an abstract base class also covers methods declared in its subclasses. Method-level annotations follow standard Java semantics: they apply to the declaring method (including when inherited un-overridden), but an override must re-declare the annotation.
+
 ### `@ManagedController`
 
 ```kotlin

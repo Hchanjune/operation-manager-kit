@@ -36,6 +36,8 @@
 
 ## 어노테이션
 
+> 클래스 레벨 어노테이션(`@ManagedController`, `@ManagedService`, `@ManagedRepository`, `@ManagedCacheRepository`)은 전부 `@Inherited` — abstract 베이스 클래스에 붙이면 서브클래스가 선언한 메서드도 커버됩니다. 메서드 레벨 어노테이션은 자바 표준 시맨틱을 따릅니다: 선언된 메서드에 적용되며(오버라이드 없이 상속된 경우 포함), 오버라이드하면 어노테이션을 다시 붙여야 합니다.
+
 ### `@ManagedController`
 
 ```kotlin
