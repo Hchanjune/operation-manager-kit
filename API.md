@@ -349,11 +349,41 @@ class MyHook : OperationHook {
 
 Built-in hooks:
 
-| Hook                          | Order | Description                                                    |
-|-------------------------------|-------|----------------------------------------------------------------|
-| `DefaultOperationLoggingHook` | 50    | Logs operation result (pretty / JSON)                          |
-| `MetricsOperationHook`        | 60    | Records span tree to Micrometer                                |
-| `OtelOperationHook`           | 70    | Exports spans to OpenTelemetry (when `Tracer` bean is present) |
+| Hook                          | Order | Description                            |
+|-------------------------------|-------|----------------------------------------|
+| `DefaultOperationLoggingHook` | 50    | Logs operation result (pretty / JSON)  |
+| `MetricsOperationHook`        | 60    | Records span tree to Micrometer        |
+
+---
+
+## SpanBridge (OpenTelemetry live bridge)
+
+OpenTelemetry integration is **not** a hook: when a `Tracer` bean is present, a live
+`SpanBridge` is attached to the `OperationRuntime`. Every `ManagedContext.push()` then starts
+a **real OTel span at that moment** and adopts the OTel-generated ids back into OMK — the
+`spanId`/`traceId` you see in OMK logs are the ids you search for in the trace viewer.
+
+- Incoming `traceparent` (W3C mode) continues the upstream trace; without one, the
+  OTel-generated traceId is adopted into the context.
+- Servlet: the span is also installed as the OTel *current context* per thread, so OTel
+  auto-instrumented clients (JDBC, `RestClient`, ...) nest under OMK spans.
+- Reactive: the span's OTel context travels in the Reactor context
+  (`opentelemetry-reactor-3.1` optional), so instrumented reactive clients
+  (`WebClient`, R2DBC, ...) nest under OMK spans.
+- No `Tracer` bean or no OTel on the classpath → no bridge; OMK generates its own ids and
+  runs fully self-contained. Bridge errors never break business flow (fail-open).
+
+```kotlin
+interface SpanBridge {
+    fun startTrace(context: ManagedContext): BridgedTrace
+    fun startSpan(trace: BridgedTrace, name: String, layer: MetricLayer,
+                  tags: MetricTags, parent: BridgedSpan?): BridgedSpan
+    fun endSpan(handle: BridgedSpan, span: MetricSpan)
+}
+```
+
+The OTel implementation lives in the `otel` module (`OtelSpanBridge`) and is auto-configured
+by the servlet/reactive starters; application code normally never touches this interface.
 
 ---
 
@@ -548,14 +578,14 @@ Default implementation uses Micrometer. Falls back to no-op when `MeterRegistry`
 
 ## Configuration Properties
 
-### WebMVC — `operation-manager.webmvc`
+### WebMVC — `operation-manager.servlet`
 
 | Property                                            | Type              | Default          | Description                                 |
 |-----------------------------------------------------|-------------------|------------------|---------------------------------------------|
 | `context-filter.enabled`                            | `Boolean`         | `true`           | Enable servlet filter                       |
 | `context-aspect.enabled`                            | `Boolean`         | `true`           | Enable AOP aspects                          |
 | `micrometer.enabled`                                | `Boolean`         | `true`           | Enable Micrometer recording                 |
-| `otel.enabled`                                      | `Boolean`         | `true`           | Enable OTel export (requires `Tracer` bean) |
+| `otel.enabled`                                      | `Boolean`         | `true`           | Enable the live OTel span bridge (requires `Tracer` bean) |
 | `logging.enabled`                                   | `Boolean`         | `true`           | Enable default logging hook                 |
 | `logging.pretty`                                    | `Boolean`         | `false`          | Pretty-print format                         |
 | `logging.json`                                      | `Boolean`         | `true`           | JSON format                                 |
@@ -571,7 +601,7 @@ Default implementation uses Micrometer. Falls back to no-op when `MeterRegistry`
 | `telemetry.propagation.custom-headers.trace-id`     | `String`          | `X-Trace-Id`     | Custom trace ID header name                 |
 | `telemetry.propagation.custom-headers.causation-id` | `String`          | `X-Causation-Id` | Custom causation ID header name             |
 
-### WebFlux — `operation-manager.webflux`
+### WebFlux — `operation-manager.reactive`
 
 | Property                                            | Type              | Default          | Description                              |
 |-----------------------------------------------------|-------------------|------------------|------------------------------------------|

@@ -34,6 +34,7 @@ It provides a structured execution boundary around business logic, automatically
 | Module           | Description                                                                                   | Docs                       |
 |------------------|-----------------------------------------------------------------------------------------------|----------------------------|
 | `core`           | Framework-agnostic execution engine, context model, and provider contracts                    | —                          |
+| `otel`           | Live OpenTelemetry span bridge (`OtelSpanBridge`) — pulled in transitively by the stack modules | —                        |
 | `servlet`  | Spring Boot auto-configuration for Servlet stack (AOP aspects, servlet filters, Micrometer)   | [Servlet.md](Servlet.md)   |
 | `reactive` | Spring Boot auto-configuration for Reactive stack (AOP aspects, WebFilter, Kotlin Coroutines) | [Reactive.md](Reactive.md) |
 
@@ -158,7 +159,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] Spring WebMVC Async context propagation (`@Async`, coroutines, virtual threads)
 - [x] Span-level metric instrumentation
 - [x] Micrometer integration
-- [x] OpenTelemetry SDK integration
+- [x] OpenTelemetry live span bridge — OMK spans are real OTel spans with adopted ids (logs and trace viewer share the same `spanId`/`traceId`); auto-instrumented clients nest under OMK spans
 - [x] Messaging context propagation (`@ManagedEventHandler`) — `handle()` must be a plain (non-suspend) `fun`. If the body calls suspend functions, wrap them in `runBlocking { }` inside the implementation.
 - [x] Scheduler context creation (`@ManagedSchedule`) — opens a fresh trace context for scheduler-triggered methods (e.g. `@Scheduled`) that have no incoming request or message.
 

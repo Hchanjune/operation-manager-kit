@@ -48,7 +48,7 @@ dependencies {
 
 ```yaml
 operation-manager:
-  webflux:
+  reactive:
     context-aspect:
       enabled: true
     logging:
@@ -284,7 +284,7 @@ class MyEnrichmentHook : OperationHook {
 
 ```yaml
 operation-manager:
-  webflux:
+  reactive:
     context-filter:
       enabled: true       # WebFilter 활성화 (기본값: true)
       exclude-options: true   # true이면 OPTIONS(CORS preflight) 요청은 컨텍스트 생성/로깅 없이 통과 (기본값: true)
@@ -386,7 +386,7 @@ traceparent: 00-{traceId 32hex}-{spanId 16hex}-01
 
 ```yaml
 operation-manager:
-  webflux:
+  reactive:
     telemetry:
       propagation:
         mode: CUSTOM
@@ -401,8 +401,8 @@ operation-manager:
 
 ```
 OMK span 트리
-    ├── MetricsOperationHook  →  Micrometer  →  Prometheus / Grafana Mimir
-    └── OtelOperationHook     →  OpenTelemetry  →  Tempo / Jaeger / Zipkin
+    ├── MetricsOperationHook       →  Micrometer  →  Prometheus / Grafana Mimir
+    └── OtelSpanBridge (라이브)      →  OpenTelemetry  →  Tempo / Jaeger / Zipkin
 ```
 
 ### Micrometer
@@ -418,6 +418,23 @@ implementation("org.springframework.boot:spring-boot-starter-actuator")
 ```kotlin
 implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
 ```
+
+`Tracer` Bean이 있으면 OMK span은 **라이브 OTel span**입니다: 각 `push` 시점에 진짜 span이
+시작되고 OTel이 생성한 id가 OMK id로 채택되므로, OMK 로그의 `spanId`/`traceId`가 그대로
+Tempo/Jaeger에서 검색하는 id입니다. 인바운드 `traceparent` 헤더(W3C 모드)는 업스트림
+트레이스를 잇습니다. span은 서로 다른 이벤트루프 스레드에서 시작/종료될 수 있으므로 스레드
+바운드 scope는 사용하지 않고, span의 OTel context가 Reactor context를 타고 전파됩니다.
+
+OTel 자동계측 reactive 클라이언트(`WebClient`, R2DBC, Lettuce 등)를 감싸는 OMK span 아래에
+중첩시키려면 Reactor instrumentation 라이브러리를 추가하세요 — OMK가 각 span을 해당 계측이
+읽는 Reactor context 키에 실어줍니다:
+
+```kotlin
+implementation("io.opentelemetry.instrumentation:opentelemetry-reactor-3.1:2.16.0-alpha")
+```
+
+이 라이브러리가 없어도(또는 `Tracer` Bean이 없어도) 나머지는 전부 동작하며, 중첩만 추가
+라이브러리가 필요합니다. 명시적으로 끄려면 `operation-manager.reactive.otel.enabled: false`.
 
 ---
 

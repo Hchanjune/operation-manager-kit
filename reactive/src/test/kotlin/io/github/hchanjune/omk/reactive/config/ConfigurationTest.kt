@@ -219,7 +219,8 @@ class ConfigurationTest {
             contextProvider = provConfig.managedContextProvider(spanId),
             traceIdProvider = provConfig.traceIdProvider(),
             causationIdProvider = provConfig.causationIdProvider(),
-            telemetryProperties = defaultTelemetryProps
+            telemetryProperties = defaultTelemetryProps,
+            spanBridgeProvider = emptyObjectProvider()
         )
         assertNotNull(runtime.hook)
         val result = OperationConfiguration().reactiveOperationInitializer(runtime)
@@ -233,13 +234,13 @@ class ConfigurationTest {
         assertNotNull(SecurityFilterConfiguration().reactiveSpringSecurityWebFilter())
     }
 
-    // ── OtelHooksConfiguration ────────────────────────────────────────────────
+    // ── OtelBridgeConfiguration ───────────────────────────────────────────────
 
     @Test
-    fun `OtelHooksConfiguration creates otel hook with noop tracer`() {
+    fun `OtelBridgeConfiguration creates span bridge with noop tracer`() {
         val tracer = OpenTelemetry.noop().getTracer("test")
-        val hook = OtelHooksConfiguration().otelOperationHook(tracer)
-        assertNotNull(hook)
+        val bridge = OtelBridgeConfiguration().spanBridge(tracer)
+        assertNotNull(bridge)
     }
 
     // ── OperationManagerReactiveAutoConfiguration ──────────────────────────────

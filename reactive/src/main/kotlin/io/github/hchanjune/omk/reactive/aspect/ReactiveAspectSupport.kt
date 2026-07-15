@@ -1,7 +1,9 @@
 ﻿package io.github.hchanjune.omk.reactive.aspect
 
 import io.github.hchanjune.omk.core.context.ManagedContext
+import io.github.hchanjune.omk.core.metric.MetricSpan
 import io.github.hchanjune.omk.reactive.ReactiveOperations
+import io.github.hchanjune.omk.reactive.support.BridgedReactorContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.reactor.ReactorContext
 import kotlinx.coroutines.reactor.mono
@@ -62,4 +64,12 @@ abstract class ReactiveAspectSupport {
 
     protected fun getManagedContext(reactorCtx: ContextView): ManagedContext? =
         reactorCtx.getOrEmpty<ManagedContext>(ReactiveOperations.CONTEXT_KEY).orElse(null)
+
+    /**
+     * Publishes the span's bridged live context (if any) into the Reactor context, so OTel-
+     * instrumented reactive clients running inside this pipeline nest under the OMK span.
+     * No bridge active or no instrumentation library on the classpath → no-op.
+     */
+    protected fun <T : Any> Mono<T>.propagateBridgedContext(span: MetricSpan): Mono<T> =
+        BridgedReactorContext.propagate(this, span)
 }

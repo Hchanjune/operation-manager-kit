@@ -36,6 +36,13 @@ class MetricSpan(
     internal var bridge: SpanBridge? = null
     internal var bridgeHandle: BridgedSpan? = null
 
+    /**
+     * The backend-native context of the bridged live span (e.g. an OTel Context), or null when
+     * no bridge is active. Stack adapters use it to propagate the span as the backend's current
+     * context (reactive: written into the Reactor context so instrumented clients nest under it).
+     */
+    val bridgedContext: Any? get() = bridgeHandle?.nativeContext
+
     fun addChild(child: MetricSpan) {
         check(child.parent == null) {
             "Span [${child.spanId}] already has a parent [${child.parent?.spanId}]"

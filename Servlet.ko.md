@@ -36,7 +36,7 @@ import io.github.hchanjune.omk.core.annotations.ManagedController
 import io.github.hchanjune.omk.core.annotations.ManagedService
 import io.github.hchanjune.omk.core.annotations.ManagedRepository
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
-import io.github.hchanjune.omk.webmvc.Operations
+import io.github.hchanjune.omk.servlet.Operations
 
 @ManagedController
 @RestController
@@ -153,7 +153,7 @@ Order > 60  →  커스텀 후처리 훅
 
 `ExceptionCapturingResolver`는 `Ordered.HIGHEST_PRECEDENCE`로 등록되는 `HandlerExceptionResolver`입니다. `@ExceptionHandler` 메서드보다 먼저 실행되어 예외를 `ManagedContext.capturedException`에 기록한 뒤 `null`을 반환해서, 실제 예외 처리는 원래 작성한 `@ExceptionHandler`가 그대로 수행합니다. 이후 필터와 `DefaultOperationLoggingHook`은 가짜 예외를 만드는 대신 `context.capturedException`을 읽습니다 — 5xx는 `onFailure`에 진짜 예외가 전달되고, 4xx/401/403도 `onSuccess`의 로그 출력에 진짜 예외의 타입/메시지/스택트레이스가 포함됩니다. `onSuccess` vs `onFailure` 라우팅 자체는 그대로입니다(위와 동일하게 상태 코드 기준) — 어떤 예외가 보이는지만 달라집니다.
 
-기본적으로 활성화되어 있으며, `operation-manager.webmvc.exception-capture.enabled: false`로 끌 수 있습니다.
+기본적으로 활성화되어 있으며, `operation-manager.servlet.exception-capture.enabled: false`로 끌 수 있습니다.
 
 ### 커스텀 훅 예시
 
@@ -232,7 +232,7 @@ class MyEnrichmentHook : OperationHook {
 
 ```yaml
 operation-manager:
-  webmvc:
+  servlet:
     context-filter:
       enabled: true
       exclude-options: true   # true이면 OPTIONS(CORS preflight) 요청은 컨텍스트 생성/로깅 없이 통과 (기본값: true)
@@ -362,8 +362,8 @@ traceparent: 00-{traceId 32hex}-{spanId 16hex}-01
 
 ```
 OMK span 트리
-    ├── MetricsOperationHook  →  Micrometer  →  Prometheus / Grafana Mimir
-    └── OtelOperationHook     →  OpenTelemetry  →  Tempo / Jaeger / Zipkin
+    ├── MetricsOperationHook       →  Micrometer  →  Prometheus / Grafana Mimir
+    └── OtelSpanBridge (라이브)      →  OpenTelemetry  →  Tempo / Jaeger / Zipkin
 ```
 
 ### Micrometer
@@ -388,6 +388,16 @@ management:
     sampling:
       probability: 1.0
 ```
+
+`Tracer` Bean이 있으면 OMK span은 **라이브 OTel span**입니다: 각 `push` 시점에 진짜 span이
+시작되고 OTel이 생성한 id가 OMK id로 채택되므로, OMK 로그의 `spanId`/`traceId`가 그대로
+Tempo/Jaeger에서 검색하는 id입니다. span은 스레드별 OTel current context로도 설치되어 —
+OTel 자동계측 클라이언트(JDBC, `RestClient` 등)가 감싸는 OMK span 아래에 중첩되고, 아웃바운드
+컨텍스트 전파도 실제 span id로 나갑니다. 인바운드 `traceparent` 헤더(W3C 모드)는 업스트림
+트레이스를 잇습니다.
+
+`Tracer` Bean이 없으면 OMK는 완전히 독립 동작합니다. 명시적으로 끄려면
+`operation-manager.servlet.otel.enabled: false`.
 
 ---
 

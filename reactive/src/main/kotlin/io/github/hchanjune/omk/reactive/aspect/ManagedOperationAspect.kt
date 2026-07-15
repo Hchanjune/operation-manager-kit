@@ -49,6 +49,7 @@ class ManagedOperationAspect(
                 ctx.injectAnnotationInfo(op.operation, op.useCase)
                 val span = buildSpan(ctx, op, spanName)
                 mono.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+                    .propagateBridgedContext(span)
             }
         }
 
@@ -75,6 +76,7 @@ class ManagedOperationAspect(
 
         return if (result is Mono<*>) {
             result.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+                .propagateBridgedContext(span)
         } else {
             span.end(); ctx.pop(); result
         }

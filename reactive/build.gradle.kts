@@ -9,6 +9,7 @@ val springBootVersion: String by project
 
 dependencies {
     api(project(":core"))
+    implementation(project(":otel"))
 
     api(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
 
@@ -29,6 +30,9 @@ dependencies {
     compileOnly("org.springframework.security:spring-security-web")
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")
     compileOnly("io.opentelemetry:opentelemetry-api")
+    // Optional at runtime: bridged spans are written into the Reactor context so OTel-
+    // instrumented reactive clients (WebClient, R2DBC, ...) nest under OMK spans.
+    compileOnly("io.opentelemetry.instrumentation:opentelemetry-reactor-3.1:2.16.0-alpha")
 
     testImplementation(kotlin("test"))
     testImplementation(kotlin("reflect"))
@@ -36,6 +40,10 @@ dependencies {
     testImplementation("org.slf4j:slf4j-api")
     testRuntimeOnly("org.slf4j:slf4j-simple")
     testImplementation("io.opentelemetry:opentelemetry-api")
+    testImplementation("io.opentelemetry:opentelemetry-sdk")
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
+    // Phase 2(b) prototype: Reactor-context propagation the way OTel-instrumented clients read it
+    testImplementation("io.opentelemetry.instrumentation:opentelemetry-reactor-3.1:2.16.0-alpha")
     testImplementation("org.aspectj:aspectjrt")
     testImplementation("io.micrometer:micrometer-core")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")

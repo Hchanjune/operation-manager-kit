@@ -47,6 +47,7 @@ class ManagedCacheRepositoryAspect(
 
         return if (result is Mono<*>) {
             result.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+                .propagateBridgedContext(span)
         } else {
             span.end(); ctx.pop(); result
         }
@@ -57,6 +58,7 @@ class ManagedCacheRepositoryAspect(
             val ctx = getManagedContext(reactorCtx) ?: return@transformDeferredContextual mono
             val span = buildSpan(ctx, className, methodName)
             mono.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop() }
+                .propagateBridgedContext(span)
         }
 
     private fun buildSpan(ctx: ManagedContext, className: String, methodName: String) =

@@ -48,7 +48,7 @@ dependencies {
 
 ```yaml
 operation-manager:
-  webflux:
+  reactive:
     context-aspect:
       enabled: true
     logging:
@@ -284,7 +284,7 @@ Spans are flushed by `MetricsOperationHook` (Order 60) when the request complete
 
 ```yaml
 operation-manager:
-  webflux:
+  reactive:
     context-filter:
       enabled: true       # Enable/disable the WebFilter (default: true)
       exclude-options: true   # if true, OPTIONS (CORS preflight) requests bypass context creation/logging entirely (default: true)
@@ -386,7 +386,7 @@ Custom headers:
 
 ```yaml
 operation-manager:
-  webflux:
+  reactive:
     telemetry:
       propagation:
         mode: CUSTOM
@@ -401,8 +401,8 @@ operation-manager:
 
 ```
 OMK span tree
-    ├── MetricsOperationHook  →  Micrometer  →  Prometheus / Grafana Mimir
-    └── OtelOperationHook     →  OpenTelemetry  →  Tempo / Jaeger / Zipkin
+    ├── MetricsOperationHook       →  Micrometer  →  Prometheus / Grafana Mimir
+    └── OtelSpanBridge (live)      →  OpenTelemetry  →  Tempo / Jaeger / Zipkin
 ```
 
 ### Micrometer
@@ -418,6 +418,25 @@ implementation("org.springframework.boot:spring-boot-starter-actuator")
 ```kotlin
 implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
 ```
+
+When a `Tracer` bean exists, OMK spans are **live OTel spans**: each `push` starts a real
+span at that moment and the OTel-generated ids are adopted as the OMK ids, so the
+`spanId`/`traceId` in OMK logs are exactly what you search for in Tempo/Jaeger. Incoming
+`traceparent` headers (W3C mode) continue the upstream trace. Spans may start and end on
+different event-loop threads — no thread-bound scopes are used; the span's OTel context
+travels through the Reactor context instead.
+
+To have OTel auto-instrumented reactive clients (`WebClient`, R2DBC, Lettuce, ...) nest
+under the enclosing OMK span, add the Reactor instrumentation library — OMK then publishes
+each span into the Reactor context under the key those instrumentations read:
+
+```kotlin
+implementation("io.opentelemetry.instrumentation:opentelemetry-reactor-3.1:2.16.0-alpha")
+```
+
+Without it (or without a `Tracer` bean) everything else still works; the nesting is the only
+part that needs the extra library. Disable explicitly with
+`operation-manager.reactive.otel.enabled: false`.
 
 ---
 

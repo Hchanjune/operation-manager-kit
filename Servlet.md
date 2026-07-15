@@ -36,7 +36,7 @@ import io.github.hchanjune.omk.core.annotations.ManagedController
 import io.github.hchanjune.omk.core.annotations.ManagedService
 import io.github.hchanjune.omk.core.annotations.ManagedRepository
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
-import io.github.hchanjune.omk.webmvc.Operations
+import io.github.hchanjune.omk.servlet.Operations
 
 @ManagedController
 @RestController
@@ -153,7 +153,7 @@ When a `@RestControllerAdvice` converts an exception into a normal response (the
 
 `ExceptionCapturingResolver` is a `HandlerExceptionResolver` registered at `Ordered.HIGHEST_PRECEDENCE`. It runs before your `@ExceptionHandler` methods, records the exception onto `ManagedContext.capturedException`, then returns `null` so your actual exception handler still produces the response unchanged. The filter and `DefaultOperationLoggingHook` then read `context.capturedException` instead of fabricating one — `onFailure` gets the real exception for 5xx, and `onSuccess`'s log output now includes the real exception's type/message/stack trace for 4xx/401/403 too. `onSuccess` vs `onFailure` routing itself is unchanged (still status-code based, see above) — only which exception is visible changes.
 
-This is enabled by default; disable with `operation-manager.webmvc.exception-capture.enabled: false`.
+This is enabled by default; disable with `operation-manager.servlet.exception-capture.enabled: false`.
 
 ### Custom Hook Example
 
@@ -232,7 +232,7 @@ Spans are flushed by `MetricsOperationHook` (Order 60) when the request complete
 
 ```yaml
 operation-manager:
-  webmvc:
+  servlet:
     context-filter:
       enabled: true
       exclude-options: true   # if true, OPTIONS (CORS preflight) requests bypass context creation/logging entirely (default: true)
@@ -362,8 +362,8 @@ Custom headers can be configured via `mode: CUSTOM`.
 
 ```
 OMK span tree
-    ├── MetricsOperationHook  →  Micrometer  →  Prometheus / Grafana Mimir
-    └── OtelOperationHook     →  OpenTelemetry  →  Tempo / Jaeger / Zipkin
+    ├── MetricsOperationHook       →  Micrometer  →  Prometheus / Grafana Mimir
+    └── OtelSpanBridge (live)      →  OpenTelemetry  →  Tempo / Jaeger / Zipkin
 ```
 
 ### Micrometer
@@ -388,6 +388,16 @@ management:
     sampling:
       probability: 1.0
 ```
+
+When a `Tracer` bean exists, OMK spans are **live OTel spans**: each `push` starts a real
+span at that moment and the OTel-generated ids are adopted as the OMK ids, so the
+`spanId`/`traceId` in OMK logs are exactly what you search for in Tempo/Jaeger. The span is
+also installed as the OTel current context per thread — OTel auto-instrumented clients
+(JDBC, `RestClient`, ...) nest under the enclosing OMK span, and outbound context propagation
+carries real span ids. Incoming `traceparent` headers (W3C mode) continue the upstream trace.
+
+Without a `Tracer` bean, OMK runs fully self-contained. Disable explicitly with
+`operation-manager.servlet.otel.enabled: false`.
 
 ---
 

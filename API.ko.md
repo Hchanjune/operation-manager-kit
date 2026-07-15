@@ -349,11 +349,41 @@ class MyHook : OperationHook {
 
 내장 훅:
 
-| 훅                             | Order | 설명                                          |
-|-------------------------------|-------|---------------------------------------------|
-| `DefaultOperationLoggingHook` | 50    | 오퍼레이션 결과 로깅 (pretty / JSON)                 |
-| `MetricsOperationHook`        | 60    | span 트리를 Micrometer에 기록                     |
-| `OtelOperationHook`           | 70    | OpenTelemetry로 span 내보내기 (`Tracer` Bean 필요) |
+| 훅                             | Order | 설명                          |
+|-------------------------------|-------|------------------------------|
+| `DefaultOperationLoggingHook` | 50    | 오퍼레이션 결과 로깅 (pretty / JSON) |
+| `MetricsOperationHook`        | 60    | span 트리를 Micrometer에 기록     |
+
+---
+
+## SpanBridge (OpenTelemetry 라이브 브릿지)
+
+OpenTelemetry 연동은 훅이 **아니다**: `Tracer` Bean이 있으면 `OperationRuntime`에 라이브
+`SpanBridge`가 부착된다. 이후 모든 `ManagedContext.push()`는 **그 시점에 진짜 OTel span을
+시작**하고, OTel이 생성한 id를 OMK에 역채택한다 — OMK 로그에 찍히는 `spanId`/`traceId`가
+곧 트레이스 뷰어에서 검색하는 id다.
+
+- 인바운드 `traceparent`(W3C 모드)가 있으면 업스트림 트레이스를 잇고, 없으면 OTel이 생성한
+  traceId를 컨텍스트에 채택한다.
+- Servlet: span이 스레드별 OTel *current context*로도 설치되어, OTel 자동계측 클라이언트
+  (JDBC, `RestClient`, ...)가 OMK span 아래에 중첩된다.
+- Reactive: span의 OTel context가 Reactor context로 전파되어
+  (`opentelemetry-reactor-3.1` 선택 의존성), 계측된 reactive 클라이언트(`WebClient`, R2DBC, ...)가
+  OMK span 아래에 중첩된다.
+- `Tracer` Bean이 없거나 OTel이 클래스패스에 없으면 → 브릿지 없음; OMK가 자체 id를 생성하며
+  완전히 독립 동작한다. 브릿지 오류는 비즈니스 흐름을 절대 깨지 않는다(fail-open).
+
+```kotlin
+interface SpanBridge {
+    fun startTrace(context: ManagedContext): BridgedTrace
+    fun startSpan(trace: BridgedTrace, name: String, layer: MetricLayer,
+                  tags: MetricTags, parent: BridgedSpan?): BridgedSpan
+    fun endSpan(handle: BridgedSpan, span: MetricSpan)
+}
+```
+
+OTel 구현체는 `otel` 모듈(`OtelSpanBridge`)에 있고 servlet/reactive 스타터가 자동 설정한다.
+애플리케이션 코드가 이 인터페이스를 직접 다룰 일은 없다.
 
 ---
 
@@ -548,14 +578,14 @@ interface MetricsRecorder {
 
 ## 설정 프로퍼티
 
-### WebMVC — `operation-manager.webmvc`
+### WebMVC — `operation-manager.servlet`
 
 | 프로퍼티                                                | 타입                | 기본값              | 설명                                 |
 |-----------------------------------------------------|-------------------|------------------|------------------------------------|
 | `context-filter.enabled`                            | `Boolean`         | `true`           | 서블릿 필터 활성화                         |
 | `context-aspect.enabled`                            | `Boolean`         | `true`           | AOP Aspect 활성화                     |
 | `micrometer.enabled`                                | `Boolean`         | `true`           | Micrometer 기록 활성화                  |
-| `otel.enabled`                                      | `Boolean`         | `true`           | OTel export 활성화 (`Tracer` Bean 필요) |
+| `otel.enabled`                                      | `Boolean`         | `true`           | 라이브 OTel span 브릿지 활성화 (`Tracer` Bean 필요) |
 | `logging.enabled`                                   | `Boolean`         | `true`           | 기본 로깅 훅 활성화                        |
 | `logging.pretty`                                    | `Boolean`         | `false`          | Pretty-print 포맷                    |
 | `logging.json`                                      | `Boolean`         | `true`           | JSON 포맷                            |
@@ -571,7 +601,7 @@ interface MetricsRecorder {
 | `telemetry.propagation.custom-headers.trace-id`     | `String`          | `X-Trace-Id`     | 커스텀 트레이스 ID 헤더명                    |
 | `telemetry.propagation.custom-headers.causation-id` | `String`          | `X-Causation-Id` | 커스텀 인과관계 ID 헤더명                    |
 
-### WebFlux — `operation-manager.webflux`
+### WebFlux — `operation-manager.reactive`
 
 | 프로퍼티                                                | 타입                | 기본값              | 설명                         |
 |-----------------------------------------------------|-------------------|------------------|----------------------------|

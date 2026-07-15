@@ -38,6 +38,7 @@ class ManagedEventHandlerAspect(
                     mono
                         .doOnSuccess { span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onSuccess(newContext) }
                         .doOnError { e -> span.end(e); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e) }
+                        .propagateBridgedContext(span)
                         .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newContext))
                 } else {
                     val ctx = reactorCtx.get<ManagedContext>(ReactiveOperations.CONTEXT_KEY)
@@ -46,6 +47,7 @@ class ManagedEventHandlerAspect(
                     mono
                         .doOnSuccess { span.end(); ctx.pop() }
                         .doOnError { e -> span.end(e); ctx.pop() }
+                        .propagateBridgedContext(span)
                 }
             }
         }

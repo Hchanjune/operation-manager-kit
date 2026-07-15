@@ -5,7 +5,7 @@ import io.github.hchanjune.omk.reactive.config.FilterConfiguration
 import io.github.hchanjune.omk.reactive.config.HooksConfiguration
 import io.github.hchanjune.omk.reactive.config.MetricsConfiguration
 import io.github.hchanjune.omk.reactive.config.OperationConfiguration
-import io.github.hchanjune.omk.reactive.config.OtelHooksConfiguration
+import io.github.hchanjune.omk.reactive.config.OtelBridgeConfiguration
 import io.github.hchanjune.omk.reactive.config.ProviderConfiguration
 import io.github.hchanjune.omk.reactive.config.SecurityFilterConfiguration
 import io.github.hchanjune.omk.reactive.config.properties.OperationManagerReactiveConfigProperties
@@ -22,7 +22,7 @@ import org.springframework.context.annotation.Import
     OperationConfiguration::class,
     MetricsConfiguration::class,
     HooksConfiguration::class,
-    OtelHooksConfiguration::class,
+    OtelBridgeConfiguration::class,
     FilterConfiguration::class,
     SecurityFilterConfiguration::class,
     AspectConfiguration::class,

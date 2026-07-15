@@ -34,6 +34,7 @@
 | 모듈               | 설명                                                           | 문서                               |
 |------------------|--------------------------------------------------------------|----------------------------------|
 | `core`           | 프레임워크 독립적인 실행 엔진, 컨텍스트 모델, 프로바이더 계약                          | —                                |
+| `otel`           | 라이브 OpenTelemetry span 브릿지 (`OtelSpanBridge`) — 스택 모듈이 전이 포함  | —                                |
 | `servlet`  | Servlet 스택 자동 설정 (AOP Aspect, 서블릿 필터, Micrometer)            | [Servlet.ko.md](Servlet.ko.md)   |
 | `reactive` | Reactive 스택 자동 설정 (AOP Aspect, WebFilter, Kotlin Coroutines) | [Reactive.ko.md](Reactive.ko.md) |
 
@@ -158,7 +159,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] Spring WebMVC 비동기 컨텍스트 전파 (`@Async`, 코루틴, 가상 스레드)
 - [x] Span 수준 메트릭 계측
 - [x] Micrometer 연동
-- [x] OpenTelemetry SDK 연동
+- [x] OpenTelemetry 라이브 span 브릿지 — OMK span이 곧 진짜 OTel span (id 채택으로 로그와 트레이스 뷰어가 같은 `spanId`/`traceId` 공유), 자동계측 클라이언트가 OMK span 아래 중첩
 - [x] 메시징 컨텍스트 전파 (`@ManagedEventHandler`) — `handle()`은 반드시 일반(non-suspend) `fun`이어야 함. 내부에서 suspend 함수를 호출할 경우 구현체 내부에서 `runBlocking { }`으로 감쌀 것.
 - [x] 스케줄러 컨텍스트 생성 (`@ManagedSchedule`) — 요청/메시지가 없는 스케줄러 실행(예: `@Scheduled`)에 새 트레이스 컨텍스트를 생성.
 

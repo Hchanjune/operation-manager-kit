@@ -55,6 +55,7 @@ class ManagedControllerAspect(
         return if (result is Mono<*>) {
             // proceed() returned a Mono — the span must be ended inside the reactive chain
             result.doOnSuccess { span.end(); ctx.pop() }.doOnError { e -> span.end(e); ctx.pop(); ctx.recordException(e) }
+                .propagateBridgedContext(span)
         } else {
             span.end(); ctx.pop(); result
         }
@@ -73,5 +74,6 @@ class ManagedControllerAspect(
             val span = SpanSupport.pushEntrySpan(ctx, className, methodName, spanIdProvider)
             mono.doOnSuccess { span.end(); ctx.pop() }
                 .doOnError { e -> span.end(e); ctx.pop(); ctx.recordException(e) }
+                .propagateBridgedContext(span)
         }
 }
