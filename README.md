@@ -12,6 +12,7 @@
 
 ## Table of Contents
 
+- [Why OMK?](#why-omk)
 - [Modules](#modules)
 - [Compatibility](#compatibility)
 - [Installation](#installation)
@@ -26,6 +27,53 @@
 **Operation Manager Kit** is a lightweight observability and distributed tracing library for Spring-based applications.
 
 It provides a structured execution boundary around business logic, automatically capturing consistent metadata such as trace IDs, issuer identity, HTTP context, service/operation names, execution timing, and lifecycle hooks — with minimal configuration.
+
+---
+
+## Why OMK?
+
+Spring Boot already ships an observability stack — the Observation API (`@Observed`) with
+Micrometer Tracing. OMK is **not a replacement** for it: it layers an *operation-centric*
+model on top and bridges into the same backends (Micrometer, OpenTelemetry).
+
+The standard stack answers *"what happened at this instrumentation point?"* — independent
+spans and timers, correlated later by trace id in the backend. OMK answers
+*"what happened in this operation?"* — every request, event, or scheduled run produces
+**one structured log document** carrying the full span tree, timings, business context, and
+outcome:
+
+```
+┌───────────────────────────────────────────────────────────────────────────────────
+│ ✅ Success
+├─ Status      : SUCCESS
+├─ TraceId     : 4bf92f3577b34da6a3ce929d0e0e4736
+├─ Issuer      : user-1042
+├─ Entrypoint  : OrderController
+├─ Operation   : CreateOrder
+├─ UseCase     : PlaceOrder
+├─ Performance : 56Ms
+├─ Spans      :
+│    [ENT] 12:34:56.733  [nio-8080-exec-1]  OrderController.create   [56ms]   SUCCESS
+│         └─ [APP] 12:34:56.741  [nio-8080-exec-1]  CreateOrder      [48ms]   SUCCESS
+│                   └─ [DB ] 12:34:56.751  [nio-8080-exec-1]  OrderRepository.save  [18ms]  SUCCESS
+└───────────────────────────────────────────────────────────────────────────────────
+```
+
+What that buys you over the standard stack alone:
+
+| | Spring Observability (`@Observed`) | OMK |
+|---|---|---|
+| Unit of observation | Each instrumentation point, independently | One **operation** (request / event / schedule) with its span tree |
+| Log output | One line per event; correlate by trace id in the backend | **One structured log per operation** (JSON or pretty box) — greppable/queryable without a trace backend |
+| Business metadata | Free-form key-value tags | First-class fields: `operation`, `useCase`, `issuer`, `entrypoint`, `ip`, and outcome classification (`SUCCESS` / `CLIENT_ERROR` / `UNAUTHENTICATED` / ...) |
+| Exception visibility | Lost if `@ControllerAdvice` converts it first | Captured **before** the advice turns it into a response |
+| Messaging / schedulers | Manual context propagation | `@ManagedEventHandler` extracts trace context from event fields; `@ManagedSchedule` opens a fresh trace (+ `quietWhenEmpty` for high-frequency pollers) |
+| OpenTelemetry | Native | Live bridge — OMK spans **are** OTel spans with adopted ids (logs and Tempo/Jaeger share the same `spanId`); auto-instrumented clients nest under OMK spans |
+
+**When the standard stack is enough:** if you only need traces and metrics and are happy
+correlating logs in the trace backend, stay with plain Spring observability. Reach for OMK
+when you want the whole operation — spans, timings, business context, outcome — in one
+queryable log document, with tracing and metrics coming along for free.
 
 ---
 

@@ -12,6 +12,7 @@
 
 ## 목차
 
+- [왜 OMK인가?](#왜-omk인가)
 - [모듈](#모듈)
 - [호환성](#호환성)
 - [설치](#설치)
@@ -26,6 +27,52 @@
 **Operation Manager Kit**은 Spring 기반 애플리케이션을 위한 경량 관찰가능성(Observability) 및 분산 추적 라이브러리입니다.
 
 비즈니스 로직 주변에 구조화된 실행 경계를 제공하며, 트레이스 ID, 발급자 정보, HTTP 컨텍스트, 서비스/오퍼레이션명, 실행 시간, 라이프사이클 훅 등의 메타데이터를 최소한의 설정으로 자동 수집합니다.
+
+---
+
+## 왜 OMK인가?
+
+Spring Boot에는 이미 관찰가능성 스택이 있습니다 — Observation API(`@Observed`)와
+Micrometer Tracing. OMK는 이를 **대체하지 않습니다**: 그 위에 *오퍼레이션 중심* 모델을
+얹고, 같은 백엔드(Micrometer, OpenTelemetry)로 브릿지합니다.
+
+표준 스택은 *"이 계측 지점에서 무슨 일이 있었나?"* 에 답합니다 — 독립적인 span과 타이머를
+만들고, 나중에 백엔드에서 trace id로 상관관계를 맞추죠. OMK는 *"이 오퍼레이션에서 무슨
+일이 있었나?"* 에 답합니다 — 모든 요청/이벤트/스케줄 실행이 span 트리 전체, 실행 시간,
+비즈니스 컨텍스트, 결과를 담은 **하나의 구조화 로그 문서**를 남깁니다:
+
+```
+┌───────────────────────────────────────────────────────────────────────────────────
+│ ✅ Success
+├─ Status      : SUCCESS
+├─ TraceId     : 4bf92f3577b34da6a3ce929d0e0e4736
+├─ Issuer      : user-1042
+├─ Entrypoint  : OrderController
+├─ Operation   : CreateOrder
+├─ UseCase     : PlaceOrder
+├─ Performance : 56Ms
+├─ Spans      :
+│    [ENT] 12:34:56.733  [nio-8080-exec-1]  OrderController.create   [56ms]   SUCCESS
+│         └─ [APP] 12:34:56.741  [nio-8080-exec-1]  CreateOrder      [48ms]   SUCCESS
+│                   └─ [DB ] 12:34:56.751  [nio-8080-exec-1]  OrderRepository.save  [18ms]  SUCCESS
+└───────────────────────────────────────────────────────────────────────────────────
+```
+
+표준 스택 단독 대비 얻는 것:
+
+| | Spring Observability (`@Observed`) | OMK |
+|---|---|---|
+| 관찰 단위 | 계측 지점 각각, 독립적으로 | span 트리를 가진 하나의 **오퍼레이션** (요청/이벤트/스케줄) |
+| 로그 출력 | 이벤트당 한 줄, 백엔드에서 trace id로 상관관계 | **오퍼레이션당 구조화 로그 1건** (JSON 또는 pretty box) — 트레이스 백엔드 없이도 grep/쿼리 가능 |
+| 비즈니스 메타데이터 | 자유형식 key-value 태그 | 일급 필드: `operation`, `useCase`, `issuer`, `entrypoint`, `ip`, 결과 분류 (`SUCCESS` / `CLIENT_ERROR` / `UNAUTHENTICATED` / ...) |
+| 예외 가시성 | `@ControllerAdvice`가 먼저 변환하면 유실 | advice가 응답으로 바꾸기 **전에** 진짜 예외를 캡처 |
+| 메시징 / 스케줄러 | 수동 컨텍스트 전파 | `@ManagedEventHandler`가 이벤트 필드에서 트레이스 컨텍스트 추출, `@ManagedSchedule`이 새 트레이스 생성 (+ 고빈도 폴러용 `quietWhenEmpty`) |
+| OpenTelemetry | 네이티브 | 라이브 브릿지 — OMK span이 **곧** OTel span (id 채택으로 로그와 Tempo/Jaeger가 같은 `spanId` 공유), 자동계측 클라이언트가 OMK span 아래 중첩 |
+
+**표준 스택으로 충분한 경우:** 트레이스와 메트릭만 필요하고 로그 상관관계를 트레이스
+백엔드에서 맞추는 게 불편하지 않다면, 그대로 쓰세요. span·실행 시간·비즈니스 컨텍스트·결과를
+**쿼리 가능한 로그 문서 하나**로 받고 싶을 때 — 트레이싱과 메트릭은 덤으로 따라오는 구조를
+원할 때 OMK를 선택하면 됩니다.
 
 ---
 
