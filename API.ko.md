@@ -69,7 +69,7 @@ annotation class ManagedRepository
 
 `@Repository` 클래스에 적용합니다. 모든 메서드를 **DB 레이어** 자식 span으로 계측합니다.
 
-> Spring Data 리포지토리 인터페이스(`JpaRepository`, `CoroutineCrudRepository` 등)에는 직접 적용할 수 없습니다. 대신 서비스 메서드에 `@ManagedMetric`을 사용하세요.
+> **현재는** 구현 클래스에만 동작합니다 — Spring Data 리포지토리 인터페이스(`JpaRepository`, `CoroutineCrudRepository` 등)는 JDK 프록시라 `@within` aspect가 보지 못합니다. 대신 호출하는 서비스 메서드에 `@ManagedMetric`을 사용하세요. 인터페이스 지원은 [로드맵](README.ko.md#로드맵)에 있습니다.
 
 ---
 

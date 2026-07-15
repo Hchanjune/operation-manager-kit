@@ -69,7 +69,7 @@ annotation class ManagedRepository
 
 Applied to a `@Repository` class. Instruments every method as a **DB-layer** child span.
 
-> Not applicable to Spring Data repository interfaces (`JpaRepository`, `CoroutineCrudRepository`, etc.) — use `@ManagedMetric` on the service method instead.
+> **Currently** works on implementation classes only — not on Spring Data repository interfaces (`JpaRepository`, `CoroutineCrudRepository`, etc.), which are JDK proxies invisible to the `@within` aspect. Use `@ManagedMetric` on the calling service method instead. Interface support is on the [roadmap](README.md#roadmap).
 
 ---
 

@@ -75,6 +75,11 @@ correlating logs in the trace backend, stay with plain Spring observability. Rea
 when you want the whole operation — spans, timings, business context, outcome — in one
 queryable log document, with tracing and metrics coming along for free.
 
+**The experience, in one line:** add the dependency, drop a few annotations — and every
+operation is observed end to end. Structured logs, metrics, and traces flow to whatever
+infrastructure you have configured, automatically. No instrumentation code, no manual
+correlation — it just works.
+
 ---
 
 ## Modules
@@ -210,6 +215,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] OpenTelemetry live span bridge — OMK spans are real OTel spans with adopted ids (logs and trace viewer share the same `spanId`/`traceId`); auto-instrumented clients nest under OMK spans
 - [x] Messaging context propagation (`@ManagedEventHandler`) — `handle()` must be a plain (non-suspend) `fun`. If the body calls suspend functions, wrap them in `runBlocking { }` inside the implementation.
 - [x] Scheduler context creation (`@ManagedSchedule`) — opens a fresh trace context for scheduler-triggered methods (e.g. `@Scheduled`) that have no incoming request or message.
+- [ ] `@ManagedRepository` on Spring Data repository interfaces — currently the annotation only works on implementation classes; Spring Data repositories (`JpaRepository`, `CoroutineCrudRepository`, ...) are JDK proxies the `@within` aspect cannot see. Planned via Spring Data's `RepositoryProxyPostProcessor` extension point (reactive side additionally needs `Flux` span semantics).
 
 ---
 

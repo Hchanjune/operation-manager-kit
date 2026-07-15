@@ -174,7 +174,7 @@ suspend fun record() = ReactiveOperations<AuditResult> {
 | `@ManagedEventHandler` | 메서드 | 메시징 핸들러에 ENTRY 레이어 span 생성; 이벤트 인자에서 트레이스 컨텍스트 자동 추출 |
 | `@ManagedSchedule`     | 메서드 | 스케줄러로 시작되는 메서드(예: `@Scheduled`)에 ENTRY 레이어 span 생성; 새 트레이스 컨텍스트 생성 |
 
-> `@ManagedRepository`는 클래스 레벨 어노테이션을 대상으로 합니다. Spring Data reactive 리포지토리는 인터페이스이므로, `CoroutineCrudRepository` 인터페이스에 `@ManagedRepository`를 직접 적용해도 효과가 없습니다. 대신 리포지토리를 호출하는 서비스 메서드에 `@ManagedMetric`을 사용하세요.
+> `@ManagedRepository`는 **현재** 구현 클래스에만 동작합니다. Spring Data reactive 리포지토리는 인터페이스(JDK 프록시)라 `CoroutineCrudRepository` 인터페이스에 직접 적용해도 효과가 없습니다 — 대신 호출하는 서비스 메서드에 `@ManagedMetric`을 사용하세요. 인터페이스 지원은 [로드맵](README.ko.md#로드맵)에 있습니다.
 
 ---
 
@@ -472,7 +472,7 @@ implementation("io.opentelemetry.instrumentation:opentelemetry-reactor-3.1:2.16.
 
 - **`kotlin-reflect` 버전**: `kotlin-stdlib`와 반드시 동일한 버전이어야 합니다. 버전 불일치 시 Spring WebFlux의 suspend fun 감지가 실패해 컨텍스트 전파가 동작하지 않습니다.
 - **Spring AOP 자기 호출**: 동일 클래스 내부의 메서드 호출은 AOP Aspect가 인터셉트하지 않습니다.
-- **인터페이스에 `@ManagedRepository`**: Spring Data reactive 리포지토리는 인터페이스이므로 직접 적용이 불가합니다. 서비스 메서드에 `@ManagedMetric`을 사용하세요.
+- **인터페이스에 `@ManagedRepository`**: 현재는 구현 클래스에만 동작 — Spring Data reactive 리포지토리는 인터페이스라 직접 적용이 불가합니다. 서비스 메서드에 `@ManagedMetric`을 사용하세요 (인터페이스 지원은 [로드맵](README.ko.md#로드맵) 참고).
 - **이벤트 루프 스레드**: 논블로킹 애플리케이션에서는 span이 동일한 `reactor-http-nio-*` 스레드를 보여주는 것이 정상입니다. 블로킹 작업에만 `Dispatchers.IO`가 필요합니다.
 - **`ReactiveOperations` 범위**: 관리 범위 밖에서 호출하면 WARN 로그 후 detached(비관리) 컨텍스트로 진행합니다 — 비즈니스 로직은 그대로 실행되지만 span/훅은 기록되지 않습니다. 진짜 관리 범위가 필요하면 진입점에 어노테이션(`@ManagedSchedule`, `@ManagedEventHandler`)을 붙이세요.
 

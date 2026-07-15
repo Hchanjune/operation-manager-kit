@@ -174,7 +174,7 @@ Context state is cumulative:
 | `@ManagedEventHandler` | Method | Opens an ENTRY-layer span for messaging handlers; auto-extracts trace context from event arguments |
 | `@ManagedSchedule`     | Method | Opens an ENTRY-layer span for scheduler-triggered methods (e.g. `@Scheduled`); generates a fresh trace context |
 
-> `@ManagedRepository` targets class-level annotations. Because Spring Data reactive repositories are interfaces, applying `@ManagedRepository` directly to a `CoroutineCrudRepository` interface will not take effect. Consider using `@ManagedMetric` on individual service methods that call the repository instead.
+> `@ManagedRepository` **currently** works on implementation classes only. Spring Data reactive repositories are interfaces (JDK proxies), so applying it directly to a `CoroutineCrudRepository` interface will not take effect — use `@ManagedMetric` on the calling service methods instead. Interface support is on the [roadmap](README.md#roadmap).
 
 ---
 
@@ -474,7 +474,7 @@ part that needs the extra library. Disable explicitly with
 
 - **`kotlin-reflect` version**: Must match `kotlin-stdlib`. A mismatch causes Spring WebFlux to fall back to a non-Kotlin invocation path, breaking suspend fun detection and context propagation.
 - **Spring AOP self-invocation**: AOP aspects do not intercept internal method calls within the same class.
-- **`@ManagedRepository` on interfaces**: Spring Data reactive repositories are interfaces — `@ManagedRepository` has no effect on them directly. Use `@ManagedMetric` on service methods instead.
+- **`@ManagedRepository` on interfaces**: currently implementation classes only — Spring Data reactive repositories are interfaces, so the annotation has no effect on them directly. Use `@ManagedMetric` on service methods instead (interface support is on the [roadmap](README.md#roadmap)).
 - **Event loop thread**: In a properly non-blocking application, spans will show the same `reactor-http-nio-*` thread. This is expected behavior — switching to `Dispatchers.IO` is only necessary for blocking operations.
 - **`ReactiveOperations` scope**: Calling `ReactiveOperations { }` outside a managed scope logs a WARN and proceeds with a detached (unmanaged) context — the business logic runs, but spans and hooks are not recorded. Annotate the entry point (`@ManagedSchedule`, `@ManagedEventHandler`) to get a real managed scope.
 

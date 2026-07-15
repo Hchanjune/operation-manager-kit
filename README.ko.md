@@ -74,6 +74,10 @@ Micrometer Tracing. OMK는 이를 **대체하지 않습니다**: 그 위에 *오
 **쿼리 가능한 로그 문서 하나**로 받고 싶을 때 — 트레이싱과 메트릭은 덤으로 따라오는 구조를
 원할 때 OMK를 선택하면 됩니다.
 
+**경험을 한 줄로 요약하면:** 의존성을 추가하고 어노테이션 몇 개만 붙이세요 — 모든
+오퍼레이션이 끝에서 끝까지 관측되고, 구조화 로그·메트릭·트레이스가 설정해 둔 인프라로
+자동으로 흘러갑니다. 계측 코드도, 수동 상관관계 작업도 없습니다 — 그냥 동작합니다.
+
 ---
 
 ## 모듈
@@ -209,6 +213,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] OpenTelemetry 라이브 span 브릿지 — OMK span이 곧 진짜 OTel span (id 채택으로 로그와 트레이스 뷰어가 같은 `spanId`/`traceId` 공유), 자동계측 클라이언트가 OMK span 아래 중첩
 - [x] 메시징 컨텍스트 전파 (`@ManagedEventHandler`) — `handle()`은 반드시 일반(non-suspend) `fun`이어야 함. 내부에서 suspend 함수를 호출할 경우 구현체 내부에서 `runBlocking { }`으로 감쌀 것.
 - [x] 스케줄러 컨텍스트 생성 (`@ManagedSchedule`) — 요청/메시지가 없는 스케줄러 실행(예: `@Scheduled`)에 새 트레이스 컨텍스트를 생성.
+- [ ] Spring Data 리포지토리 인터페이스에 `@ManagedRepository` 지원 — 현재는 구현 클래스에만 동작. Spring Data 리포지토리(`JpaRepository`, `CoroutineCrudRepository` 등)는 JDK 프록시라 `@within` aspect가 보지 못함. Spring Data의 `RepositoryProxyPostProcessor` 확장점으로 구현 예정 (reactive 쪽은 `Flux` span 시맨틱 추가 필요).
 
 ---
 
