@@ -40,6 +40,7 @@ class ManagedContextWebFilter(
             val extractedCausationId = propagationProvider.extractParentId { request.headers.getFirst(it) }
             injectTraceId(extractedTraceId ?: if (generateWhenMissing) traceIdProvider.provideTraceId() else "")
             injectCausationId(extractedCausationId ?: if (generateWhenMissing) causationIdProvider.provideCausationId() else "")
+            if (extractedTraceId != null) markTraceContinuedFromRemote()
             injectIssuer(issuerProvider.currentIssuer())
             injectIp(resolveClientIp(request))
             injectProtocol("HTTP")

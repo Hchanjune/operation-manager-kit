@@ -1,5 +1,8 @@
 package io.github.hchanjune.omk.core.metric
 
+import io.github.hchanjune.omk.core.bridge.BridgedSpan
+import io.github.hchanjune.omk.core.bridge.SpanBridge
+import org.slf4j.LoggerFactory
 import java.time.Clock
 
 class MetricSpan(
@@ -29,6 +32,10 @@ class MetricSpan(
     var outcome: MetricOutcome? = null
         private set
 
+    // Live backend span this OMK span is bridged onto; set by ManagedContext.push.
+    internal var bridge: SpanBridge? = null
+    internal var bridgeHandle: BridgedSpan? = null
+
     fun addChild(child: MetricSpan) {
         check(child.parent == null) {
             "Span [${child.spanId}] already has a parent [${child.parent?.spanId}]"
@@ -45,6 +52,15 @@ class MetricSpan(
     private fun finish(outcome: MetricOutcome) {
         this.timing.end(clock)
         this.outcome = outcome
+        val handle = bridgeHandle ?: return
+        try {
+            bridge?.endSpan(handle, this)
+        } catch (e: Throwable) {
+            log.warn("Span bridge failed to end span [{}]: {}", spanId, e.toString())
+        }
     }
 
+    companion object {
+        private val log = LoggerFactory.getLogger(MetricSpan::class.java)
+    }
 }

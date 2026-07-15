@@ -1,12 +1,7 @@
 ﻿package io.github.hchanjune.omk.servlet.aspect
 
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
-import io.github.hchanjune.omk.core.metric.MetricDescriptor
-import io.github.hchanjune.omk.core.metric.MetricKind
-import io.github.hchanjune.omk.core.metric.MetricLayer
-import io.github.hchanjune.omk.core.metric.MetricName
-import io.github.hchanjune.omk.core.metric.MetricPolicy
-import io.github.hchanjune.omk.core.metric.MetricTags
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.servlet.Operations
 import org.aspectj.lang.ProceedingJoinPoint
@@ -40,22 +35,11 @@ class ManagedOperationAspect(
             "$className.${joinPoint.signature.name.substringBefore('-')}"
         }
 
-        val tags = MetricTags.Builder()
-            .put("service", context.service)
-            .put("operation", operationAnnotation.operation)
-            .put("use_case", operationAnnotation.useCase)
-            .build()
-
-        val span = context.push(
-            name = MetricName(spanName),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = tags,
-            descriptor = MetricDescriptor(
-                operation = operationAnnotation.operation,
-                useCase = operationAnnotation.useCase,
-                layer = MetricLayer.APPLICATION
-            ),
+        val span = SpanSupport.pushOperationSpan(
+            context = context,
+            operation = operationAnnotation.operation,
+            useCase = operationAnnotation.useCase,
+            spanName = spanName,
             idProvider = spanIdProvider
         )
 

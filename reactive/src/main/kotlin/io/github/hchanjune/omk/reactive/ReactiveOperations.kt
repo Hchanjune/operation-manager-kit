@@ -107,6 +107,7 @@ object ReactiveOperations {
             injectCausationId(
                 metadata.causationId ?: if (rt.generateWhenMissing) rt.causationIdProvider?.provideCausationId() ?: "" else ""
             )
+            if (metadata.traceId != null) markTraceContinuedFromRemote()
             metadata.issuer?.let { injectIssuer(it) }
             metadata.eventType?.let { injectType(it) }
             injectProtocol("MESSAGING")

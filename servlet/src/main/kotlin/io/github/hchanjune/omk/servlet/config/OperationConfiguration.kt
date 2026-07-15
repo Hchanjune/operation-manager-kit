@@ -3,12 +3,14 @@ package io.github.hchanjune.omk.servlet.config
 import io.github.hchanjune.omk.core.OperationExecutor
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.OperationRuntime
+import io.github.hchanjune.omk.core.bridge.SpanBridge
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.servlet.Operations
 import io.github.hchanjune.omk.servlet.config.properties.OperationManagerServletConfigProperties
 import io.github.hchanjune.omk.servlet.config.properties.TelemetryConfigureProperties
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -34,7 +36,8 @@ internal class OperationConfiguration {
         traceIdProvider: TraceIdProvider,
         causationIdProvider: CausationIdProvider,
         properties: OperationManagerServletConfigProperties,
-        telemetryProperties: TelemetryConfigureProperties
+        telemetryProperties: TelemetryConfigureProperties,
+        spanBridgeProvider: ObjectProvider<SpanBridge>
     ): OperationRuntime = OperationRuntime().apply {
         this.executor = executor
         this.hook = compositeHook
@@ -43,6 +46,7 @@ internal class OperationConfiguration {
         this.traceIdProvider = traceIdProvider
         this.causationIdProvider = causationIdProvider
         this.generateWhenMissing = telemetryProperties.propagation.generateWhenMissing
+        this.spanBridge = spanBridgeProvider.ifAvailable
     }
 
     @Bean

@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.core
 
+import io.github.hchanjune.omk.core.bridge.SpanBridge
 import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
@@ -22,4 +23,7 @@ class OperationRuntime {
     var traceIdProvider: TraceIdProvider? = null
     var causationIdProvider: CausationIdProvider? = null
     var generateWhenMissing: Boolean = true
+
+    // Live tracing backend bridge (e.g. OTel). Null = OMK self-contained ids/tree as before.
+    var spanBridge: SpanBridge? = null
 }

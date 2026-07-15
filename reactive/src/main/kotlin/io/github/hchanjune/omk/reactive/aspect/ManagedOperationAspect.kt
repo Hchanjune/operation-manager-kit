@@ -2,12 +2,7 @@
 
 import io.github.hchanjune.omk.core.annotations.ManagedOperation
 import io.github.hchanjune.omk.core.context.ManagedContext
-import io.github.hchanjune.omk.core.metric.MetricDescriptor
-import io.github.hchanjune.omk.core.metric.MetricKind
-import io.github.hchanjune.omk.core.metric.MetricLayer
-import io.github.hchanjune.omk.core.metric.MetricName
-import io.github.hchanjune.omk.core.metric.MetricPolicy
-import io.github.hchanjune.omk.core.metric.MetricTags
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
@@ -58,16 +53,11 @@ class ManagedOperationAspect(
         }
 
     private fun buildSpan(ctx: ManagedContext, op: ManagedOperation, spanName: String) =
-        ctx.push(
-            name = MetricName(spanName),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = MetricTags.Builder()
-                .put("service", ctx.service)
-                .put("operation", op.operation)
-                .put("use_case", op.useCase)
-                .build(),
-            descriptor = MetricDescriptor(operation = op.operation, useCase = op.useCase, layer = MetricLayer.APPLICATION),
+        SpanSupport.pushOperationSpan(
+            context = ctx,
+            operation = op.operation,
+            useCase = op.useCase,
+            spanName = spanName,
             idProvider = spanIdProvider
         )
 

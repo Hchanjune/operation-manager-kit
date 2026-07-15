@@ -1,12 +1,7 @@
 ﻿package io.github.hchanjune.omk.servlet.aspect
 
 import io.github.hchanjune.omk.core.annotations.ManagedMetric
-import io.github.hchanjune.omk.core.metric.MetricDescriptor
-import io.github.hchanjune.omk.core.metric.MetricKind
-import io.github.hchanjune.omk.core.metric.MetricLayer
-import io.github.hchanjune.omk.core.metric.MetricName
-import io.github.hchanjune.omk.core.metric.MetricPolicy
-import io.github.hchanjune.omk.core.metric.MetricTags
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.servlet.Operations
 import org.aspectj.lang.ProceedingJoinPoint
@@ -30,24 +25,7 @@ class ManagedMetricAspect (
             "${joinPoint.signature.declaringType.simpleName}.${joinPoint.signature.name.substringBefore('-')}"
         }
 
-        val tags = MetricTags.Builder()
-            .put("service", context.service)
-            .put("operation", context.operation)
-            .put("span", spanName)
-            .build()
-
-        val span = context.push(
-            name = MetricName(spanName),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = tags,
-            descriptor = MetricDescriptor(
-                operation = context.operation,
-                useCase = context.useCase,
-                layer = MetricLayer.APPLICATION
-            ),
-            idProvider = spanIdProvider
-        )
+        val span = SpanSupport.pushMetricSpan(context, spanName, spanIdProvider)
 
         return try {
             val result = joinPoint.proceed()

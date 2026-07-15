@@ -9,6 +9,7 @@ val springBootVersion: String by project
 
 dependencies {
     api(project(":core"))
+    implementation(project(":otel"))
 
     compileOnly(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
 
@@ -33,6 +34,8 @@ dependencies {
     testImplementation("org.slf4j:slf4j-api")
     testRuntimeOnly("org.slf4j:slf4j-simple")
     testImplementation("io.opentelemetry:opentelemetry-api")
+    testImplementation("io.opentelemetry:opentelemetry-sdk")
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
     testImplementation("org.springframework:spring-messaging")
     testImplementation("org.aspectj:aspectjrt")
     testImplementation("org.apache.kafka:kafka-clients")

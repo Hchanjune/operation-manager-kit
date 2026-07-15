@@ -1,12 +1,7 @@
 ﻿package io.github.hchanjune.omk.servlet.aspect
 
 import io.github.hchanjune.omk.core.annotations.ManagedController
-import io.github.hchanjune.omk.core.metric.MetricDescriptor
-import io.github.hchanjune.omk.core.metric.MetricKind
-import io.github.hchanjune.omk.core.metric.MetricLayer
-import io.github.hchanjune.omk.core.metric.MetricName
-import io.github.hchanjune.omk.core.metric.MetricPolicy
-import io.github.hchanjune.omk.core.metric.MetricTags
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.servlet.Operations
 import org.aspectj.lang.ProceedingJoinPoint
@@ -36,19 +31,7 @@ class ManagedControllerAspect(
             context.injectEntryPoint(className)
         }
 
-        val tags = MetricTags.Builder()
-            .put("entrypoint", className)
-            .put("method", methodName)
-            .build()
-
-        val span = context.push(
-            name = MetricName("$className.$methodName"),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = tags,
-            descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-            idProvider = spanIdProvider
-        )
+        val span = SpanSupport.pushEntrySpan(context, className, methodName, spanIdProvider)
 
         return try {
             val result = joinPoint.proceed()

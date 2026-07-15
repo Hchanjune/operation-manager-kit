@@ -26,6 +26,50 @@ object SpanSupport {
         idProvider = idProvider
     )
 
+    fun pushOperationSpan(
+        context: ManagedContext,
+        operation: String,
+        useCase: String,
+        spanName: String,
+        idProvider: SpanIdProvider
+    ): MetricSpan = context.push(
+        name = MetricName(spanName),
+        kind = MetricKind.TIMER,
+        policy = MetricPolicy.defaults(),
+        tags = MetricTags.Builder()
+            .put("service", context.service)
+            .put("operation", operation)
+            .put("use_case", useCase)
+            .build(),
+        descriptor = MetricDescriptor(
+            operation = operation,
+            useCase = useCase,
+            layer = MetricLayer.APPLICATION
+        ),
+        idProvider = idProvider
+    )
+
+    fun pushMetricSpan(
+        context: ManagedContext,
+        spanName: String,
+        idProvider: SpanIdProvider
+    ): MetricSpan = context.push(
+        name = MetricName(spanName),
+        kind = MetricKind.TIMER,
+        policy = MetricPolicy.defaults(),
+        tags = MetricTags.Builder()
+            .put("service", context.service)
+            .put("operation", context.operation)
+            .put("span", spanName)
+            .build(),
+        descriptor = MetricDescriptor(
+            operation = context.operation,
+            useCase = context.useCase,
+            layer = MetricLayer.APPLICATION
+        ),
+        idProvider = idProvider
+    )
+
     fun pushRepositorySpan(
         context: ManagedContext,
         className: String,

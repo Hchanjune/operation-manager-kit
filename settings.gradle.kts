@@ -3,6 +3,7 @@ plugins {
 }
 rootProject.name = "operation-manager-kit"
 include("core")
+include("otel")
 include("servlet")
 include("reactive")
 include("test-app-webmvc")

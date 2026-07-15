@@ -89,6 +89,7 @@ object Operations: ManagedContextHolder {
         val context = provider.provide().apply {
             injectTraceId(metadata.traceId ?: if (rt.generateWhenMissing) rt.traceIdProvider?.provideTraceId() ?: "" else "")
             injectCausationId(metadata.causationId ?: if (rt.generateWhenMissing) rt.causationIdProvider?.provideCausationId() ?: "" else "")
+            if (metadata.traceId != null) markTraceContinuedFromRemote()
             metadata.issuer?.let { injectIssuer(it) }
             metadata.eventType?.let { injectType(it) }
             injectProtocol("MESSAGING")

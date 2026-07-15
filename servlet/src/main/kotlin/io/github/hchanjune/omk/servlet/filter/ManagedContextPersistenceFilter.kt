@@ -47,6 +47,7 @@ class ManagedContextPersistenceFilter(
                 val extractedCausationId = propagationProvider.extractParentId { request.getHeader(it) }
                 this.injectTraceId(extractedTraceId ?: if (generateWhenMissing) traceIdProvider.provideTraceId() else "")
                 this.injectCausationId(extractedCausationId ?: if (generateWhenMissing) causationIdProvider.provideCausationId() else "")
+                if (extractedTraceId != null) this.markTraceContinuedFromRemote()
                 this.injectProtocol("HTTP")
                 this.injectType("API")
                 this.injectHttpInfo(

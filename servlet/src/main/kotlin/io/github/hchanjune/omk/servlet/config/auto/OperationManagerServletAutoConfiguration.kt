@@ -7,7 +7,7 @@ import io.github.hchanjune.omk.servlet.config.FilterConfiguration
 import io.github.hchanjune.omk.servlet.config.HooksConfiguration
 import io.github.hchanjune.omk.servlet.config.MetricsConfiguration
 import io.github.hchanjune.omk.servlet.config.OperationConfiguration
-import io.github.hchanjune.omk.servlet.config.OtelHooksConfiguration
+import io.github.hchanjune.omk.servlet.config.OtelBridgeConfiguration
 import io.github.hchanjune.omk.servlet.config.ProviderConfiguration
 import io.github.hchanjune.omk.servlet.config.SecurityFilterConfiguration
 import io.github.hchanjune.omk.servlet.config.properties.OperationManagerServletConfigProperties
@@ -24,7 +24,7 @@ import org.springframework.context.annotation.Import
     OperationConfiguration::class,
     MetricsConfiguration::class,
     HooksConfiguration::class,
-    OtelHooksConfiguration::class,
+    OtelBridgeConfiguration::class,
     FilterConfiguration::class,
     SecurityFilterConfiguration::class,
     AspectConfiguration::class,

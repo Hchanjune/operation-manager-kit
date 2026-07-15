@@ -1,12 +1,7 @@
 ﻿package io.github.hchanjune.omk.reactive.aspect
 
 import io.github.hchanjune.omk.core.annotations.ManagedController
-import io.github.hchanjune.omk.core.metric.MetricDescriptor
-import io.github.hchanjune.omk.core.metric.MetricKind
-import io.github.hchanjune.omk.core.metric.MetricLayer
-import io.github.hchanjune.omk.core.metric.MetricName
-import io.github.hchanjune.omk.core.metric.MetricPolicy
-import io.github.hchanjune.omk.core.metric.MetricTags
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
@@ -47,14 +42,7 @@ class ManagedControllerAspect(
         val ctx = getManagedContext(joinPoint) ?: return joinPoint.proceed()
 
         if (ctx.entrypoint != className) ctx.injectEntryPoint(className)
-        val span = ctx.push(
-            name = MetricName("$className.$methodName"),
-            kind = MetricKind.TIMER,
-            policy = MetricPolicy.defaults(),
-            tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-            descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-            idProvider = spanIdProvider
-        )
+        val span = SpanSupport.pushEntrySpan(ctx, className, methodName, spanIdProvider)
 
         // proceed() itself can throw synchronously (before any Mono even exists) — the span must
         // be pushed before this call so a sync throw here still ends/pops it and is recorded.
@@ -82,14 +70,7 @@ class ManagedControllerAspect(
             val ctx = getManagedContext(reactorCtx)
                 ?: return@transformDeferredContextual mono
             if (ctx.entrypoint != className) ctx.injectEntryPoint(className)
-            val span = ctx.push(
-                name = MetricName("$className.$methodName"),
-                kind = MetricKind.TIMER,
-                policy = MetricPolicy.defaults(),
-                tags = MetricTags.Builder().put("entrypoint", className).put("method", methodName).build(),
-                descriptor = MetricDescriptor(layer = MetricLayer.ENTRY),
-                idProvider = spanIdProvider
-            )
+            val span = SpanSupport.pushEntrySpan(ctx, className, methodName, spanIdProvider)
             mono.doOnSuccess { span.end(); ctx.pop() }
                 .doOnError { e -> span.end(e); ctx.pop(); ctx.recordException(e) }
         }

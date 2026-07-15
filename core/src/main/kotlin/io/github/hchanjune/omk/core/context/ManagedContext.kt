@@ -1,6 +1,9 @@
 package io.github.hchanjune.omk.core.context
 
 import io.github.hchanjune.omk.core.OperationRuntime
+import io.github.hchanjune.omk.core.bridge.BridgedSpan
+import io.github.hchanjune.omk.core.bridge.BridgedTrace
+import io.github.hchanjune.omk.core.bridge.SpanBridge
 import io.github.hchanjune.omk.core.contants.ExecutionScope
 import io.github.hchanjune.omk.core.contants.ManagedProtocolType
 import io.github.hchanjune.omk.core.contants.OperationOutcome
@@ -25,6 +28,16 @@ class ManagedContext(
 
     var causationId: String = ""
         private set
+
+    /**
+     * True when this context's traceId/causationId were extracted from an incoming carrier
+     * (traceparent header, event envelope) rather than self-generated. A [SpanBridge] uses
+     * this to decide between continuing the remote trace and starting a fresh one.
+     */
+    var traceContinuedFromRemote: Boolean = false
+        private set
+
+    fun markTraceContinuedFromRemote() { traceContinuedFromRemote = true }
 
     var issuer: String = ""
         private set
@@ -196,6 +209,9 @@ class ManagedContext(
     var rootSpan: MetricSpan? = null
         private set
 
+    // Backend root context, created lazily by the bridge on the first push.
+    private var bridgedTrace: BridgedTrace? = null
+
     fun push(
         name: MetricName,
         kind: MetricKind,
@@ -204,9 +220,11 @@ class ManagedContext(
         descriptor: MetricDescriptor,
         idProvider: SpanIdProvider
     ): MetricSpan {
+        val bridged = startBridgedSpan(name, tags, descriptor)
+
         val newSpan = MetricSpan(
             traceId = this.traceId,
-            spanId = idProvider.provideSpanId(),
+            spanId = bridged?.spanId ?: idProvider.provideSpanId(),
             name = name,
             kind = kind,
             policy = policy,
@@ -214,6 +232,10 @@ class ManagedContext(
             descriptor = descriptor,
             clock = clock
         )
+        if (bridged != null) {
+            newSpan.bridge = runtime?.spanBridge
+            newSpan.bridgeHandle = bridged
+        }
 
         if (spanStack.isEmpty()) {
             rootSpan = newSpan
@@ -223,6 +245,32 @@ class ManagedContext(
 
         spanStack.addFirst(newSpan)
         return newSpan
+    }
+
+    /**
+     * Starts a live backend span when a [SpanBridge] is attached. On the first (root) push the
+     * bridge also establishes the backend trace; when the trace was not continued from a remote
+     * carrier, the backend-generated traceId is adopted back into this context so OMK logs and
+     * the trace backend agree on one id. Fail-open: any bridge error falls back to OMK-only.
+     */
+    private fun startBridgedSpan(
+        name: MetricName,
+        tags: MetricTags,
+        descriptor: MetricDescriptor
+    ): BridgedSpan? {
+        val bridge = runtime?.spanBridge ?: return null
+        return try {
+            val trace = bridgedTrace ?: bridge.startTrace(this).also { bridgedTrace = it }
+            val parentHandle = spanStack.firstOrNull()?.bridgeHandle
+            val handle = bridge.startSpan(trace, name.value, descriptor.layer, tags, parentHandle)
+            if (spanStack.isEmpty() && !traceContinuedFromRemote && handle.traceId.isNotBlank()) {
+                traceId = handle.traceId
+            }
+            handle
+        } catch (e: Throwable) {
+            log.warn("Span bridge failed to start span [{}], falling back to OMK-only: {}", name.value, e.toString())
+            null
+        }
     }
 
     fun peek(): MetricSpan? = spanStack.firstOrNull()
@@ -246,6 +294,13 @@ class ManagedContext(
         child.message = this.message
         child.defaultLogging = this.defaultLogging
         child.runtime = this.runtime
+        // The fork continues this context's trace — without this the bridge would treat the
+        // child's first push as a fresh trace and clobber the copied traceId.
+        child.traceContinuedFromRemote = true
+        // Hand the live backend context of the forking span to the child, so the fork's spans
+        // parent under it (same backend trace) instead of starting a disconnected one.
+        child.bridgedTrace = (spanStack.firstOrNull()?.bridgeHandle?.nativeContext ?: bridgedTrace?.nativeContext)
+            ?.let { BridgedTrace(it) }
         child.executionScope = ExecutionScope.ASYNC
         child.isAsyncHookEnabled = this.isAsyncHookEnabled
         child.push(
@@ -284,4 +339,7 @@ class ManagedContext(
     fun isHooksExecuted(): Boolean = hooksExecuted
     fun markHooksExecuted() { hooksExecuted = true }
 
+    companion object {
+        private val log = org.slf4j.LoggerFactory.getLogger(ManagedContext::class.java)
+    }
 }
