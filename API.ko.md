@@ -15,6 +15,7 @@
   - [`@ManagedCacheRepository`](#managedcacherepository)
   - [`@ManagedOperation`](#managedoperation)
   - [`@ManagedMetric`](#managedmetric)
+  - [`@ManagedExternalCall`](#managedexternalcall)
   - [`@ManagedEventHandler`](#managedeventhandler)
   - [`@ManagedSchedule`](#managedschedule)
   - [이벤트 필드 어노테이션](#이벤트-필드-어노테이션)
@@ -37,6 +38,19 @@
 ## 어노테이션
 
 > 클래스 레벨 어노테이션(`@ManagedController`, `@ManagedService`, `@ManagedRepository`, `@ManagedCacheRepository`)은 전부 `@Inherited` — abstract 베이스 클래스에 붙이면 서브클래스가 선언한 메서드도 커버됩니다. 메서드 레벨 어노테이션은 자바 표준 시맨틱을 따릅니다: 선언된 메서드에 적용되며(오버라이드 없이 상속된 경우 포함), 오버라이드하면 어노테이션을 다시 붙여야 합니다.
+
+### span 레이어 한눈에 보기
+
+| 어노테이션                                                    | 레이어    | span                     |
+|----------------------------------------------------------|--------|--------------------------|
+| `@ManagedController`, `@ManagedEventHandler`, `@ManagedSchedule` | `[ENT]` | 루트 — 트레이스를 시작            |
+| `@ManagedOperation`, `@ManagedMetric`                    | `[APP]` | 자식                       |
+| `@ManagedRepository`                                     | `[DB ]` | 자식                       |
+| `@ManagedCacheRepository`                                | `[CAC]` | 자식                       |
+| `@ManagedExternalCall`                                   | `[EXT]` | 자식 — `SpanKind.CLIENT`   |
+| `@ManagedService`, 이벤트 필드 어노테이션                          | —      | 없음                       |
+
+레이어는 `MetricSpan.descriptor.layer`에 실리며, span 트리에서는 대괄호 라벨로 표시되고 `omk.span.duration` 메트릭의 차원이 됩니다. `@ManagedService`와 이벤트 필드 어노테이션은 자체 span을 만들지 않고 주변 컨텍스트만 보강합니다.
 
 ### `@ManagedController`
 
@@ -117,6 +131,31 @@ annotation class ManagedMetric(
 | 파라미터   | 타입       | 기본값  | 설명                                       |
 |--------|----------|------|------------------------------------------|
 | `name` | `String` | `""` | span 이름. 비어있으면 `ClassName.methodName` 사용 |
+
+---
+
+### `@ManagedExternalCall`
+
+```kotlin
+@Target(AnnotationTarget.FUNCTION)
+annotation class ManagedExternalCall(
+    val destination: String = "",
+    val route: String = ""
+)
+```
+
+외부 시스템으로 요청을 보내는 메서드에 적용합니다. `ClassName.methodName` 이름의 **EXTERNAL 레이어** 자식 span을 생성하며, `[EXT]`로 표시되고 OpenTelemetry로는 `SpanKind.CLIENT`로 브릿지됩니다.
+
+| 파라미터          | 타입       | 기본값  | 설명                                                  |
+|---------------|----------|------|-----------------------------------------------------|
+| `destination` | `String` | `""` | 호출 대상 시스템. `destination` 태그. 비어있으면 `ClassName` 사용 |
+| `route`       | `String` | `""` | 엔드포인트 route **템플릿**. `route` 태그. 비어있으면 태그 생략      |
+
+클래스가 아니라 **실제로 요청을 보내는 메서드**에 붙이세요. `@ManagedRepository`와 달리 메서드 레벨인 이유는, EXTERNAL span은 네트워크 왕복과 1:1로 대응할 때만 의미가 있는데 클라이언트 클래스에는 캐시된 토큰 반환이나 배치 no-op처럼 프로세스를 벗어나지 않는 메서드가 흔히 섞여 있기 때문입니다. 리포지토리는 모든 메서드가 저장소에 도달하므로 그런 문제가 없습니다.
+
+> **`route`는 반드시 템플릿이어야 하며 해석된 경로를 넣으면 안 됩니다.** `/scenario/{id}/episodes/{seq}`는 되고 `/scenario/01H8XK7.../episodes/3`은 안 됩니다. 태그는 메트릭 차원이 되므로 해석된 경로를 넣으면 id마다 시계열이 하나씩 생깁니다. 어노테이션 속성이라 컴파일 타임 상수이고 그래서 구조적으로 유계인데, 그 성질을 깨뜨리지 마세요 — [`MetricTags`](#metricspan)의 카디널리티 규칙 참고.
+
+span은 어노테이션이 붙은 **메서드의 실행 시간**을 잽니다. 메서드 안에서 응답 바디까지 읽는 블로킹 클라이언트라면 그게 곧 왕복 시간입니다. 실행이 메서드 반환 이후로 지연되는 경우를 주의하세요 — `RestClient` 체인이 종단 연산(`body()`, `toEntity()`, `toBodilessEntity()`) 없이 `retrieve()`에서 끝나면 요청이 아예 나가지 않고, span은 0에 가까운 정상 호출로 기록됩니다. 리액티브 스택에서는 `Mono` 반환·`suspend` 메서드를 반환 시점이 아니라 완료 시점에 측정합니다.
 
 ---
 

@@ -21,6 +21,7 @@
 - [관측 파이프라인](#관측-파이프라인)
 - [Logback 연동](#logback-연동)
 - [라이브러리 확장](#라이브러리-확장)
+- [단위 테스트](#단위-테스트)
 - [주의사항 및 제한](#주의사항-및-제한)
 
 ---
@@ -111,16 +112,19 @@ println(result.data) // "OK"
 
 ## 어노테이션
 
-| 어노테이션                  | 대상  | 역할                                                   |
-|------------------------|-----|------------------------------------------------------|
-| `@ManagedController`   | 클래스 | 핸들러 메서드마다 ENTRY 레이어 루트 span 생성; entrypoint 주입        |
-| `@ManagedService`      | 클래스 | 서비스 클래스명을 컨텍스트의 service에 주입                          |
-| `@ManagedRepository`   | 클래스 | 리포지토리의 모든 메서드를 DB 레이어 자식 span으로 계측                   |
-| `@ManagedCacheRepository` | 클래스 | 캐시 접근 클래스의 모든 메서드를 CACHE 레이어 자식 span으로 계측 (`[CAC]`) |
-| `@ManagedOperation`    | 메서드 | `operation`, `useCase` 값 주입; APPLICATION 레이어 span 생성 |
-| `@ManagedMetric`       | 메서드 | 임의 메서드를 이름이 있는 APPLICATION 레이어 자식 span으로 계측          |
-| `@ManagedEventHandler` | 메서드 | 메시징 핸들러에 ENTRY 레이어 span 생성; 이벤트 인자에서 트레이스 컨텍스트 자동 추출 |
-| `@ManagedSchedule`     | 메서드 | 스케줄러로 시작되는 메서드(예: `@Scheduled`)에 ENTRY 레이어 span 생성; 새 트레이스 컨텍스트 생성 |
+| 어노테이션                     | 대상  | 레이어    | 역할                                                     |
+|---------------------------|-----|--------|--------------------------------------------------------|
+| `@ManagedController`      | 클래스 | `[ENT]` | 핸들러 메서드마다 **루트** span 생성; entrypoint 주입                |
+| `@ManagedService`         | 클래스 | —       | span을 만들지 않음; 내부에서 열리는 모든 span에 붙을 서비스명만 주입            |
+| `@ManagedRepository`      | 클래스 | `[DB ]` | 클래스의 **모든** 메서드를 자식 span으로 계측                          |
+| `@ManagedCacheRepository` | 클래스 | `[CAC]` | 캐시 접근 클래스에 동일 적용, 캐시를 DB와 구분하기 위해 별도 레이어 사용            |
+| `@ManagedOperation`       | 메서드 | `[APP]` | 컨텍스트에 `operation`/`useCase`를 **정의**; 자식 span 생성        |
+| `@ManagedMetric`          | 메서드 | `[APP]` | 임의 메서드를 이름 있는 자식 span으로 계측; `operation`/`useCase`는 **상속** |
+| `@ManagedExternalCall`    | 메서드 | `[EXT]` | 외부 시스템으로 나가는 요청을 계측; OpenTelemetry에서는 `SpanKind.CLIENT` |
+| `@ManagedEventHandler`    | 메서드 | `[ENT]` | 메시징 핸들러에 **루트** span 생성; 이벤트 인자에서 트레이스 컨텍스트 자동 추출      |
+| `@ManagedSchedule`        | 메서드 | `[ENT]` | 스케줄러로 시작되는 메서드에 **루트** span 생성; 새 트레이스 컨텍스트 생성         |
+
+레이어는 해당 어노테이션이 만들어내는 span 레이어로, span 트리와 `omk.span.duration` 메트릭에 그대로 나타납니다. `—`는 자체 span을 만들지 않는다는 뜻입니다.
 
 ---
 
@@ -222,6 +226,7 @@ class MyEnrichmentHook : OperationHook {
             └── @ManagedMetric           ──  [APP] 자식 span
             └── @ManagedRepository       ──  [DB]  자식 span
             └── @ManagedCacheRepository  ──  [CAC] 자식 span
+            └── @ManagedExternalCall     ──  [EXT] 자식 span
 ```
 
 요청이 완료될 때 `MetricsOperationHook`(Order 60)이 Micrometer에 `omk.span.duration`으로 기록합니다.
@@ -431,10 +436,60 @@ OTel 자동계측 클라이언트(JDBC, `RestClient` 등)가 감싸는 OMK span 
 
 ---
 
+## 단위 테스트
+
+`@ManagedService`는 단위 테스트에서 직접 생성해도 됩니다. 스프링 컨텍스트도, OMK 부트스트랩도
+필요 없습니다.
+
+```kotlin
+class DeleteServiceTest {
+
+    private val accountRepository = mockk<AccountRepository>()
+    private val service = DeleteService(accountRepository)
+
+    @Test
+    fun `계정을 삭제한다`() {
+        every { accountRepository.findByIdOrThrow(any()) } returns account
+
+        val result = service.handle(DeleteAccountCommand(accountId = account.id))
+
+        assertEquals(account.id, result.data.accountId)
+        assertEquals("Account was successfully deleted.", result.context.message)
+    }
+}
+```
+
+이때 WARN 로그가 두 종류 찍힙니다. **둘 다 정상이며 무시하고 테스트하면 됩니다.**
+
+| 경고                                   | 발생 이유                                                                   |
+|--------------------------------------|--------------------------------------------------------------------------|
+| `No ManagedContext found ...`          | 필터나 진입점 어노테이션이 관리 범위를 연 적이 없어 detached 컨텍스트를 사용. 실행마다 기록됩니다. |
+| `OperationExecutor not configured ...` | OMK 자동설정이 돌지 않아 기본 executor를 주입. JVM당 한 번만 기록됩니다.              |
+
+둘 다 결과에는 영향이 없습니다. 블록은 그대로 실행되고, `OperationResult.data`에 반환값이 담기며,
+`OperationResult.context`는 진짜 `ManagedContext`라서 블록 안에서 넣은 값(`message = "..."`)을
+단언으로 검증할 수 있습니다.
+
+이 경고를 피하려고 `Operations` 객체를 목으로 대체하지 **마세요.** 목으로 바꾸면 `ManagedContext`가
+스텁으로 대체되어 블록이 컨텍스트에 쓴 내용이 조용히 버려지고, 그만큼 테스트가 검증할 수 있는 범위가
+줄어듭니다.
+
+executor 경고까지 없애고 싶다면 테스트 셋업에서 실제 executor를 설정하세요.
+
+```kotlin
+@BeforeTest
+fun setUp() {
+    Operations.configure(OperationExecutor())
+}
+```
+
+---
+
 ## 주의사항 및 제한
 
 - **Spring AOP 자기 호출**: 동일 클래스 내부의 메서드 호출은 AOP Aspect가 인터셉트하지 않습니다.
 - **`Operations.context` 범위**: 관리 범위 밖에서 호출하면 WARN 로그 후 detached(비관리) 컨텍스트를 반환합니다 — 비즈니스 로직은 그대로 실행되지만 span/훅은 기록되지 않습니다. 진짜 관리 범위가 필요하면 진입점에 어노테이션(`@ManagedSchedule`, `@ManagedEventHandler`)을 붙이세요.
+- **executor 미설정**: OMK 자동설정 이전(또는 없이) `Operations { }`가 실행되면 **JVM당 한 번** WARN 로그를 남기고 기본 `OperationExecutor()`로 폴백합니다. 블록은 정상 실행·반환되며 관측만 degrade됩니다. **구동 중인 애플리케이션에서 이 경고가 보인다면 OMK 설정이 잘못된 것입니다 — 서블릿 스타터가 클래스패스에 없거나 자동설정이 제외된 상태이고, 아무것도 기록되지 않고 있으니 즉시 고치세요.** 단위 테스트에서 `@ManagedService`를 직접 생성한 경우라면 정상이며 무시해도 됩니다 — [단위 테스트](#단위-테스트) 참고.
 - **스트리밍 응답**: `traceparent` 응답 헤더는 스트리밍 또는 비동기 응답에서 전달되지 않을 수 있습니다.
 - **스레드 로컬 컨텍스트**: `ManagedContext`는 `ThreadLocal`에 저장됩니다. Kotlin 코루틴은 `ManagedContextElement`를 통한 명시적 전파가 필요합니다.
 

@@ -163,16 +163,19 @@ Context state is cumulative:
 
 ## Annotations
 
-| Annotation             | Target | Purpose                                                                                            |
-|------------------------|--------|----------------------------------------------------------------------------------------------------|
-| `@ManagedController`   | Class  | Opens an ENTRY-layer root span per handler method; injects entrypoint into context                 |
-| `@ManagedService`      | Class  | Injects service name into context                                                                  |
-| `@ManagedRepository`   | Class  | Instruments all methods on a repository as DB-layer child spans                                    |
-| `@ManagedCacheRepository` | Class | Instruments all methods on a cache access class as CACHE-layer child spans (`[CAC]`)              |
-| `@ManagedOperation`    | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span                    |
-| `@ManagedMetric`       | Method | Instruments any method as a named APPLICATION-layer child span                                     |
-| `@ManagedEventHandler` | Method | Opens an ENTRY-layer span for messaging handlers; auto-extracts trace context from event arguments |
-| `@ManagedSchedule`     | Method | Opens an ENTRY-layer span for scheduler-triggered methods (e.g. `@Scheduled`); generates a fresh trace context |
+| Annotation                | Target | Layer   | Purpose                                                                                    |
+|---------------------------|--------|---------|--------------------------------------------------------------------------------------------|
+| `@ManagedController`      | Class  | `[ENT]` | Opens a **root** span per handler method; injects entrypoint into context                   |
+| `@ManagedService`         | Class  | —       | Opens no span; injects the service name that tags every span opened inside it               |
+| `@ManagedRepository`      | Class  | `[DB ]` | Instruments **every** method of the class as a child span                                   |
+| `@ManagedCacheRepository` | Class  | `[CAC]` | Same as above for a cache access class, on its own layer so cache stays separable from DB   |
+| `@ManagedOperation`       | Method | `[APP]` | **Defines** `operation` and `useCase` for the context; opens a child span                   |
+| `@ManagedMetric`          | Method | `[APP]` | Opens a named child span for any method; **inherits** `operation`/`useCase`                 |
+| `@ManagedExternalCall`    | Method | `[EXT]` | Instruments an outbound call to another system; `SpanKind.CLIENT` in OpenTelemetry          |
+| `@ManagedEventHandler`    | Method | `[ENT]` | Opens a **root** span for messaging handlers; auto-extracts trace context from event args   |
+| `@ManagedSchedule`        | Method | `[ENT]` | Opens a **root** span for scheduler-triggered methods; generates a fresh trace context      |
+
+Layer is the span layer the annotation produces, as it appears in span trees and in the `omk.span.duration` metric. `—` means the annotation opens no span of its own.
 
 > `@ManagedRepository` **currently** works on implementation classes only. Spring Data reactive repositories are interfaces (JDK proxies), so applying it directly to a `CoroutineCrudRepository` interface will not take effect — use `@ManagedMetric` on the calling service methods instead. Interface support is on the [roadmap](README.md#roadmap).
 
@@ -274,6 +277,7 @@ class MyEnrichmentHook : OperationHook {
             └── @ManagedMetric           ──  [APP] child span
             └── @ManagedRepository       ──  [DB]  child span
             └── @ManagedCacheRepository  ──  [CAC] child span
+            └── @ManagedExternalCall     ──  [EXT] child span
 ```
 
 Spans are flushed by `MetricsOperationHook` (Order 60) when the request completes, recorded to Micrometer as `omk.span.duration`.
@@ -477,5 +481,6 @@ part that needs the extra library. Disable explicitly with
 - **`@ManagedRepository` on interfaces**: currently implementation classes only — Spring Data reactive repositories are interfaces, so the annotation has no effect on them directly. Use `@ManagedMetric` on service methods instead (interface support is on the [roadmap](README.md#roadmap)).
 - **Event loop thread**: In a properly non-blocking application, spans will show the same `reactor-http-nio-*` thread. This is expected behavior — switching to `Dispatchers.IO` is only necessary for blocking operations.
 - **`ReactiveOperations` scope**: Calling `ReactiveOperations { }` outside a managed scope logs a WARN and proceeds with a detached (unmanaged) context — the business logic runs, but spans and hooks are not recorded. Annotate the entry point (`@ManagedSchedule`, `@ManagedEventHandler`) to get a real managed scope.
+- **Unit testing**: `ReactiveOperations` runs the block directly and never goes through an `OperationExecutor`, so a `@ManagedService` can be constructed in a plain unit test with no OMK bootstrapping. The detached-context WARN above is the only symptom and is safe to ignore. Do not mock the `ReactiveOperations` object to silence it — that replaces the `ManagedContext` with a stub and silently discards whatever the block wrote to it (`message = "..."`), putting those assertions out of reach. (The servlet `Operations` object additionally warns once per JVM about an unconfigured executor; the reactive path has no such warning.)
 
 ---

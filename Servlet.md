@@ -21,6 +21,7 @@
 - [Observability Pipelines](#observability-pipelines)
 - [Logback Integration](#logback-integration)
 - [Extending the Library](#extending-the-library)
+- [Unit Testing](#unit-testing)
 - [Notes & Limitations](#notes--limitations)
 
 ---
@@ -111,16 +112,19 @@ println(result.data) // "OK"
 
 ## Annotations
 
-| Annotation             | Target | Purpose                                                                                            |
-|------------------------|--------|----------------------------------------------------------------------------------------------------|
-| `@ManagedController`   | Class  | Opens an ENTRY-layer root span per handler method; injects entrypoint into context                 |
-| `@ManagedService`      | Class  | Injects service name into context                                                                  |
-| `@ManagedRepository`   | Class  | Instruments all methods on a repository as DB-layer child spans                                    |
-| `@ManagedCacheRepository` | Class | Instruments all methods on a cache access class as CACHE-layer child spans (`[CAC]`)              |
-| `@ManagedOperation`    | Method | Injects `operation` and `useCase` into context; opens an APPLICATION-layer span                    |
-| `@ManagedMetric`       | Method | Instruments any method as a named APPLICATION-layer child span                                     |
-| `@ManagedEventHandler` | Method | Opens an ENTRY-layer span for messaging handlers; auto-extracts trace context from event arguments |
-| `@ManagedSchedule`     | Method | Opens an ENTRY-layer span for scheduler-triggered methods (e.g. `@Scheduled`); generates a fresh trace context |
+| Annotation                | Target | Layer   | Purpose                                                                                    |
+|---------------------------|--------|---------|--------------------------------------------------------------------------------------------|
+| `@ManagedController`      | Class  | `[ENT]` | Opens a **root** span per handler method; injects entrypoint into context                   |
+| `@ManagedService`         | Class  | —       | Opens no span; injects the service name that tags every span opened inside it               |
+| `@ManagedRepository`      | Class  | `[DB ]` | Instruments **every** method of the class as a child span                                   |
+| `@ManagedCacheRepository` | Class  | `[CAC]` | Same as above for a cache access class, on its own layer so cache stays separable from DB   |
+| `@ManagedOperation`       | Method | `[APP]` | **Defines** `operation` and `useCase` for the context; opens a child span                   |
+| `@ManagedMetric`          | Method | `[APP]` | Opens a named child span for any method; **inherits** `operation`/`useCase`                 |
+| `@ManagedExternalCall`    | Method | `[EXT]` | Instruments an outbound call to another system; `SpanKind.CLIENT` in OpenTelemetry          |
+| `@ManagedEventHandler`    | Method | `[ENT]` | Opens a **root** span for messaging handlers; auto-extracts trace context from event args   |
+| `@ManagedSchedule`        | Method | `[ENT]` | Opens a **root** span for scheduler-triggered methods; generates a fresh trace context      |
+
+Layer is the span layer the annotation produces, as it appears in span trees and in the `omk.span.duration` metric. `—` means the annotation opens no span of its own.
 
 ---
 
@@ -222,6 +226,7 @@ class MyEnrichmentHook : OperationHook {
             └── @ManagedMetric           ──  [APP] child span
             └── @ManagedRepository       ──  [DB]  child span
             └── @ManagedCacheRepository  ──  [CAC] child span
+            └── @ManagedExternalCall     ──  [EXT] child span
 ```
 
 Spans are flushed by `MetricsOperationHook` (Order 60) when the request completes, recorded to Micrometer as `omk.span.duration`.
@@ -431,10 +436,60 @@ Without a `Tracer` bean, OMK runs fully self-contained. Disable explicitly with
 
 ---
 
+## Unit Testing
+
+A `@ManagedService` can be constructed directly in a plain unit test — no Spring context, and
+no OMK bootstrapping required:
+
+```kotlin
+class DeleteServiceTest {
+
+    private val accountRepository = mockk<AccountRepository>()
+    private val service = DeleteService(accountRepository)
+
+    @Test
+    fun `deletes the account`() {
+        every { accountRepository.findByIdOrThrow(any()) } returns account
+
+        val result = service.handle(DeleteAccountCommand(accountId = account.id))
+
+        assertEquals(account.id, result.data.accountId)
+        assertEquals("Account was successfully deleted.", result.context.message)
+    }
+}
+```
+
+Two WARN logs appear while such a test runs. **Both are expected — ignore them:**
+
+| Warning                           | Why it appears                                                      |
+|-----------------------------------|---------------------------------------------------------------------|
+| `No ManagedContext found ...`     | No filter or entry-point annotation opened a scope; a detached context is used. Logged per execution. |
+| `OperationExecutor not configured ...` | OMK's auto-configuration never ran; a default executor is installed. Logged once per JVM. |
+
+Neither affects the result: the block runs, `OperationResult.data` holds the return value, and
+`OperationResult.context` is a real `ManagedContext`, so assignments made inside the block
+(`message = "..."`) are observable in assertions.
+
+Do **not** mock the `Operations` object to work around these warnings. Mocking it replaces the
+`ManagedContext` with a stub, which silently discards everything the block writes to the context
+and removes those assertions from your test's reach.
+
+To silence the executor warning, configure a real executor in your test setup:
+
+```kotlin
+@BeforeTest
+fun setUp() {
+    Operations.configure(OperationExecutor())
+}
+```
+
+---
+
 ## Notes & Limitations
 
 - **Spring AOP self-invocation**: AOP aspects do not intercept internal method calls within the same class.
 - **`Operations.context` scope**: Calling outside a managed scope logs a WARN and returns a detached (unmanaged) context — the business logic proceeds, but spans and hooks are not recorded. Annotate the entry point (`@ManagedSchedule`, `@ManagedEventHandler`) to get a real managed scope.
+- **Unconfigured executor**: If `Operations { }` runs before (or without) OMK's auto-configuration, it logs a WARN **once per JVM** and falls back to a default `OperationExecutor()`. The block still executes and returns normally — only observability is degraded. **In a running application this warning means OMK is misconfigured: the servlet starter is missing from the classpath or its auto-configuration is excluded. Fix it promptly, because nothing is being recorded.** In a plain unit test that constructs a `@ManagedService` directly, the warning is expected and safe to ignore — see [Unit testing](#unit-testing).
 - **Streaming responses**: The `traceparent` response header may not be delivered for streaming or async responses.
 - **Thread-local context**: `ManagedContext` is stored in `ThreadLocal`. Kotlin coroutines require explicit propagation via `ManagedContextElement`.
 

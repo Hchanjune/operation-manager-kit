@@ -163,16 +163,19 @@ suspend fun record() = ReactiveOperations<AuditResult> {
 
 ## 어노테이션
 
-| 어노테이션                  | 대상  | 역할                                                   |
-|------------------------|-----|------------------------------------------------------|
-| `@ManagedController`   | 클래스 | 핸들러 메서드마다 ENTRY 레이어 루트 span 생성; entrypoint 주입        |
-| `@ManagedService`      | 클래스 | 서비스 클래스명을 컨텍스트의 service에 주입                          |
-| `@ManagedRepository`   | 클래스 | 리포지토리의 모든 메서드를 DB 레이어 자식 span으로 계측                   |
-| `@ManagedCacheRepository` | 클래스 | 캐시 접근 클래스의 모든 메서드를 CACHE 레이어 자식 span으로 계측 (`[CAC]`) |
-| `@ManagedOperation`    | 메서드 | `operation`, `useCase` 값 주입; APPLICATION 레이어 span 생성 |
-| `@ManagedMetric`       | 메서드 | 임의 메서드를 이름이 있는 APPLICATION 레이어 자식 span으로 계측          |
-| `@ManagedEventHandler` | 메서드 | 메시징 핸들러에 ENTRY 레이어 span 생성; 이벤트 인자에서 트레이스 컨텍스트 자동 추출 |
-| `@ManagedSchedule`     | 메서드 | 스케줄러로 시작되는 메서드(예: `@Scheduled`)에 ENTRY 레이어 span 생성; 새 트레이스 컨텍스트 생성 |
+| 어노테이션                     | 대상  | 레이어    | 역할                                                     |
+|---------------------------|-----|--------|--------------------------------------------------------|
+| `@ManagedController`      | 클래스 | `[ENT]` | 핸들러 메서드마다 **루트** span 생성; entrypoint 주입                |
+| `@ManagedService`         | 클래스 | —       | span을 만들지 않음; 내부에서 열리는 모든 span에 붙을 서비스명만 주입            |
+| `@ManagedRepository`      | 클래스 | `[DB ]` | 클래스의 **모든** 메서드를 자식 span으로 계측                          |
+| `@ManagedCacheRepository` | 클래스 | `[CAC]` | 캐시 접근 클래스에 동일 적용, 캐시를 DB와 구분하기 위해 별도 레이어 사용            |
+| `@ManagedOperation`       | 메서드 | `[APP]` | 컨텍스트에 `operation`/`useCase`를 **정의**; 자식 span 생성        |
+| `@ManagedMetric`          | 메서드 | `[APP]` | 임의 메서드를 이름 있는 자식 span으로 계측; `operation`/`useCase`는 **상속** |
+| `@ManagedExternalCall`    | 메서드 | `[EXT]` | 외부 시스템으로 나가는 요청을 계측; OpenTelemetry에서는 `SpanKind.CLIENT` |
+| `@ManagedEventHandler`    | 메서드 | `[ENT]` | 메시징 핸들러에 **루트** span 생성; 이벤트 인자에서 트레이스 컨텍스트 자동 추출      |
+| `@ManagedSchedule`        | 메서드 | `[ENT]` | 스케줄러로 시작되는 메서드에 **루트** span 생성; 새 트레이스 컨텍스트 생성         |
+
+레이어는 해당 어노테이션이 만들어내는 span 레이어로, span 트리와 `omk.span.duration` 메트릭에 그대로 나타납니다. `—`는 자체 span을 만들지 않는다는 뜻입니다.
 
 > `@ManagedRepository`는 **현재** 구현 클래스에만 동작합니다. Spring Data reactive 리포지토리는 인터페이스(JDK 프록시)라 `CoroutineCrudRepository` 인터페이스에 직접 적용해도 효과가 없습니다 — 대신 호출하는 서비스 메서드에 `@ManagedMetric`을 사용하세요. 인터페이스 지원은 [로드맵](README.ko.md#로드맵)에 있습니다.
 
@@ -274,6 +277,7 @@ class MyEnrichmentHook : OperationHook {
             └── @ManagedMetric           ──  [APP] 자식 span
             └── @ManagedRepository       ──  [DB]  자식 span
             └── @ManagedCacheRepository  ──  [CAC] 자식 span
+            └── @ManagedExternalCall     ──  [EXT] 자식 span
 ```
 
 요청이 완료될 때 `MetricsOperationHook`(Order 60)이 Micrometer에 `omk.span.duration`으로 기록합니다.
@@ -475,5 +479,6 @@ implementation("io.opentelemetry.instrumentation:opentelemetry-reactor-3.1:2.16.
 - **인터페이스에 `@ManagedRepository`**: 현재는 구현 클래스에만 동작 — Spring Data reactive 리포지토리는 인터페이스라 직접 적용이 불가합니다. 서비스 메서드에 `@ManagedMetric`을 사용하세요 (인터페이스 지원은 [로드맵](README.ko.md#로드맵) 참고).
 - **이벤트 루프 스레드**: 논블로킹 애플리케이션에서는 span이 동일한 `reactor-http-nio-*` 스레드를 보여주는 것이 정상입니다. 블로킹 작업에만 `Dispatchers.IO`가 필요합니다.
 - **`ReactiveOperations` 범위**: 관리 범위 밖에서 호출하면 WARN 로그 후 detached(비관리) 컨텍스트로 진행합니다 — 비즈니스 로직은 그대로 실행되지만 span/훅은 기록되지 않습니다. 진짜 관리 범위가 필요하면 진입점에 어노테이션(`@ManagedSchedule`, `@ManagedEventHandler`)을 붙이세요.
+- **단위 테스트**: `ReactiveOperations`는 블록을 직접 실행하며 `OperationExecutor`를 거치지 않습니다. 따라서 `@ManagedService`를 단위 테스트에서 직접 생성해도 OMK 부트스트랩이 전혀 필요 없습니다. 위의 detached 컨텍스트 WARN만 찍히며 무시하고 테스트하면 됩니다. 이 경고를 없애려고 `ReactiveOperations` 객체를 목으로 대체하지 마세요 — `ManagedContext`가 스텁으로 바뀌면서 블록이 컨텍스트에 쓴 값(`message = "..."`)이 조용히 버려져 단언할 수 없게 됩니다. (서블릿의 `Operations`는 executor 미설정에 대해 JVM당 한 번 추가 경고를 남기지만, 리액티브 경로에는 해당 경고가 없습니다.)
 
 ---

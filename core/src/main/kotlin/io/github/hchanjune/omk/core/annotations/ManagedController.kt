@@ -2,6 +2,9 @@ package io.github.hchanjune.omk.core.annotations
 
 import java.lang.annotation.Inherited
 
+/**
+ * Span layer: `[ENT]` ENTRY — opens a **root** span, one per handler method.
+ */
 // @Inherited: subclasses of an annotated base class are matched by the @within pointcut
 // for methods they declare themselves.
 @Inherited

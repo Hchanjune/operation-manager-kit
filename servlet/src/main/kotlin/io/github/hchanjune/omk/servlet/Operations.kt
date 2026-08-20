@@ -12,12 +12,15 @@ import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicBoolean
 
 object Operations: ManagedContextHolder {
 
     private val logger = LoggerFactory.getLogger(Operations::class.java)
 
     private val contextHolder = ThreadLocal<ManagedContext>()
+
+    private val executorFallbackWarned = AtomicBoolean(false)
 
     // Configuration reads resolve through the runtime attached to the current context first
     // (set by the entry point that opened it), falling back to this static default. The
@@ -75,9 +78,35 @@ object Operations: ManagedContextHolder {
 
     override fun <T> invoke(block: ManagedContext.() -> T): OperationResult<T> {
         val ctx = context
-        val exe = ctx.runtime?.executor ?: defaultRuntime.executor
-            ?: error("OperationExecutor not configured. Ensure OMK is properly set up.")
+        val exe = ctx.runtime?.executor ?: defaultRuntime.executor ?: fallbackExecutor()
         return exe.run(ctx, block)
+    }
+
+    // Last-resort executor for code reaching Operations before (or without) OMK's
+    // auto-configuration — most often a plain unit test constructing a @ManagedService
+    // directly. Business logic keeps running and only observability degrades, matching how
+    // a missing ManagedContext is handled in `context` above. The executor holds no
+    // configuration of its own (the runtime owns the hook and providers), so this instance
+    // is equivalent to the one the Spring configuration would have supplied. It is stored
+    // on the default runtime so the warning is emitted once per JVM rather than on every
+    // operation; the detached-context warning above already fires per execution.
+    private fun fallbackExecutor(): OperationExecutor {
+        if (executorFallbackWarned.compareAndSet(false, true)) {
+            logger.warn(
+                "OperationExecutor not configured — falling back to a default OperationExecutor(). " +
+                    "Business logic runs normally, but this execution is outside OMK's configured " +
+                    "runtime, so spans, hooks and metrics are NOT recorded for it. " +
+                    "In a Spring application the executor is wired automatically: check that the OMK " +
+                    "servlet starter is on the classpath and that its auto-configuration is not " +
+                    "excluded — if you are seeing this outside of a test, treat it as a " +
+                    "misconfiguration and fix it promptly. " +
+                    "In a plain unit test that instantiates a @ManagedService directly this warning " +
+                    "is expected and safe to ignore; call Operations.configure(OperationExecutor()) " +
+                    "in your test setup if you would rather silence it. " +
+                    "This warning is logged once per JVM."
+            )
+        }
+        return OperationExecutor().also { defaultRuntime.executor = it }
     }
 
     override fun initializeForEvent(metadata: EventMetadata) = initializeForEvent(metadata, null)

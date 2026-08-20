@@ -1,5 +1,10 @@
 package io.github.hchanjune.omk.core.annotations
 
+/**
+ * Span layer: `[ENT]` ENTRY — opens a **root** span for a scheduler-triggered method and sets
+ * `executionScope` to `SCHEDULED`. There is no inbound request or message to carry a trace
+ * context, so a fresh `traceId`/`causationId` pair is generated for each run.
+ */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class ManagedSchedule(

@@ -92,6 +92,32 @@ object SpanSupport {
         idProvider = idProvider
     )
 
+    fun pushExternalSpan(
+        context: ManagedContext,
+        className: String,
+        methodName: String,
+        destination: String,
+        route: String,
+        idProvider: SpanIdProvider
+    ): MetricSpan = context.push(
+        name = MetricName("$className.$methodName"),
+        kind = MetricKind.TIMER,
+        policy = MetricPolicy.defaults(),
+        // A blank route is dropped by the builder rather than tagged "unknown".
+        tags = MetricTags.Builder()
+            .put("destination", destination)
+            .put("route", route)
+            .put("method", methodName)
+            .put("operation", context.operation)
+            .build(),
+        descriptor = MetricDescriptor(
+            operation = context.operation,
+            useCase = context.useCase,
+            layer = MetricLayer.EXTERNAL
+        ),
+        idProvider = idProvider
+    )
+
     fun pushCacheSpan(
         context: ManagedContext,
         className: String,

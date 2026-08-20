@@ -7,6 +7,7 @@ import io.github.hchanjune.omk.servlet.aspect.ManagedEventHandlerAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedOperationAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedScheduleAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedControllerAspect
+import io.github.hchanjune.omk.servlet.aspect.ManagedExternalCallAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedMetricAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedRepositoryAspect
 import io.github.hchanjune.omk.servlet.aspect.ManagedServiceAspect
@@ -113,6 +114,23 @@ internal class AspectConfiguration {
         spanIdProvider: SpanIdProvider,
     ): ManagedMetricAspect =
         ManagedMetricAspect(spanIdProvider)
+
+    /**
+     * ###### ManagedExternalCallAspect
+     */
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+        prefix = "operation-manager.servlet.context-aspect",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    fun managedExternalCallAspect(
+        spanIdProvider: SpanIdProvider,
+    ): ManagedExternalCallAspect =
+        ManagedExternalCallAspect(spanIdProvider)
 
     /**
      * ###### ManagedRepositoryAspect

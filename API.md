@@ -15,6 +15,7 @@
   - [`@ManagedCacheRepository`](#managedcacherepository)
   - [`@ManagedOperation`](#managedoperation)
   - [`@ManagedMetric`](#managedmetric)
+  - [`@ManagedExternalCall`](#managedexternalcall)
   - [`@ManagedEventHandler`](#managedeventhandler)
   - [`@ManagedSchedule`](#managedschedule)
   - [Event field annotations](#event-field-annotations)
@@ -37,6 +38,19 @@
 ## Annotations
 
 > All class-level annotations (`@ManagedController`, `@ManagedService`, `@ManagedRepository`, `@ManagedCacheRepository`) are `@Inherited` — annotating an abstract base class also covers methods declared in its subclasses. Method-level annotations follow standard Java semantics: they apply to the declaring method (including when inherited un-overridden), but an override must re-declare the annotation.
+
+### Span layers at a glance
+
+| Annotation                                            | Layer   | Span                     |
+|-------------------------------------------------------|---------|--------------------------|
+| `@ManagedController`, `@ManagedEventHandler`, `@ManagedSchedule` | `[ENT]` | Root — starts a trace     |
+| `@ManagedOperation`, `@ManagedMetric`                 | `[APP]` | Child                    |
+| `@ManagedRepository`                                  | `[DB ]` | Child                    |
+| `@ManagedCacheRepository`                             | `[CAC]` | Child                    |
+| `@ManagedExternalCall`                                | `[EXT]` | Child — `SpanKind.CLIENT` |
+| `@ManagedService`, event field annotations            | —       | None                     |
+
+The layer is carried on `MetricSpan.descriptor.layer`, renders as the bracketed label in span trees, and becomes a dimension of the `omk.span.duration` metric. `@ManagedService` and the event field annotations open no span of their own — they only enrich the surrounding context.
 
 ### `@ManagedController`
 
@@ -117,6 +131,31 @@ Applied to any method. Opens an **APPLICATION-layer** child span with the given 
 | Parameter | Type     | Default | Description                                     |
 |-----------|----------|---------|-------------------------------------------------|
 | `name`    | `String` | `""`    | Span name. Falls back to `ClassName.methodName` |
+
+---
+
+### `@ManagedExternalCall`
+
+```kotlin
+@Target(AnnotationTarget.FUNCTION)
+annotation class ManagedExternalCall(
+    val destination: String = "",
+    val route: String = ""
+)
+```
+
+Applied to a method that issues an outbound call to another system. Opens an **EXTERNAL-layer** child span named `ClassName.methodName`, rendered as `[EXT]` and bridged to OpenTelemetry as `SpanKind.CLIENT`.
+
+| Parameter     | Type     | Default | Description                                                              |
+|---------------|----------|---------|--------------------------------------------------------------------------|
+| `destination` | `String` | `""`    | System being called, as the `destination` tag. Falls back to `ClassName` |
+| `route`       | `String` | `""`    | Endpoint route **template**, as the `route` tag. Omitted when blank      |
+
+Annotate the method that actually issues the request, not the class holding it. Unlike `@ManagedRepository`, this annotation is method-level because an EXTERNAL span is only meaningful when it maps one-to-one onto a network round trip, and client classes routinely contain methods that short-circuit — a cached token, a batched no-op — or never leave the process at all. A repository has no such problem: every one of its methods does reach the store.
+
+> **`route` must be a template, never a resolved path.** `/scenario/{id}/episodes/{seq}`, not `/scenario/01H8XK7.../episodes/3`. Tags become metric dimensions, so a resolved path creates one time series per id. Because the value is an annotation attribute it is a compile-time constant and stays bounded by construction — see the cardinality rules on [`MetricTags`](#metricspan).
+
+The span measures the annotated method's execution. For a blocking client that reads the response body inside the method, that equals the round trip. Watch for calls whose execution is deferred past the method return — a `RestClient` chain ending at `retrieve()` with no terminal operator (`body()`, `toEntity()`, `toBodilessEntity()`) sends nothing, and the span will report a healthy near-zero call. On the reactive stack, `Mono`-returning and `suspend` methods are timed on completion rather than on return.
 
 ---
 

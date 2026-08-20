@@ -5,6 +5,7 @@ import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.reactive.aspect.ManagedCacheRepositoryAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedControllerAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedEventHandlerAspect
+import io.github.hchanjune.omk.reactive.aspect.ManagedExternalCallAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedMetricAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedOperationAspect
 import io.github.hchanjune.omk.reactive.aspect.ManagedRepositoryAspect
@@ -56,6 +57,12 @@ internal class AspectConfiguration {
     @ConditionalOnProperty(prefix = "operation-manager.reactive.context-aspect", name = ["enabled"], havingValue = "true", matchIfMissing = true)
     fun managedMetricAspect(spanIdProvider: SpanIdProvider): ManagedMetricAspect =
         ManagedMetricAspect(spanIdProvider)
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "operation-manager.reactive.context-aspect", name = ["enabled"], havingValue = "true", matchIfMissing = true)
+    fun managedExternalCallAspect(spanIdProvider: SpanIdProvider): ManagedExternalCallAspect =
+        ManagedExternalCallAspect(spanIdProvider)
 
     @Bean
     @ConditionalOnMissingBean
