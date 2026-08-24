@@ -56,7 +56,7 @@ class ManagedEventHandlerAspect(
         val newContext = ReactiveOperations.initializeForEvent(EventMetadataExtractor.extract(joinPoint.args), runtime)
         newContext.injectEntryPoint(className)
         val span = SpanSupport.pushEntrySpan(newContext, className, methodName, spanIdProvider)
-        eventHandlerContext.set(newContext)
+        threadBoundContext.set(newContext)
         return try {
             val result = joinPoint.proceed()
             span.end(); newContext.pop(); newContext.end()
@@ -67,7 +67,7 @@ class ManagedEventHandlerAspect(
             ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e)
             throw e
         } finally {
-            eventHandlerContext.remove()
+            threadBoundContext.remove()
         }
     }
 }

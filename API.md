@@ -22,6 +22,7 @@
 - [ManagedContext](#managedcontext)
 - [Operations (WebMVC)](#operations-webmvc)
 - [ReactiveOperations (WebFlux)](#reactiveoperations-webflux)
+- [ManagedContextElement (WebFlux)](#managedcontextelement-webflux)
 - [OperationHook](#operationhook)
 - [OperationResult\<T\>](#operationresultt)
 - [MetricSpan](#metricspan)
@@ -354,11 +355,52 @@ val result: Mono<OperationResult<MyData>> = ReactiveOperations.mono {
 }
 ```
 
+### Current context
+
+```kotlin
+suspend fun currentContextOrNull(): ManagedContext?
+```
+
+The context governing the current execution, or `null` when there is none. Resolution order,
+innermost scope first: a `ManagedContextElement` installed on this coroutine, then the Reactor
+context, then the thread-bound context opened by a blocking `@ManagedEventHandler` /
+`@ManagedSchedule`. Unlike `invoke`, it never falls back to a detached context.
+
 ### Properties
 
 | Property | Type             | Description             |
 |----------|------------------|-------------------------|
 | `hook`   | `OperationHook?` | Composite hook instance |
+
+---
+
+## ManagedContextElement (WebFlux)
+
+Carries a `ManagedContext` into a coroutine that leaves the Reactor pipeline — `withContext`,
+`launch`, `async` — or out of a blocking entry point. Without it the aspects inside the new scope
+find no context and skip silently.
+
+```kotlin
+package io.github.hchanjune.omk.reactive.async
+
+class ManagedContextElement(val managedContext: ManagedContext) : CopyableThreadContextElement<ManagedContext?>
+
+suspend fun managedContextElement(): CoroutineContext
+```
+
+```kotlin
+withContext(Dispatchers.IO + managedContextElement()) {
+    userClient.fetch(userId)   // @ManagedExternalCall span is recorded here
+}
+```
+
+Each receiving coroutine runs on a **fork** of the context (`forkAsync()`): ids and entrypoint are
+inherited, `executionScope` becomes `ASYNC`, and the span tree, timing and hook records are the
+fork's own — so the scope reports as its own trace entry under the parent's traceId. The helper
+returns `EmptyCoroutineContext` outside any managed scope. Reporting requires
+`operation-manager.reactive.async-propagation.hook-enabled` (default `true`).
+
+See [Reactive.md](Reactive.md#coroutine-scopes-that-leave-the-pipeline).
 
 ---
 
@@ -647,6 +689,7 @@ Default implementation uses Micrometer. Falls back to no-op when `MeterRegistry`
 | `context-filter.enabled`                            | `Boolean`         | `true`           | Enable WebFilter                         |
 | `context-aspect.enabled`                            | `Boolean`         | `true`           | Enable AOP aspects                       |
 | `micrometer.enabled`                                | `Boolean`         | `true`           | Enable Micrometer recording              |
+| `async-propagation.hook-enabled`                    | `Boolean`         | `true`           | Report coroutine scopes opened with `ManagedContextElement` |
 | `logging.enabled`                                   | `Boolean`         | `true`           | Enable default logging hook              |
 | `logging.pretty`                                    | `Boolean`         | `false`          | Pretty-print format                      |
 | `logging.json`                                      | `Boolean`         | `true`           | JSON format                              |

@@ -220,6 +220,7 @@ class ConfigurationTest {
             traceIdProvider = provConfig.traceIdProvider(),
             causationIdProvider = provConfig.causationIdProvider(),
             telemetryProperties = defaultTelemetryProps,
+            properties = OperationManagerReactiveConfigProperties(),
             spanBridgeProvider = emptyObjectProvider()
         )
         assertNotNull(runtime.hook)

@@ -210,6 +210,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] Spring WebMVC support
 - [x] Spring WebFlux support (Kotlin Coroutines)
 - [x] Spring WebMVC Async context propagation (`@Async`, coroutines, virtual threads)
+- [x] Spring WebFlux coroutine-scope context propagation (`ManagedContextElement`) — carries the context into `withContext`/`launch`/`async` scopes that leave the Reactor pipeline, so annotated calls made there are still recorded
 - [x] Span-level metric instrumentation
 - [x] Micrometer integration
 - [x] OpenTelemetry live span bridge — OMK spans are real OTel spans with adopted ids (logs and trace viewer share the same `spanId`/`traceId`); auto-instrumented clients nest under OMK spans

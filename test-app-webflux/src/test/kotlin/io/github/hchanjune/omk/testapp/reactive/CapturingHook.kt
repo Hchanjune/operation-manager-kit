@@ -23,6 +23,9 @@ class CapturingHook : OperationHook {
     val lastFailure: ManagedContext?  get() = failureContexts.lastOrNull()
     val lastException: Throwable?     get() = failureExceptions.lastOrNull()
     val successCount: Int             get() = successContexts.size
+
+    /** Every captured success — an async scope and its parent are reported independently. */
+    fun successes(): List<ManagedContext> = successContexts.toList()
     val failureCount: Int             get() = failureContexts.size
 
     fun clear() {

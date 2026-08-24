@@ -47,6 +47,7 @@ class ManagedContextWebFilter(
             injectType("API")
             injectHttpInfo(uri = request.uri.path, method = request.method.name())
             runtime = operationRuntime
+            if (operationRuntime?.defaultAsyncHookEnabled == true) enableAsyncHook()
         }
 
         context.start()

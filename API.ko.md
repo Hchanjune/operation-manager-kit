@@ -22,6 +22,7 @@
 - [ManagedContext](#managedcontext)
 - [Operations (WebMVC)](#operations-webmvc)
 - [ReactiveOperations (WebFlux)](#reactiveoperations-webflux)
+- [ManagedContextElement (WebFlux)](#managedcontextelement-webflux)
 - [OperationHook](#operationhook)
 - [OperationResult\<T\>](#operationresultt)
 - [MetricSpan](#metricspan)
@@ -354,11 +355,49 @@ val result: Mono<OperationResult<MyData>> = ReactiveOperations.mono {
 }
 ```
 
+### 현재 컨텍스트
+
+```kotlin
+suspend fun currentContextOrNull(): ManagedContext?
+```
+
+현재 실행을 관장하는 컨텍스트, 없으면 `null`. 우선순위는 안쪽 스코프부터 — 이 코루틴에 설치된
+`ManagedContextElement`, 그다음 Reactor 컨텍스트, 마지막으로 블로킹 `@ManagedEventHandler` /
+`@ManagedSchedule`이 심은 스레드 바인딩 컨텍스트. `invoke`와 달리 detached 컨텍스트로 폴백하지 않습니다.
+
 ### 프로퍼티
 
 | 프로퍼티   | 타입               | 설명                          |
 |--------|------------------|-----------------------------|
 | `hook` | `OperationHook?` | CompositeOperationHook 인스턴스 |
+
+---
+
+## ManagedContextElement (WebFlux)
+
+Reactor 파이프라인을 벗어나는 코루틴(`withContext`, `launch`, `async`)이나 블로킹 진입점 바깥으로
+`ManagedContext`를 실어 나릅니다. 없으면 새 스코프 안의 Aspect가 컨텍스트를 못 찾고 조용히 통과합니다.
+
+```kotlin
+package io.github.hchanjune.omk.reactive.async
+
+class ManagedContextElement(val managedContext: ManagedContext) : CopyableThreadContextElement<ManagedContext?>
+
+suspend fun managedContextElement(): CoroutineContext
+```
+
+```kotlin
+withContext(Dispatchers.IO + managedContextElement()) {
+    userClient.fetch(userId)   // 여기서 @ManagedExternalCall span이 기록됨
+}
+```
+
+element를 받은 코루틴은 각자 컨텍스트의 **fork**(`forkAsync()`) 위에서 실행됩니다. id와 entrypoint는
+상속하고 `executionScope`는 `ASYNC`가 되며, span 트리·타이밍·훅 기록은 fork 자신의 것입니다 — 따라서
+부모와 같은 traceId를 가진 별도 트레이스로 보고됩니다. 헬퍼는 관리 범위 밖에서 `EmptyCoroutineContext`를
+반환합니다. 보고에는 `operation-manager.reactive.async-propagation.hook-enabled`(기본 `true`)가 필요합니다.
+
+자세한 내용은 [Reactive.ko.md](Reactive.ko.md#파이프라인을-벗어나는-코루틴-스코프).
 
 ---
 
@@ -647,6 +686,7 @@ interface MetricsRecorder {
 | `context-filter.enabled`                            | `Boolean`         | `true`           | WebFilter 활성화              |
 | `context-aspect.enabled`                            | `Boolean`         | `true`           | AOP Aspect 활성화             |
 | `micrometer.enabled`                                | `Boolean`         | `true`           | Micrometer 기록 활성화          |
+| `async-propagation.hook-enabled`                    | `Boolean`         | `true`           | `ManagedContextElement`로 연 코루틴 스코프 보고 |
 | `logging.enabled`                                   | `Boolean`         | `true`           | 기본 로깅 훅 활성화                |
 | `logging.pretty`                                    | `Boolean`         | `false`          | Pretty-print 포맷            |
 | `logging.json`                                      | `Boolean`         | `true`           | JSON 포맷                    |

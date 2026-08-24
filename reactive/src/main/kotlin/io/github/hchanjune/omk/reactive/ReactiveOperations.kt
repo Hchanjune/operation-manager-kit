@@ -10,6 +10,7 @@ import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.SpanIdProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.reactive.aspect.ReactiveAspectSupport
+import io.github.hchanjune.omk.reactive.async.ManagedContextElement
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.reactor.ReactorContext
 import org.slf4j.LoggerFactory
@@ -33,10 +34,30 @@ object ReactiveOperations {
     internal fun hookFor(context: ManagedContext): OperationHook? =
         context.runtime?.hook ?: defaultRuntime.hook
 
-    suspend operator fun <T> invoke(block: suspend ManagedContext.() -> T): OperationResult<T> {
-        val managedContext = currentCoroutineContext()[ReactorContext]?.context
+    /**
+     * The [ManagedContext] governing the current execution, or `null` when there is none.
+     *
+     * Resolution order, innermost scope first:
+     * 1. a [ManagedContextElement] installed on this coroutine — an explicitly opened async scope
+     *    owns its forked context,
+     * 2. the Reactor context of the pipeline this coroutine belongs to,
+     * 3. the thread-bound context installed by a blocking entry point
+     *    (`@ManagedEventHandler`, `@ManagedSchedule`).
+     *
+     * Unlike [invoke], this never falls back to a detached context: an absent context is reported
+     * as `null` so the caller can decide. Used by [managedContextElement] to hand the current
+     * context to a coroutine that leaves this thread.
+     */
+    suspend fun currentContextOrNull(): ManagedContext? {
+        val coroutineContext = currentCoroutineContext()
+        coroutineContext[ManagedContextElement]?.let { return it.managedContext }
+        return coroutineContext[ReactorContext]?.context
             ?.getOrEmpty<ManagedContext>(CONTEXT_KEY)?.orElse(null)
-            ?: ReactiveAspectSupport.eventHandlerContext.get()
+            ?: ReactiveAspectSupport.threadBoundContext.get()
+    }
+
+    suspend operator fun <T> invoke(block: suspend ManagedContext.() -> T): OperationResult<T> {
+        val managedContext = currentContextOrNull()
             ?: detachedContext().also { logDetached() }
         val data = managedContext.block()
         managedContext.injectResponse(data?.toString() ?: "null")
@@ -46,7 +67,7 @@ object ReactiveOperations {
     fun <T : Any> mono(block: ManagedContext.() -> Mono<T>): Mono<OperationResult<T>> =
         Mono.deferContextual { ctx ->
             val managedContext = ctx.getOrEmpty<ManagedContext>(CONTEXT_KEY).orElse(null)
-                ?: ReactiveAspectSupport.eventHandlerContext.get()
+                ?: ReactiveAspectSupport.threadBoundContext.get()
                 ?: detachedContext().also { logDetached() }
             managedContext.block().map { data ->
                 managedContext.injectResponse(data.toString())
@@ -113,6 +134,7 @@ object ReactiveOperations {
             injectProtocol("MESSAGING")
             markAsEvent()
             this.runtime = rt
+            if (rt.defaultAsyncHookEnabled) enableAsyncHook()
             start()
         }
     }
@@ -128,6 +150,7 @@ object ReactiveOperations {
             injectProtocol("SCHEDULED")
             markAsScheduled()
             this.runtime = rt
+            if (rt.defaultAsyncHookEnabled) enableAsyncHook()
             start()
         }
     }

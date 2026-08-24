@@ -208,6 +208,7 @@ class OrderService(private val orderRepository: OrderRepository) {
 - [x] Spring WebMVC 지원
 - [x] Spring WebFlux 지원 (Kotlin Coroutines)
 - [x] Spring WebMVC 비동기 컨텍스트 전파 (`@Async`, 코루틴, 가상 스레드)
+- [x] Spring WebFlux 코루틴 스코프 컨텍스트 전파 (`ManagedContextElement`) — Reactor 파이프라인을 벗어나는 `withContext`/`launch`/`async` 스코프로 컨텍스트를 실어 나르므로 그 안의 애노테이션 호출도 기록됨
 - [x] Span 수준 메트릭 계측
 - [x] Micrometer 연동
 - [x] OpenTelemetry 라이브 span 브릿지 — OMK span이 곧 진짜 OTel span (id 채택으로 로그와 트레이스 뷰어가 같은 `spanId`/`traceId` 공유), 자동계측 클라이언트가 OMK span 아래 중첩

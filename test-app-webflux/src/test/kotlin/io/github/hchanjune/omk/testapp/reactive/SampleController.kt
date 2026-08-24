@@ -7,10 +7,16 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @ManagedController
-class SampleController(private val sampleService: SampleService) {
+class SampleController(
+    private val sampleService: SampleService,
+    private val sampleAsyncService: SampleAsyncService,
+) {
 
     @GetMapping("/test/ok")
     suspend fun ok(): ResponseEntity<String> = ResponseEntity.ok(sampleService.process())
+
+    @GetMapping("/test/async-external")
+    suspend fun asyncExternal(): ResponseEntity<String> = ResponseEntity.ok(sampleAsyncService.fanOut())
 
     @GetMapping("/test/error")
     suspend fun error(): ResponseEntity<String> {

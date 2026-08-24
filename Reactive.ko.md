@@ -15,6 +15,7 @@
 - [Span 메트릭](#span-메트릭)
 - [설정 프로퍼티](#설정-프로퍼티)
 - [컨텍스트 전파 동작 방식](#컨텍스트-전파-동작-방식)
+- [파이프라인을 벗어나는 코루틴 스코프](#파이프라인을-벗어나는-코루틴-스코프)
 - [이벤트 드리븐 컨텍스트 전파](#이벤트-드리븐-컨텍스트-전파-managedeventhandler)
 - [Spring Security 연동](#spring-security-연동)
 - [분산 추적](#분산-추적)
@@ -299,6 +300,9 @@ operation-manager:
     micrometer:
       enabled: true       # Micrometer 메트릭 기록 활성화 (기본값: true)
 
+    async-propagation:
+      hook-enabled: true  # ManagedContextElement로 연 코루틴 스코프를 보고 (기본값: true)
+
     logging:
       enabled: true
       pretty: false       # 사람이 읽기 쉬운 포맷
@@ -335,6 +339,60 @@ operation-manager:
 ```
 
 AOP Aspect는 continuation의 `ReactorContext`에서 `ManagedContext`를 읽습니다 — ThreadLocal을 사용하지 않기 때문에 WebFlux에서 suspension point와 스레드 전환에 걸쳐 컨텍스트가 올바르게 전파됩니다.
+
+---
+
+## 파이프라인을 벗어나는 코루틴 스코프
+
+위 전파는 실행이 Reactor 파이프라인 안에 머무는 동안에만 성립합니다. 두 경우가 여기서 벗어납니다.
+블로킹 진입점(`@ManagedEventHandler` / `@ManagedSchedule`을 붙인 비-리액티브 메서드)은 애초에 Reactor
+컨텍스트가 없고, `withContext(Dispatchers.IO)` · `launch` · `async`는 Aspect가 닿지 못하는 스레드로
+작업을 옮깁니다. 두 경우 모두 새 스코프 안의 애노테이션 호출은 컨텍스트를 못 찾고 **조용히 통과**합니다 —
+호출 자체는 되므로 부모 span 안에 시간만 뜨고 그 아래가 비어 있게 됩니다.
+
+`ManagedContextElement`가 그런 스코프로 컨텍스트를 실어 나릅니다.
+
+```kotlin
+import io.github.hchanjune.omk.reactive.async.managedContextElement
+
+@ManagedEventHandler
+fun handle(event: OrderCreatedEvent) = runBlocking {
+    withContext(Dispatchers.IO + managedContextElement()) {
+        userClient.fetch(event.userId)   // 여기서 @ManagedExternalCall span이 기록됨
+    }
+}
+```
+
+`managedContextElement()`는 현재 실행을 관장하는 컨텍스트를 찾습니다 — 이 코루틴에 설치된 element가
+먼저이고, 그다음이 Reactor 컨텍스트, 마지막이 블로킹 진입점이 심은 스레드 바인딩 컨텍스트입니다.
+관리 범위 밖이면 `EmptyCoroutineContext`를 돌려주므로 호출부에서 널을 풀 필요가 없고, 비관리 실행은
+비관리인 채로 남습니다.
+
+### 스코프는 부모 컨텍스트가 아니라 자기 컨텍스트를 가진다
+
+element를 받은 코루틴은 각자 컨텍스트의 **fork** 위에서 실행됩니다([`forkAsync()`](#span-메트릭)).
+
+| 필드                                  | 동작              |
+|--------------------------------------|-------------------|
+| `traceId`, `causationId`, `issuer`   | 상속              |
+| `entrypoint`, `operation`, `useCase` | 상속              |
+| `executionScope`                     | `ASYNC`로 설정    |
+| span 트리, 타이밍, 훅 기록            | fork 자신의 것     |
+
+컨텍스트를 공유하면 두 스레드가 같은 span 스택을 push/pop 하게 되어, span이 누락되는 것보다 나쁜
+엉킨 중첩이 나옵니다. 대신 fork의 span은 부모 span 트리의 가지가 아니라 **부모와 같은 traceId를 가진
+별도 트레이스**로 출력됩니다.
+
+fork는 async 훅이 켜져 있을 때만 보고됩니다 — 기본값은 켜짐입니다.
+
+```yaml
+operation-manager:
+  reactive:
+    async-propagation:
+      hook-enabled: true   # false: 컨텍스트 전파는 그대로, fork 실행은 보고하지 않음
+```
+
+물려줄 컨텍스트를 이미 들고 있다면 `ManagedContextElement(context)`를 직접 생성해도 됩니다.
 
 ---
 
@@ -478,6 +536,7 @@ implementation("io.opentelemetry.instrumentation:opentelemetry-reactor-3.1:2.16.
 - **Spring AOP 자기 호출**: 동일 클래스 내부의 메서드 호출은 AOP Aspect가 인터셉트하지 않습니다.
 - **인터페이스에 `@ManagedRepository`**: 현재는 구현 클래스에만 동작 — Spring Data reactive 리포지토리는 인터페이스라 직접 적용이 불가합니다. 서비스 메서드에 `@ManagedMetric`을 사용하세요 (인터페이스 지원은 [로드맵](README.ko.md#로드맵) 참고).
 - **이벤트 루프 스레드**: 논블로킹 애플리케이션에서는 span이 동일한 `reactor-http-nio-*` 스레드를 보여주는 것이 정상입니다. 블로킹 작업에만 `Dispatchers.IO`가 필요합니다.
+- **파이프라인 이탈**: `withContext`/`launch`/`async` 이후의 애노테이션 호출, 또는 블로킹 `@ManagedEventHandler`/`@ManagedSchedule` 대상 안의 호출은 [`ManagedContextElement`](#파이프라인을-벗어나는-코루틴-스코프)를 실어주지 않으면 컨텍스트를 못 찾고 조용히 통과합니다. fork된 스코프는 부모 span 트리의 가지가 아니라 부모와 같은 traceId를 가진 별도 트레이스로 보고됩니다.
 - **`ReactiveOperations` 범위**: 관리 범위 밖에서 호출하면 WARN 로그 후 detached(비관리) 컨텍스트로 진행합니다 — 비즈니스 로직은 그대로 실행되지만 span/훅은 기록되지 않습니다. 진짜 관리 범위가 필요하면 진입점에 어노테이션(`@ManagedSchedule`, `@ManagedEventHandler`)을 붙이세요.
 - **단위 테스트**: `ReactiveOperations`는 블록을 직접 실행하며 `OperationExecutor`를 거치지 않습니다. 따라서 `@ManagedService`를 단위 테스트에서 직접 생성해도 OMK 부트스트랩이 전혀 필요 없습니다. 위의 detached 컨텍스트 WARN만 찍히며 무시하고 테스트하면 됩니다. 이 경고를 없애려고 `ReactiveOperations` 객체를 목으로 대체하지 마세요 — `ManagedContext`가 스텁으로 바뀌면서 블록이 컨텍스트에 쓴 값(`message = "..."`)이 조용히 버려져 단언할 수 없게 됩니다. (서블릿의 `Operations`는 executor 미설정에 대해 JVM당 한 번 추가 경고를 남기지만, 리액티브 경로에는 해당 경고가 없습니다.)
 

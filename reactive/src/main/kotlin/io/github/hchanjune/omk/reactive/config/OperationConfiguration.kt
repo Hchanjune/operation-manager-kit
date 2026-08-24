@@ -7,6 +7,7 @@ import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.reactive.ReactiveOperations
+import io.github.hchanjune.omk.reactive.config.properties.OperationManagerReactiveConfigProperties
 import io.github.hchanjune.omk.reactive.config.properties.TelemetryConfigureProperties
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Bean
@@ -27,6 +28,7 @@ internal class OperationConfiguration {
         traceIdProvider: TraceIdProvider,
         causationIdProvider: CausationIdProvider,
         telemetryProperties: TelemetryConfigureProperties,
+        properties: OperationManagerReactiveConfigProperties,
         spanBridgeProvider: ObjectProvider<SpanBridge>
     ): OperationRuntime = OperationRuntime().apply {
         this.hook = compositeHook
@@ -34,6 +36,7 @@ internal class OperationConfiguration {
         this.traceIdProvider = traceIdProvider
         this.causationIdProvider = causationIdProvider
         this.generateWhenMissing = telemetryProperties.propagation.generateWhenMissing
+        this.defaultAsyncHookEnabled = properties.asyncPropagation.hookEnabled
         this.spanBridge = spanBridgeProvider.ifAvailable
     }
 

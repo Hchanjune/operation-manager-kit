@@ -15,6 +15,7 @@
 - [Span Metrics](#span-metrics)
 - [Configuration Properties](#configuration-properties)
 - [How Context Propagates](#how-context-propagates)
+- [Coroutine Scopes That Leave the Pipeline](#coroutine-scopes-that-leave-the-pipeline)
 - [Event-Driven Context Propagation](#event-driven-context-propagation-managedeventhandler)
 - [Spring Security Integration](#spring-security-integration)
 - [Distributed Tracing](#distributed-tracing)
@@ -299,6 +300,9 @@ operation-manager:
     micrometer:
       enabled: true       # Enable/disable Micrometer metrics (default: true)
 
+    async-propagation:
+      hook-enabled: true  # Report coroutine scopes opened with ManagedContextElement (default: true)
+
     logging:
       enabled: true
       pretty: false       # Human-readable format
@@ -335,6 +339,63 @@ Request → ManagedContextWebFilter (contextWrite)
 ```
 
 The AOP aspects read the `ManagedContext` from the continuation's `ReactorContext` — no ThreadLocal is involved. This is why context propagates correctly across suspension points and thread switches in WebFlux.
+
+---
+
+## Coroutine Scopes That Leave the Pipeline
+
+The propagation above holds as long as the execution stays inside the Reactor pipeline. Two shapes
+step outside it: a blocking entry point (`@ManagedEventHandler` / `@ManagedSchedule` on a
+non-reactive method) has no Reactor context to begin with, and `withContext(Dispatchers.IO)`,
+`launch` or `async` move the work onto a thread the aspects cannot reach from. In both cases an
+annotated call inside the new scope finds no context and **skips silently** — the call still runs,
+so its time shows up inside the parent span with nothing under it.
+
+`ManagedContextElement` carries the context into such a scope:
+
+```kotlin
+import io.github.hchanjune.omk.reactive.async.managedContextElement
+
+@ManagedEventHandler
+fun handle(event: OrderCreatedEvent) = runBlocking {
+    withContext(Dispatchers.IO + managedContextElement()) {
+        userClient.fetch(event.userId)   // @ManagedExternalCall span is recorded here
+    }
+}
+```
+
+`managedContextElement()` resolves the context governing the current execution — the element
+installed on this coroutine first, then the Reactor context, then the thread-bound context opened by
+a blocking entry point. Outside any managed scope it returns `EmptyCoroutineContext`, so the call
+site never has to unwrap a null and an unmanaged execution stays unmanaged.
+
+### The scope gets its own context, not the parent's
+
+Every coroutine that receives the element runs on a **fork** of the context
+([`forkAsync()`](#span-metrics)):
+
+| Field                              | Behavior                         |
+|------------------------------------|----------------------------------|
+| `traceId`, `causationId`, `issuer` | Inherited                        |
+| `entrypoint`, `operation`, `useCase` | Inherited                      |
+| `executionScope`                   | Set to `ASYNC`                   |
+| Span tree, timing, hook records    | The fork's own                   |
+
+Sharing one context would mean two threads pushing and popping the same span stack, which produces
+tangled nesting rather than a missing span. The consequence is that the fork's spans surface as a
+**separate trace entry sharing the parent's traceId**, not as a branch of the parent's span tree.
+
+The fork is only reported when the async hook is enabled — on by default:
+
+```yaml
+operation-manager:
+  reactive:
+    async-propagation:
+      hook-enabled: true   # false: context still propagates, the forked execution is not reported
+```
+
+`ManagedContextElement(context)` can also be constructed directly when you already hold the context
+to inherit.
 
 ---
 
@@ -480,6 +541,7 @@ part that needs the extra library. Disable explicitly with
 - **Spring AOP self-invocation**: AOP aspects do not intercept internal method calls within the same class.
 - **`@ManagedRepository` on interfaces**: currently implementation classes only — Spring Data reactive repositories are interfaces, so the annotation has no effect on them directly. Use `@ManagedMetric` on service methods instead (interface support is on the [roadmap](README.md#roadmap)).
 - **Event loop thread**: In a properly non-blocking application, spans will show the same `reactor-http-nio-*` thread. This is expected behavior — switching to `Dispatchers.IO` is only necessary for blocking operations.
+- **Leaving the pipeline**: An annotated call made after `withContext`/`launch`/`async`, or inside a blocking `@ManagedEventHandler`/`@ManagedSchedule` target, finds no context and is skipped silently unless the scope carries [`ManagedContextElement`](#coroutine-scopes-that-leave-the-pipeline). The forked scope reports as its own trace entry under the parent's traceId, not as a branch of the parent's span tree.
 - **`ReactiveOperations` scope**: Calling `ReactiveOperations { }` outside a managed scope logs a WARN and proceeds with a detached (unmanaged) context — the business logic runs, but spans and hooks are not recorded. Annotate the entry point (`@ManagedSchedule`, `@ManagedEventHandler`) to get a real managed scope.
 - **Unit testing**: `ReactiveOperations` runs the block directly and never goes through an `OperationExecutor`, so a `@ManagedService` can be constructed in a plain unit test with no OMK bootstrapping. The detached-context WARN above is the only symptom and is safe to ignore. Do not mock the `ReactiveOperations` object to silence it — that replaces the `ManagedContext` with a stub and silently discards whatever the block wrote to it (`message = "..."`), putting those assertions out of reach. (The servlet `Operations` object additionally warns once per JVM about an unconfigured executor; the reactive path has no such warning.)
 

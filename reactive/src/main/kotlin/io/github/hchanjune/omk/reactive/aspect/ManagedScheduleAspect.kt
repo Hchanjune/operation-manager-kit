@@ -60,7 +60,7 @@ class ManagedScheduleAspect(
         val newContext = ReactiveOperations.initializeForSchedule(runtime)
         newContext.injectEntryPoint(className)
         val span = SpanSupport.pushEntrySpan(newContext, className, methodName, spanIdProvider)
-        eventHandlerContext.set(newContext)
+        threadBoundContext.set(newContext)
         return try {
             val result = joinPoint.proceed()
             if (managedSchedule.quietWhenEmpty && Results.isEmpty(result)) newContext.defaultLogging = false
@@ -72,7 +72,7 @@ class ManagedScheduleAspect(
             ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e)
             throw e
         } finally {
-            eventHandlerContext.remove()
+            threadBoundContext.remove()
         }
     }
 

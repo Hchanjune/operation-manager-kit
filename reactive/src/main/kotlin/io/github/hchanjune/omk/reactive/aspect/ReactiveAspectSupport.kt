@@ -3,6 +3,7 @@
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.metric.MetricSpan
 import io.github.hchanjune.omk.reactive.ReactiveOperations
+import io.github.hchanjune.omk.reactive.async.ManagedContextElement
 import io.github.hchanjune.omk.reactive.support.BridgedReactorContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.reactor.ReactorContext
@@ -17,10 +18,11 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 abstract class ReactiveAspectSupport {
 
     companion object {
-        // Carries ManagedContext across blocking entry-point boundaries (event handler,
-        // scheduled task) so that inner reactive spans (e.g. @ManagedRepository inside
-        // runBlocking) can find it.
-        internal val eventHandlerContext = ThreadLocal<ManagedContext?>()
+        // Carries ManagedContext across boundaries where no continuation and no Reactor context
+        // reach the target: blocking entry points (event handler, scheduled task) so inner spans
+        // (e.g. @ManagedRepository inside runBlocking) can find it, and ManagedContextElement so
+        // plain blocking calls made from a coroutine find the coroutine's forked context.
+        internal val threadBoundContext = ThreadLocal<ManagedContext?>()
     }
 
     protected fun isMono(joinPoint: ProceedingJoinPoint): Boolean =
@@ -57,9 +59,15 @@ abstract class ReactiveAspectSupport {
     // handler (runBlocking inside handle()) can still find the owning ManagedContext.
     protected fun getManagedContext(joinPoint: ProceedingJoinPoint): ManagedContext? {
         val continuation = joinPoint.args.lastOrNull() as? Continuation<*>
-        val fromReactor = continuation?.context?.get(ReactorContext)?.context
+        val coroutineContext = continuation?.context
+        // A ManagedContextElement in this coroutine's context means the caller explicitly opened
+        // an async scope with its own forked context. That fork is the innermost scope, so it wins
+        // over the Reactor context inherited from the coroutine that started the pipeline —
+        // otherwise spans from another thread would be pushed onto the parent's span stack.
+        coroutineContext?.get(ManagedContextElement)?.let { return it.managedContext }
+        val fromReactor = coroutineContext?.get(ReactorContext)?.context
             ?.getOrEmpty<ManagedContext>(ReactiveOperations.CONTEXT_KEY)?.orElse(null)
-        return fromReactor ?: eventHandlerContext.get()
+        return fromReactor ?: threadBoundContext.get()
     }
 
     protected fun getManagedContext(reactorCtx: ContextView): ManagedContext? =
