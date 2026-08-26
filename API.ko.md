@@ -495,9 +495,40 @@ class MetricSpan
 | `startTime`        | `Long?`            | 시작 시간 (epoch 밀리초)                 |
 | `durationMs`       | `Long?`            | 소요 시간 (밀리초). `end()` 호출 전엔 `null` |
 | `outcome`          | `MetricOutcome?`   | 실행 결과. 종료 전엔 `null`               |
+| `cacheHit`         | `Boolean?`         | 캐시 히트 여부. `markCacheHit` 호출 전엔 `null`   |
 | `descriptor.layer` | `MetricLayer`      | `ENTRY`, `APPLICATION`, `DB`, `CACHE`, 또는 `EXTERNAL` |
 | `children`         | `List<MetricSpan>` | 자식 span 목록                        |
 | `parent`           | `MetricSpan?`      | 부모 span                           |
+
+### 캐시 히트
+
+```kotlin
+fun markCacheHit(hit: Boolean)
+```
+
+캐시 조회가 캐시에서 제공됐는지 기록합니다. span 은 판정 **전에** 열리므로 생성 시점 태그로는 넣을 수 없고,
+캐시 계층이 조회 직후에 호출해야 합니다.
+
+히트/미스는 **성공/실패와 독립적인 축**입니다. Redis 타임아웃은 MISS 가 아니라 FAILURE 이고 두 사실을
+동시에 알려야 할 수도 있어서, 의도적으로 `MetricOutcome` 에 넣지 않았습니다. 섞으면 메트릭·알림·OTel
+브릿지가 각각 "MISS 는 실패가 아니다"를 알아야 하고, 하나만 빠뜨려도 캐시 미스가 에러율로 잡힙니다.
+
+읽는 곳은 둘입니다:
+
+- **span 트리 렌더링** — `CACHE` 레이어이면서 **성공**했고 `cacheHit` 이 설정된 span 은 `SUCCESS` 자리에
+  `HIT`/`MISS` 를 찍습니다. 실패한 조회는 실패 상태를 유지합니다 — 거기에 `MISS` 를 찍으면 Redis 가
+  죽은 사실이 가려지고, "캐시가 비었다"와 "캐시에 닿지 못했다"는 다른 사실입니다.
+  ```
+  [CAC] 12:34:56.789  [nio-8080-exec-1]  ProductCache.findById  [2ms]     HIT
+  [CAC] 12:34:56.789  [nio-8080-exec-1]  ProductCache.findById  [45ms]    MISS
+  [CAC] 12:34:56.789  [nio-8080-exec-1]  ProductCache.findById  [2001ms]  FAILURE_SERVER (RedisCommandTimeoutException)
+  ```
+- **OTel 브릿지** — 종료 시점에 `cache.hit` span attribute 로 나갑니다. span 상태는 히트든 미스든
+  `OK` 입니다. OTel 상태는 "이 작업이 실패했나"만 뜻하고, 미스를 `ERROR` 로 보내면 대시보드 에러율이
+  적중률에 따라 출렁입니다.
+
+`@ManagedCacheRepository` 는 `[CAC]` span 을 열지만 이 값을 **설정하지 않습니다** — 알 방법이 없기 때문입니다.
+캐시 계층이 표시해주지 않으면 그 span 들은 계속 `SUCCESS` 로 찍힙니다.
 
 ---
 

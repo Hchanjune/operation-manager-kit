@@ -107,4 +107,25 @@ class MetricSpanTest {
         root.addChild(c)
         assertEquals(listOf("a", "b", "c"), root.children.map { it.name.value })
     }
+
+    @Test
+    fun `cacheHit is null until marked`() {
+        assertEquals(null, span("cache").cacheHit)
+    }
+
+    /**
+     * Hit/miss and success/failure must stay independent: a Redis timeout is a MISS *and* a FAILURE,
+     * and both have to survive on the same span.
+     * 히트/미스와 성공/실패는 독립이어야 한다 — Redis 타임아웃은 MISS 이면서 FAILURE 이고,
+     * 두 사실이 같은 스팬에 함께 남아야 한다.
+     */
+    @Test
+    fun `cacheHit survives alongside a failure outcome`() {
+        val s = span("cache")
+        s.markCacheHit(false)
+        s.end(IllegalStateException("redis down"))
+
+        assertEquals(false, s.cacheHit)
+        assertEquals(MetricStatus.FAILURE_CLIENT, s.outcome?.status)
+    }
 }

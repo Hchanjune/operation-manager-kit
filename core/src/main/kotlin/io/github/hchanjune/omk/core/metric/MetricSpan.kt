@@ -32,6 +32,37 @@ class MetricSpan(
     var outcome: MetricOutcome? = null
         private set
 
+    /**
+     * Cache hit flag for `[CAC]` layer spans; `null` on every other layer and before the lookup
+     * has been decided. Set via [markCacheHit].
+     *
+     * Hit/miss is a **separate axis from success/failure** — a Redis timeout is a FAILURE, not a
+     * MISS, and both facts may need to be reported at once. Keeping it out of [MetricOutcome] is
+     * deliberate: folding it in would force every consumer (metrics, alerting, the OTel bridge) to
+     * re-learn that "MISS is not an error", and missing that in any one of them turns cache misses
+     * into an error rate.
+     *
+     * 캐시(`[CAC]`) 스팬의 히트 여부. 다른 레이어이거나 아직 판정 전이면 null 이다([markCacheHit] 로 설정).
+     *
+     * 히트/미스는 **성공/실패와 독립적인 축**이다 — Redis 타임아웃은 MISS 가 아니라 FAILURE 이고,
+     * 두 사실을 동시에 알려야 할 수도 있다. [MetricOutcome] 에 섞지 않은 것은 의도적이다.
+     * 섞으면 메트릭·알림·OTel 브릿지가 각각 "MISS 는 실패가 아니다"를 알아야 하고,
+     * 하나만 빠뜨려도 캐시 미스가 에러율로 잡힌다.
+     */
+    var cacheHit: Boolean? = null
+        private set
+
+    /**
+     * Records whether the cache lookup was served from cache. Call it from the cache aspect once
+     * the lookup is decided — the span itself is opened before that is known.
+     *
+     * 캐시 조회가 캐시에서 제공됐는지 기록한다. 스팬은 판정 전에 열리므로,
+     * 캐시 애스펙트가 조회 직후에 호출한다.
+     */
+    fun markCacheHit(hit: Boolean) {
+        this.cacheHit = hit
+    }
+
     // Live backend span this OMK span is bridged onto; set by ManagedContext.push.
     internal var bridge: SpanBridge? = null
     internal var bridgeHandle: BridgedSpan? = null

@@ -82,9 +82,34 @@ class OtelSpanBridge(
             handle.nativeScope?.close()
         } finally {
             val otelSpan = handle.nativeSpan as Span
+            applyCacheHit(otelSpan, span)
             applyStatus(otelSpan, span)
             otelSpan.end()
         }
+    }
+
+    /**
+     * Cache hit/miss travels as an **attribute**, never as span status.
+     *
+     * OTel span status is only `UNSET`/`OK`/`ERROR` and means "did this operation fail" — a cache
+     * miss is a normal outcome, so reporting it as ERROR would make dashboard error rates swing
+     * with the hit ratio. As an attribute the two axes stay independent: filter on `cache.hit` for
+     * the hit ratio, on span status for real failures (e.g. a Redis timeout).
+     *
+     * Set at end time rather than at [startSpan], because whether the lookup hit is only known
+     * after the cache has been consulted.
+     *
+     * 캐시 히트/미스는 스팬 상태가 아니라 **attribute** 로 보낸다.
+     *
+     * OTel 스팬 상태는 `UNSET`/`OK`/`ERROR` 뿐이고 "이 작업이 실패했나"만 뜻한다. 캐시 미스는 정상
+     * 결과라서 ERROR 로 보내면 대시보드 에러율이 적중률에 따라 출렁인다. attribute 로 두면 두 축이
+     * 독립적으로 남는다 — 적중률은 `cache.hit` 으로, 진짜 실패(Redis 타임아웃 등)는 스팬 상태로 본다.
+     *
+     * [startSpan] 이 아니라 종료 시점에 넣는 이유는, 히트 여부가 캐시를 조회해봐야 정해지기 때문이다.
+     */
+    private fun applyCacheHit(otelSpan: Span, metricSpan: MetricSpan) {
+        val hit = metricSpan.cacheHit ?: return
+        otelSpan.setAttribute(CACHE_HIT_ATTRIBUTE, hit)
     }
 
     private fun applyStatus(otelSpan: Span, metricSpan: MetricSpan) {
@@ -106,5 +131,13 @@ class OtelSpanBridge(
         MetricLayer.DB          -> SpanKind.CLIENT
         MetricLayer.CACHE       -> SpanKind.CLIENT
         MetricLayer.EXTERNAL    -> SpanKind.CLIENT
+    }
+
+    companion object {
+        /**
+         * Attribute name for the cache hit flag. Keep it stable — dashboards filter on it.
+         * 캐시 히트 플래그의 attribute 이름. 대시보드가 이걸로 필터하므로 바꾸지 않는다.
+         */
+        private const val CACHE_HIT_ATTRIBUTE = "cache.hit"
     }
 }

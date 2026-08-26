@@ -2,7 +2,9 @@ package io.github.hchanjune.omk.core.hooks
 
 import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.context.ManagedContext
+import io.github.hchanjune.omk.core.metric.MetricLayer
 import io.github.hchanjune.omk.core.metric.MetricSpan
+import io.github.hchanjune.omk.core.metric.MetricStatus
 import org.slf4j.Logger
 import java.time.Instant
 import java.time.ZoneOffset
@@ -198,7 +200,7 @@ class DefaultOperationLoggingHook(
     private fun StringBuilder.appendSpanTree(span: MetricSpan, depth: Int) {
         val outcome = span.outcome
         val duration = span.durationMs?.let { "${it}ms" } ?: "?"
-        val status = outcome?.status?.name ?: "?"
+        val status = span.displayStatus()
         val error = outcome?.errorType?.let { " ($it)" } ?: ""
         val connector = if (depth == 0) "" else "└─ "
         val indent = "│    " + "     ".repeat(depth)
@@ -207,6 +209,23 @@ class DefaultOperationLoggingHook(
         val thread = "[${span.threadName}]"
         appendLine("$indent$connector$layer $timestamp  $thread  ${span.name.value}  [$duration]  $status$error")
         span.children.forEach { child -> appendSpanTree(child, depth + 1) }
+    }
+
+    /**
+     * Cache spans render HIT/MISS in place of SUCCESS — but **only when they succeeded**.
+     * A failed lookup keeps its failure status: showing MISS there would hide that Redis itself
+     * broke, and "the cache was empty" is a different fact from "the cache could not be reached".
+     *
+     * 캐시 스팬은 SUCCESS 자리에 HIT/MISS 를 찍는다 — **성공했을 때만** 그렇다.
+     * 실패한 조회는 실패 상태를 유지한다. 거기에 MISS 를 찍으면 Redis 가 죽은 사실이 가려지고,
+     * "캐시가 비어 있었다"와 "캐시에 닿지 못했다"는 서로 다른 사실이다.
+     */
+    private fun MetricSpan.displayStatus(): String {
+        val status = outcome?.status ?: return "?"
+        if (descriptor.layer == MetricLayer.CACHE && status == MetricStatus.SUCCESS) {
+            cacheHit?.let { return if (it) "HIT" else "MISS" }
+        }
+        return status.name
     }
 
     private fun rootCause(t: Throwable): Throwable {

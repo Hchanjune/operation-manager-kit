@@ -498,9 +498,41 @@ class MetricSpan
 | `startTime`        | `Long?`            | Start time (epoch millis)                                |
 | `durationMs`       | `Long?`            | Duration in milliseconds; `null` until `end()` is called |
 | `outcome`          | `MetricOutcome?`   | Result; `null` until ended                               |
+| `cacheHit`         | `Boolean?`         | Cache hit flag; `null` unless [`markCacheHit`](#cache-hit) was called |
 | `descriptor.layer` | `MetricLayer`      | `ENTRY`, `APPLICATION`, `DB`, `CACHE`, or `EXTERNAL`     |
 | `children`         | `List<MetricSpan>` | Child spans                                              |
 | `parent`           | `MetricSpan?`      | Parent span                                              |
+
+### Cache hit
+
+```kotlin
+fun markCacheHit(hit: Boolean)
+```
+
+Records whether a cache lookup was served from cache. Call it from the cache layer once the lookup
+is decided — the span is opened before that is known, so this cannot be a construction-time tag.
+
+Hit/miss is a **separate axis from success/failure**. A Redis timeout is a FAILURE, not a MISS, and
+both facts may need to be reported at once, so this is deliberately kept out of `MetricOutcome`.
+Folding it in would force every consumer (metrics, alerting, the OTel bridge) to re-learn that
+"MISS is not an error" — and missing that anywhere turns cache misses into an error rate.
+
+Two things read it:
+
+- **Span tree rendering** — a `CACHE`-layer span that **succeeded** and has `cacheHit` set renders
+  `HIT`/`MISS` in place of `SUCCESS`. A failed lookup keeps its failure status: showing `MISS` there
+  would hide that Redis itself broke.
+  ```
+  [CAC] 12:34:56.789  [nio-8080-exec-1]  ProductCache.findById  [2ms]     HIT
+  [CAC] 12:34:56.789  [nio-8080-exec-1]  ProductCache.findById  [45ms]    MISS
+  [CAC] 12:34:56.789  [nio-8080-exec-1]  ProductCache.findById  [2001ms]  FAILURE_SERVER (RedisCommandTimeoutException)
+  ```
+- **OTel bridge** — emitted as the `cache.hit` span attribute at end time. The span status stays
+  `OK` for both hit and miss: OTel status means "did this operation fail", and reporting a miss as
+  `ERROR` would make dashboard error rates swing with the hit ratio.
+
+`@ManagedCacheRepository` opens `[CAC]` spans but does **not** set this — it has no way to know.
+Spans it opens keep rendering `SUCCESS` unless the cache layer marks them.
 
 ---
 
