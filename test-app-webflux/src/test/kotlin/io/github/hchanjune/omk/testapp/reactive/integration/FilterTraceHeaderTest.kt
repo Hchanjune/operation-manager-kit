@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.testapp.reactive.integration
+package io.github.hchanjune.omk.testapp.reactive.integration
 
 import io.github.hchanjune.omk.testapp.reactive.CapturingHook
 import org.junit.jupiter.api.BeforeEach

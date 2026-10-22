@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.testapp.servlet
+package io.github.hchanjune.omk.testapp.servlet
 
 class SampleClientException(message: String) : RuntimeException(message)
 

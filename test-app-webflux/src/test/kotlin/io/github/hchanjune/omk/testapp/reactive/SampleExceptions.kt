@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.testapp.reactive
+package io.github.hchanjune.omk.testapp.reactive
 
 class SampleClientException(message: String) : RuntimeException(message)
 

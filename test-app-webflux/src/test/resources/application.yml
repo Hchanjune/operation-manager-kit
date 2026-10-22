@@ -1,4 +1,4 @@
-﻿operation-manager:
+operation-manager:
   reactive:
     micrometer:
       enabled: false

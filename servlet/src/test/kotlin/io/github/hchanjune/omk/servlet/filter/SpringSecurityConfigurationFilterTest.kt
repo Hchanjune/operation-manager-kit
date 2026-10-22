@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.filter
+package io.github.hchanjune.omk.servlet.filter
 
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.provider.IssuerProvider

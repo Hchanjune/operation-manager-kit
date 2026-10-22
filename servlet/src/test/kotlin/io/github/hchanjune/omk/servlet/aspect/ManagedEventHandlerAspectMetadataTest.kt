@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.aspect
+package io.github.hchanjune.omk.servlet.aspect
 
 import io.github.hchanjune.omk.core.annotations.ManagedEventCausationId
 import io.github.hchanjune.omk.core.annotations.ManagedEventIssuer

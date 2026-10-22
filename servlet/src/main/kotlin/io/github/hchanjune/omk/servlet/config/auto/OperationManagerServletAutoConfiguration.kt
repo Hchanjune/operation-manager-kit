@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.config.auto
+package io.github.hchanjune.omk.servlet.config.auto
 
 import io.github.hchanjune.omk.servlet.config.AspectConfiguration
 import io.github.hchanjune.omk.servlet.config.AsyncConfiguration

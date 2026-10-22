@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet
+package io.github.hchanjune.omk.servlet
 
 import io.github.hchanjune.omk.core.OperationExecutor
 import io.github.hchanjune.omk.core.OperationHook

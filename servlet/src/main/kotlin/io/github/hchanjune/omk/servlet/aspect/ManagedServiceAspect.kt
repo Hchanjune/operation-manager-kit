@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.aspect
+package io.github.hchanjune.omk.servlet.aspect
 
 import io.github.hchanjune.omk.core.annotations.ManagedService
 import io.github.hchanjune.omk.servlet.Operations

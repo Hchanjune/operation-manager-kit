@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.hooks
+package io.github.hchanjune.omk.servlet.hooks
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.context.ManagedContext

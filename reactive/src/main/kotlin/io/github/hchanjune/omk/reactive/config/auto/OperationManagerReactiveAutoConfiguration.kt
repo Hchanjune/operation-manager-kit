@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.reactive.config.auto
+package io.github.hchanjune.omk.reactive.config.auto
 
 import io.github.hchanjune.omk.reactive.config.AspectConfiguration
 import io.github.hchanjune.omk.reactive.config.FilterConfiguration

@@ -1,4 +1,4 @@
-﻿# OMK — Spring WebFlux (Reactive 스택)
+# OMK — Spring WebFlux (Reactive 스택)
 
 **한국어 | [English](Reactive.md)**
 

@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.config
+package io.github.hchanjune.omk.servlet.config
 
 import io.github.hchanjune.omk.core.metric.MetricsRecorder
 import io.github.hchanjune.omk.servlet.metrics.ServletMetricsRecorder

@@ -11,15 +11,17 @@ dependencies {
     api(project(":core"))
     implementation(project(":otel"))
 
-    api(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
+    compileOnly(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
 
     kapt("org.springframework.boot:spring-boot-configuration-processor:$springBootVersion")
 
-    api("org.jetbrains.kotlin:kotlin-reflect")
-    api("org.slf4j:slf4j-api")
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-core")
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
-    api("jakarta.annotation:jakarta.annotation-api")
+    // Minimum versions (Spring Boot 3.2 managed) — the consuming app's BOM overrides them.
+    // 최소 버전(Spring Boot 3.2 관리 버전) — 사용처 BOM 이 있으면 그쪽이 덮어쓴다.
+    api("org.jetbrains.kotlin:kotlin-reflect:2.3.21") // matches kotlin-stdlib / kotlin-stdlib 과 맞춤
+    api("org.slf4j:slf4j-api:2.0.16")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.7.3")
+    api("jakarta.annotation:jakarta.annotation-api:2.1.1")
 
     compileOnly("org.aspectj:aspectjrt")
     compileOnly("org.springframework:spring-aop")

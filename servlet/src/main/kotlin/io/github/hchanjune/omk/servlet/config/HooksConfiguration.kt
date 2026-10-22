@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.config
+package io.github.hchanjune.omk.servlet.config
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.hooks.DefaultOperationLoggingHook

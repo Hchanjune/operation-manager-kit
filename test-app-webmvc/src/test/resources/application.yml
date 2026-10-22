@@ -1,4 +1,4 @@
-﻿operation-manager:
+operation-manager:
   servlet:
     micrometer:
       enabled: false

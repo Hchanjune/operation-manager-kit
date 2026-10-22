@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.reactive.provider
+package io.github.hchanjune.omk.reactive.provider
 
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.reactive.config.properties.TelemetryConfigureProperties

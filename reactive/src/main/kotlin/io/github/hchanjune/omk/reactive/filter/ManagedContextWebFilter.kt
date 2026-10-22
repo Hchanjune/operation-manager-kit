@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.reactive.filter
+package io.github.hchanjune.omk.reactive.filter
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.OperationRuntime

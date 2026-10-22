@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.provider
+package io.github.hchanjune.omk.servlet.provider
 
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.servlet.config.properties.TelemetryConfigureProperties

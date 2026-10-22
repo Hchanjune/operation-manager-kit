@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.provider
+package io.github.hchanjune.omk.servlet.provider
 
 import java.util.HexFormat
 import java.util.UUID

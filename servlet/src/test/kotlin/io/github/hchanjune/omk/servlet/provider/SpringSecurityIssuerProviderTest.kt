@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.provider
+package io.github.hchanjune.omk.servlet.provider
 
 import org.springframework.security.core.Authentication
 import org.springframework.security.core.GrantedAuthority

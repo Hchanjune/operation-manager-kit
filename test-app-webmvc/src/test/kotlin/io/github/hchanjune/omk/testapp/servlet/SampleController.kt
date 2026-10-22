@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.testapp.servlet
+package io.github.hchanjune.omk.testapp.servlet
 
 import io.github.hchanjune.omk.core.annotations.ManagedController
 import org.springframework.http.ResponseEntity

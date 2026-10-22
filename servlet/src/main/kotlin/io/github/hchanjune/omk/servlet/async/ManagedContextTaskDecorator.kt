@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.async
+package io.github.hchanjune.omk.servlet.async
 
 import io.github.hchanjune.omk.servlet.Operations
 import org.springframework.core.task.TaskDecorator

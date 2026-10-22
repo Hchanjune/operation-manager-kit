@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.exception
+package io.github.hchanjune.omk.servlet.exception
 
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.provider.SpanIdProvider

@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        spring-boot-version: [ '3.2.12', '3.5.14', '4.0.6' ]
+        spring-boot-version: [ '3.2.12', '3.5.14', '4.0.6', '4.1.1' ]
 
     name: Spring Boot ${{ matrix.spring-boot-version }}
 
@@ -45,22 +45,22 @@ jobs:
         run: ./gradlew test -PspringBootVersion=${{ matrix.spring-boot-version }}
 
       - name: JaCoCo Aggregated Report
-        if: matrix.spring-boot-version == '4.0.6'
+        if: (matrix.spring-boot-version == '4.0.6' || matrix.spring-boot-version == '4.1.1')
         run: ./gradlew jacocoAggregatedReport -PspringBootVersion=${{ matrix.spring-boot-version }}
 
       - name: JaCoCo Coverage Gate
-        if: matrix.spring-boot-version == '4.0.6'
+        if: (matrix.spring-boot-version == '4.0.6' || matrix.spring-boot-version == '4.1.1')
         run: ./gradlew jacocoCoverageGate -PspringBootVersion=${{ matrix.spring-boot-version }}
 
       - name: Upload Coverage Report
-        if: always() && matrix.spring-boot-version == '4.0.6'
+        if: always() && (matrix.spring-boot-version == '4.0.6' || matrix.spring-boot-version == '4.1.1')
         uses: actions/upload-artifact@v4
         with:
-          name: jacoco-report
+          name: jacoco-report-${{ matrix.spring-boot-version }}
           path: build/reports/jacoco/aggregated/html
 
       - name: Upload Coverage to Codecov
-        if: matrix.spring-boot-version == '4.0.6'
+        if: (matrix.spring-boot-version == '4.0.6' || matrix.spring-boot-version == '4.1.1')
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

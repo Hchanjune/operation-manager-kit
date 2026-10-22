@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.metrics
+package io.github.hchanjune.omk.servlet.metrics
 
 import io.github.hchanjune.omk.core.metric.MetricKind
 import io.github.hchanjune.omk.core.metric.MetricOutcome

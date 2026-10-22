@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.testapp.reactive.sample
+package io.github.hchanjune.omk.testapp.reactive.sample
 
 import io.github.hchanjune.omk.core.annotations.ManagedController
 import org.springframework.http.HttpStatus

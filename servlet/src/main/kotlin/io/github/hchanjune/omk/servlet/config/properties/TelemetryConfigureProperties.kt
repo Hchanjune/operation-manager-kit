@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.config.properties
+package io.github.hchanjune.omk.servlet.config.properties
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 

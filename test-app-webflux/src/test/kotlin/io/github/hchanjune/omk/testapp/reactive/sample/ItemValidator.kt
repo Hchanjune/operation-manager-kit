@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.testapp.reactive.sample
+package io.github.hchanjune.omk.testapp.reactive.sample
 
 import io.github.hchanjune.omk.core.annotations.ManagedMetric
 import org.springframework.stereotype.Component

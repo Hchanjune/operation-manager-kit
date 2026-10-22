@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.reactive.provider
+package io.github.hchanjune.omk.reactive.provider
 
 import java.util.HexFormat
 import java.util.UUID

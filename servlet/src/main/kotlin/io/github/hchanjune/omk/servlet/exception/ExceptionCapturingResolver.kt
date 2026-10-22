@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.servlet.exception
+package io.github.hchanjune.omk.servlet.exception
 
 import io.github.hchanjune.omk.servlet.Operations
 import jakarta.servlet.http.HttpServletRequest

@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.reactive.config
+package io.github.hchanjune.omk.reactive.config
 
 import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.provider.SpanIdProvider

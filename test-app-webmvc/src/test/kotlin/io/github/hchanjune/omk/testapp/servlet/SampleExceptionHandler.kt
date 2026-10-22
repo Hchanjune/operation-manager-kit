@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.testapp.servlet
+package io.github.hchanjune.omk.testapp.servlet
 
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity

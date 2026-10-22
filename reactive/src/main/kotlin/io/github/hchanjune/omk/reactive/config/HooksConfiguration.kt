@@ -1,4 +1,4 @@
-﻿package io.github.hchanjune.omk.reactive.config
+package io.github.hchanjune.omk.reactive.config
 
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.hooks.DefaultOperationLoggingHook
