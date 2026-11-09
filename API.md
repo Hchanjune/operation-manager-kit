@@ -366,6 +366,27 @@ innermost scope first: a `ManagedContextElement` installed on this coroutine, th
 context, then the thread-bound context opened by a blocking `@ManagedEventHandler` /
 `@ManagedSchedule`. Unlike `invoke`, it never falls back to a detached context.
 
+```kotlin
+fun threadBoundContextOrNull(): ManagedContext?
+```
+
+The non-suspend counterpart for plain blocking code — e.g. an HTTP client interceptor that stamps
+the current span onto an outgoing call. Only the thread-bound context is visible: it is set inside
+a `ManagedContextElement` (`withContext(Dispatchers.IO + managedContextElement())`) and inside a
+blocking `@ManagedEventHandler` / `@ManagedSchedule`. A call made straight from a Reactor thread
+gets `null`.
+
+```kotlin
+RestClient.builder().requestInterceptor { request, body, execution ->
+    val context = ReactiveOperations.threadBoundContextOrNull()
+    val span = context?.peek()
+    if (context != null && span != null) {
+        propagationProvider.inject(context.traceId, span.spanId) { k, v -> request.headers.set(k, v) }
+    }
+    execution.execute(request, body)
+}
+```
+
 ### Properties
 
 | Property | Type             | Description             |

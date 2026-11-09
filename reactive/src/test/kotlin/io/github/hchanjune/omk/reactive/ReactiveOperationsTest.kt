@@ -9,9 +9,12 @@ import io.github.hchanjune.omk.core.provider.CausationIdProvider
 import io.github.hchanjune.omk.core.provider.ManagedContextProvider
 import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.reactive.TestSupport.context
+import io.github.hchanjune.omk.reactive.aspect.ReactiveAspectSupport
+import io.github.hchanjune.omk.reactive.async.ManagedContextElement
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.reactor.mono
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 import reactor.util.context.Context
@@ -19,6 +22,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class ReactiveOperationsTest {
 
@@ -167,5 +173,52 @@ class ReactiveOperationsTest {
         assertEquals("rt-trace", ctx.traceId)
         assertEquals("rt-cause", ctx.causationId)
         assertEquals(rt, ctx.runtime)
+    }
+
+    // ── threadBoundContextOrNull ──────────────────────────────────────────────
+
+    @Test
+    fun `threadBoundContextOrNull is null outside any managed scope`() {
+        ReactiveAspectSupport.threadBoundContext.remove()
+        assertNull(ReactiveOperations.threadBoundContextOrNull())
+    }
+
+    @Test
+    fun `threadBoundContextOrNull sees the forked context of a ManagedContextElement on the worker thread`() {
+        ReactiveAspectSupport.threadBoundContext.remove()
+        val ctx = context().also { it.injectTraceId("parent-trace") }
+        val seen = runBlocking {
+            withContext(Dispatchers.IO + ManagedContextElement(ctx)) {
+                // Plain blocking call, as an HTTP client interceptor would make
+                ReactiveOperations.threadBoundContextOrNull()
+            }
+        }
+        // The element forks per coroutine — same trace, its own span stack (async.execution root)
+        assertNotNull(seen)
+        assertEquals("parent-trace", seen.traceId)
+        assertTrue(seen.isAsync)
+        assertEquals("async.execution", seen.peek()?.name?.value)
+        assertNull(ReactiveOperations.threadBoundContextOrNull())
+    }
+
+    @Test
+    fun `threadBoundContextOrNull sees the context opened by a blocking entry point`() {
+        val ctx = context()
+        ReactiveAspectSupport.threadBoundContext.set(ctx)
+        try {
+            assertSame(ctx, ReactiveOperations.threadBoundContextOrNull())
+        } finally {
+            ReactiveAspectSupport.threadBoundContext.remove()
+        }
+    }
+
+    @Test
+    fun `threadBoundContextOrNull ignores a context carried only in the Reactor context`() {
+        ReactiveAspectSupport.threadBoundContext.remove()
+        val ctx = context()
+        val seen = mono(Dispatchers.Unconfined) { ReactiveOperations.threadBoundContextOrNull() ?: "none" }
+            .contextWrite(reactorCtxWith(ctx))
+            .block()
+        assertEquals("none", seen)
     }
 }

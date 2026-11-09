@@ -56,6 +56,24 @@ object ReactiveOperations {
             ?: ReactiveAspectSupport.threadBoundContext.get()
     }
 
+    /**
+     * The [ManagedContext] bound to the current thread, or `null` when there is none — the
+     * non-suspend counterpart of [currentContextOrNull] for plain blocking code that cannot reach
+     * a coroutine or Reactor context (e.g. a `ClientHttpRequestInterceptor` stamping trace headers
+     * on an outgoing call). A context is bound while the thread runs inside a [ManagedContextElement]
+     * (`withContext(Dispatchers.IO + managedContextElement())`) or a blocking entry point
+     * (`@ManagedEventHandler`, `@ManagedSchedule`); a call made straight from a Reactor thread
+     * finds nothing here.
+     *
+     * 현재 스레드에 묶인 [ManagedContext], 없으면 `null` — 코루틴·Reactor 컨텍스트에 닿지 못하는
+     * 일반 블로킹 코드(예: 나가는 호출에 trace 헤더를 붙이는 `ClientHttpRequestInterceptor`)를 위한
+     * [currentContextOrNull] 의 non-suspend 버전이다. 스레드가 [ManagedContextElement]
+     * (`withContext(Dispatchers.IO + managedContextElement())`) 안이거나 블로킹 진입점
+     * (`@ManagedEventHandler`, `@ManagedSchedule`) 안에서 실행 중일 때만 묶여 있고,
+     * Reactor 스레드에서 바로 부른 호출은 여기서 아무것도 찾지 못한다.
+     */
+    fun threadBoundContextOrNull(): ManagedContext? = ReactiveAspectSupport.threadBoundContext.get()
+
     suspend operator fun <T> invoke(block: suspend ManagedContext.() -> T): OperationResult<T> {
         val managedContext = currentContextOrNull()
             ?: detachedContext().also { logDetached() }

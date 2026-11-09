@@ -365,6 +365,26 @@ suspend fun currentContextOrNull(): ManagedContext?
 `ManagedContextElement`, 그다음 Reactor 컨텍스트, 마지막으로 블로킹 `@ManagedEventHandler` /
 `@ManagedSchedule`이 심은 스레드 바인딩 컨텍스트. `invoke`와 달리 detached 컨텍스트로 폴백하지 않습니다.
 
+```kotlin
+fun threadBoundContextOrNull(): ManagedContext?
+```
+
+일반 블로킹 코드용 non-suspend 버전입니다 — 예: 나가는 호출에 현재 span 을 실어 보내는 HTTP 클라이언트
+인터셉터. 스레드에 묶인 컨텍스트만 보입니다. `ManagedContextElement`
+(`withContext(Dispatchers.IO + managedContextElement())`) 안과 블로킹 `@ManagedEventHandler` /
+`@ManagedSchedule` 안에서만 묶이고, Reactor 스레드에서 바로 부르면 `null`입니다.
+
+```kotlin
+RestClient.builder().requestInterceptor { request, body, execution ->
+    val context = ReactiveOperations.threadBoundContextOrNull()
+    val span = context?.peek()
+    if (context != null && span != null) {
+        propagationProvider.inject(context.traceId, span.spanId) { k, v -> request.headers.set(k, v) }
+    }
+    execution.execute(request, body)
+}
+```
+
 ### 프로퍼티
 
 | 프로퍼티   | 타입               | 설명                          |
