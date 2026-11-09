@@ -16,6 +16,7 @@ import io.opentelemetry.api.trace.TraceFlags
 import io.opentelemetry.api.trace.TraceState
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
+import io.opentelemetry.context.ContextKey
 import java.time.Instant
 
 /**
@@ -48,7 +49,8 @@ class OtelSpanBridge(
                 }
             }
         }
-        return BridgedTrace(Context.root())
+        val root = Context.root()
+        return BridgedTrace(if (context.isScheduled) root.with(SCHEDULED_EXECUTION, true) else root)
     }
 
     override fun startSpan(
@@ -62,7 +64,7 @@ class OtelSpanBridge(
 
         val otelSpan = tracer.spanBuilder(name)
             .setParent(parentCtx)
-            .setSpanKind(layer.toSpanKind(Span.fromContext(parentCtx).spanContext))
+            .setSpanKind(layer.toSpanKind(parentCtx))
             .startSpan()
         tags.values.forEach { (k, v) -> otelSpan.setAttribute(k, v) }
 
@@ -144,9 +146,19 @@ class OtelSpanBridge(
      *
      * 살아 있는 로컬 부모 아래의 ENTRY span 은 서비스로 새로 들어온 것이 아니라 실행 중인 작업의 비동기
      * fork(`async.execution`)다. 여기서 SERVER 로 보내면 Tempo 서비스 그래프에 자기→자기 간선이 생긴다.
+     *
+     * A scheduled run has no caller at all. A parentless SERVER span tells Tempo that an unknown
+     * client called the service, which it draws as `user → service`.
+     *
+     * 스케줄 실행에는 호출자가 아예 없다. 부모 없는 SERVER span 은 Tempo 에게 "모르는 클라이언트가 이
+     * 서비스를 불렀다"는 뜻이라 `user → 서비스` 간선으로 그려진다.
      */
-    private fun MetricLayer.toSpanKind(parent: SpanContext): SpanKind = when (this) {
-        MetricLayer.ENTRY       -> if (parent.isValid && !parent.isRemote) SpanKind.INTERNAL else SpanKind.SERVER
+    private fun MetricLayer.toSpanKind(parentCtx: Context): SpanKind = when (this) {
+        MetricLayer.ENTRY       -> {
+            val parent = Span.fromContext(parentCtx).spanContext
+            val forked = parent.isValid && !parent.isRemote
+            if (forked || parentCtx.get(SCHEDULED_EXECUTION) == true) SpanKind.INTERNAL else SpanKind.SERVER
+        }
         MetricLayer.APPLICATION -> SpanKind.INTERNAL
         MetricLayer.DB          -> SpanKind.CLIENT
         MetricLayer.CACHE       -> SpanKind.CLIENT
@@ -154,6 +166,8 @@ class OtelSpanBridge(
     }
 
     companion object {
+        private val SCHEDULED_EXECUTION: ContextKey<Boolean> = ContextKey.named("omk-scheduled-execution")
+
         /**
          * Attribute name for the cache hit flag. Keep it stable — dashboards filter on it.
          * 캐시 히트 플래그의 attribute 이름. 대시보드가 이걸로 필터하므로 바꾸지 않는다.

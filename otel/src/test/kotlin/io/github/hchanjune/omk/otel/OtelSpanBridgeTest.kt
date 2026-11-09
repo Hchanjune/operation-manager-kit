@@ -311,6 +311,18 @@ class OtelSpanBridgeTest {
     }
 
     @Test
+    fun `scheduled root is INTERNAL so the service graph has no user edge`() {
+        val context = newContext(OtelSpanBridge(tracer, makeCurrent = false))
+        context.injectTraceId("self-generated")
+        context.markAsScheduled()
+
+        val root = push(context, "Poller.pollOnce", MetricLayer.ENTRY)
+        root.end(); context.pop()
+
+        assertEquals(SpanKind.INTERNAL, exporter.finishedSpanItems.single().kind)
+    }
+
+    @Test
     fun `entry continued from a remote parent stays SERVER`() {
         val context = newContext(OtelSpanBridge(tracer, makeCurrent = false))
         context.injectTraceId("4bf92f3577b34da6a3ce929d0e0e4736")
