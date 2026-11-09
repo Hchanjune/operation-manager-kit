@@ -31,6 +31,8 @@ class ManagedScheduleAspect(
         }
 
         val context = Operations.context
+        // Only the owner decides — a shared outer context's spans belong to the enclosing operation.
+        if (contextOwner && managedSchedule.quietWhenEmpty) context.holdBridgedSpans()
         val className = joinPoint.signature.declaringType.simpleName
         val methodName = joinPoint.signature.name.substringBefore('-')
 
@@ -42,12 +44,12 @@ class ManagedScheduleAspect(
             val result = joinPoint.proceed()
             // Quiet only when this aspect owns the context — silencing a shared outer
             // context would suppress the enclosing operation's log as well.
-            if (contextOwner && managedSchedule.quietWhenEmpty && Results.isEmpty(result)) {
-                context.defaultLogging = false
-            }
+            val quiet = contextOwner && managedSchedule.quietWhenEmpty && Results.isEmpty(result)
+            if (quiet) context.defaultLogging = false
             span.end()
             context.pop()
             if (contextOwner) {
+                if (quiet) context.discardBridgedSpans() else context.releaseBridgedSpans()
                 Operations.complete()
                 Operations.hook?.onSuccess(context)
             }
@@ -56,6 +58,7 @@ class ManagedScheduleAspect(
             span.end(e)
             context.pop()
             if (contextOwner) {
+                context.releaseBridgedSpans()
                 Operations.complete()
                 Operations.hook?.onFailure(context, e)
             }

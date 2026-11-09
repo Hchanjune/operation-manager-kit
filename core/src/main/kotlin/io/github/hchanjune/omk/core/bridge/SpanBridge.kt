@@ -4,6 +4,7 @@ import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.metric.MetricLayer
 import io.github.hchanjune.omk.core.metric.MetricSpan
 import io.github.hchanjune.omk.core.metric.MetricTags
+import java.time.Instant
 
 /**
  * Seam for bridging OMK spans onto an external live tracing backend (e.g. OpenTelemetry).
@@ -47,6 +48,24 @@ interface SpanBridge {
      * stacks, possibly a different thread on reactive stacks.
      */
     fun endSpan(handle: BridgedSpan, span: MetricSpan)
+
+    /**
+     * Closes [handle]'s thread-bound current-context scope without ending the backend span, for a
+     * span whose end is held back ([ManagedContext.holdBridgedSpans]): the scope must still close
+     * in LIFO order on the thread that opened it.
+     *
+     * 끝내기를 미룬 span([ManagedContext.holdBridgedSpans])의 스레드 스코프만 닫고 백엔드 span 은 끝내지
+     * 않는다. 스코프는 연 스레드에서 LIFO 순서로 닫혀야 하기 때문이다.
+     */
+    fun releaseScope(handle: BridgedSpan) {}
+
+    /**
+     * Ends a held-back backend span at the moment it really finished. The scope was already closed
+     * through [releaseScope].
+     *
+     * 미뤄 둔 백엔드 span 을 실제로 끝난 시각으로 끝낸다. 스코프는 [releaseScope] 에서 이미 닫혔다.
+     */
+    fun endSpan(handle: BridgedSpan, span: MetricSpan, endTime: Instant) = endSpan(handle, span)
 }
 
 /**

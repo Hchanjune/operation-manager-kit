@@ -16,6 +16,7 @@ import io.opentelemetry.api.trace.TraceFlags
 import io.opentelemetry.api.trace.TraceState
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
+import java.time.Instant
 
 /**
  * Live OpenTelemetry [SpanBridge]: every OMK span push starts a real OTel span, so the
@@ -61,7 +62,7 @@ class OtelSpanBridge(
 
         val otelSpan = tracer.spanBuilder(name)
             .setParent(parentCtx)
-            .setSpanKind(layer.toSpanKind())
+            .setSpanKind(layer.toSpanKind(Span.fromContext(parentCtx).spanContext))
             .startSpan()
         tags.values.forEach { (k, v) -> otelSpan.setAttribute(k, v) }
 
@@ -86,6 +87,17 @@ class OtelSpanBridge(
             applyStatus(otelSpan, span)
             otelSpan.end()
         }
+    }
+
+    override fun releaseScope(handle: BridgedSpan) {
+        handle.nativeScope?.close()
+    }
+
+    override fun endSpan(handle: BridgedSpan, span: MetricSpan, endTime: Instant) {
+        val otelSpan = handle.nativeSpan as Span
+        applyCacheHit(otelSpan, span)
+        applyStatus(otelSpan, span)
+        otelSpan.end(endTime)
     }
 
     /**
@@ -125,8 +137,16 @@ class OtelSpanBridge(
         }
     }
 
-    private fun MetricLayer.toSpanKind(): SpanKind = when (this) {
-        MetricLayer.ENTRY       -> SpanKind.SERVER
+    /**
+     * An ENTRY span under a live local parent is not a new entry into this service — it is an async
+     * fork of the running execution (`async.execution`). SERVER there would make Tempo's service
+     * graph draw an edge from the service to itself.
+     *
+     * 살아 있는 로컬 부모 아래의 ENTRY span 은 서비스로 새로 들어온 것이 아니라 실행 중인 작업의 비동기
+     * fork(`async.execution`)다. 여기서 SERVER 로 보내면 Tempo 서비스 그래프에 자기→자기 간선이 생긴다.
+     */
+    private fun MetricLayer.toSpanKind(parent: SpanContext): SpanKind = when (this) {
+        MetricLayer.ENTRY       -> if (parent.isValid && !parent.isRemote) SpanKind.INTERNAL else SpanKind.SERVER
         MetricLayer.APPLICATION -> SpanKind.INTERNAL
         MetricLayer.DB          -> SpanKind.CLIENT
         MetricLayer.CACHE       -> SpanKind.CLIENT

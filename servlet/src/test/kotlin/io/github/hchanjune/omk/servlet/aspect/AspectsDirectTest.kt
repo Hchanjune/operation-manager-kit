@@ -1,5 +1,13 @@
 package io.github.hchanjune.omk.servlet.aspect
 
+import io.github.hchanjune.omk.core.OperationRuntime
+import io.github.hchanjune.omk.core.bridge.BridgedSpan
+import io.github.hchanjune.omk.core.bridge.BridgedTrace
+import io.github.hchanjune.omk.core.bridge.SpanBridge
+import io.github.hchanjune.omk.core.metric.MetricLayer
+import io.github.hchanjune.omk.core.metric.MetricSpan
+import io.github.hchanjune.omk.core.metric.MetricTags
+import java.time.Instant
 import io.github.hchanjune.omk.core.annotations.ManagedCacheRepository
 import io.github.hchanjune.omk.core.annotations.ManagedController
 import io.github.hchanjune.omk.core.annotations.ManagedEventHandler
@@ -478,5 +486,80 @@ class AspectsDirectTest {
         val jp = fakeJp(StubEventHolder::class.java, methodName = "handleEvent", throws = RuntimeException("evt-fail"))
         assertFailsWith<RuntimeException> { aspect.aroundEventHandler(jp, ann) }
         assertTrue(!Operations.hasContext)
+    }
+
+    // ── quietWhenEmpty: trace backend export ──────────────────────────────────
+
+    private class RecordingBridge : SpanBridge {
+        val ended = mutableListOf<String>()
+        override fun startTrace(context: ManagedContext) = BridgedTrace("root")
+        override fun startSpan(trace: BridgedTrace, name: String, layer: MetricLayer, tags: MetricTags, parent: BridgedSpan?) =
+            BridgedSpan("a".repeat(32), "b".repeat(16), name, name)
+        override fun endSpan(handle: BridgedSpan, span: MetricSpan) { ended += handle.nativeSpan as String }
+        override fun endSpan(handle: BridgedSpan, span: MetricSpan, endTime: Instant) { ended += handle.nativeSpan as String }
+    }
+
+    private fun runtimeWith(bridge: SpanBridge) = OperationRuntime().apply {
+        spanBridge = bridge
+        contextProvider = object : ManagedContextProvider {
+            override fun provide() = ManagedContext(spanIdProvider = spanIdProvider)
+        }
+    }
+
+    @Test
+    fun `quiet schedule with empty result exports nothing but still reports to the hook`() {
+        val bridge = RecordingBridge()
+        var hookCalled = false
+        val runtime = runtimeWith(bridge).apply {
+            hook = object : io.github.hchanjune.omk.core.OperationHook {
+                override fun onSuccess(context: ManagedContext) { hookCalled = true }
+            }
+        }
+        val aspect = ManagedScheduleAspect(spanIdProvider, runtime)
+        val ann = StubScheduleHolder::class.java.getDeclaredMethod("pollBatch")
+            .getAnnotation(ManagedSchedule::class.java)!!
+
+        aspect.aroundSchedule(fakeJp(StubScheduleHolder::class.java, methodName = "pollBatch", returns = 0), ann)
+
+        assertTrue(bridge.ended.isEmpty())
+        assertTrue(hookCalled)
+    }
+
+    @Test
+    fun `quiet schedule with non-empty result exports its span`() {
+        val bridge = RecordingBridge()
+        val aspect = ManagedScheduleAspect(spanIdProvider, runtimeWith(bridge))
+        val ann = StubScheduleHolder::class.java.getDeclaredMethod("pollBatch")
+            .getAnnotation(ManagedSchedule::class.java)!!
+
+        aspect.aroundSchedule(fakeJp(StubScheduleHolder::class.java, methodName = "pollBatch", returns = 7), ann)
+
+        assertEquals(1, bridge.ended.size)
+    }
+
+    @Test
+    fun `quiet schedule that fails exports its span`() {
+        val bridge = RecordingBridge()
+        val aspect = ManagedScheduleAspect(spanIdProvider, runtimeWith(bridge))
+        val ann = StubScheduleHolder::class.java.getDeclaredMethod("pollBatch")
+            .getAnnotation(ManagedSchedule::class.java)!!
+
+        assertFailsWith<RuntimeException> {
+            aspect.aroundSchedule(fakeJp(StubScheduleHolder::class.java, methodName = "pollBatch", throws = RuntimeException("boom")), ann)
+        }
+
+        assertEquals(1, bridge.ended.size)
+    }
+
+    @Test
+    fun `schedule without quietWhenEmpty exports even an empty result`() {
+        val bridge = RecordingBridge()
+        val aspect = ManagedScheduleAspect(spanIdProvider, runtimeWith(bridge))
+        val ann = StubScheduleHolder::class.java.getDeclaredMethod("runJob")
+            .getAnnotation(ManagedSchedule::class.java)!!
+
+        aspect.aroundSchedule(fakeJp(StubScheduleHolder::class.java, methodName = "runJob", returns = 0), ann)
+
+        assertEquals(1, bridge.ended.size)
     }
 }

@@ -190,4 +190,136 @@ class OtelSpanBridgeTest {
         val exportedFork = exporter.finishedSpanItems.first { it.name == "async.execution" }
         assertEquals(root.spanId, exportedFork.parentSpanId)
     }
+
+    // ── held spans (quietWhenEmpty) ───────────────────────────────────────────
+
+    private fun heldContext(makeCurrent: Boolean = false) =
+        newContext(OtelSpanBridge(tracer, makeCurrent)).also {
+            it.injectTraceId("self-generated")
+            it.holdBridgedSpans()
+        }
+
+    @Test
+    fun `discarded execution exports nothing, including children that ended first`() {
+        val context = heldContext()
+        val root = push(context, "Poller.pollOnce", MetricLayer.ENTRY)
+        val child = push(context, "Store.claimPending", MetricLayer.DB)
+        child.end(); context.pop()
+        root.end(); context.pop()
+
+        context.discardBridgedSpans()
+
+        assertTrue(exporter.finishedSpanItems.isEmpty())
+    }
+
+    @Test
+    fun `released execution exports the tree only after the decision`() {
+        val context = heldContext()
+        val root = push(context, "Poller.pollOnce", MetricLayer.ENTRY)
+        val child = push(context, "Store.claimPending", MetricLayer.DB)
+        child.end(); context.pop()
+        root.end(); context.pop()
+        assertTrue(exporter.finishedSpanItems.isEmpty())
+
+        context.releaseBridgedSpans()
+
+        val spans = exporter.finishedSpanItems.associateBy { it.name }
+        assertEquals(2, spans.size)
+        assertEquals(root.spanId, spans.getValue("Store.claimPending").parentSpanId)
+        assertEquals(context.traceId, spans.getValue("Poller.pollOnce").traceId)
+    }
+
+    @Test
+    fun `released spans keep their real end time, not the release time`() {
+        val context = heldContext()
+        val root = push(context, "Poller.pollOnce", MetricLayer.ENTRY)
+        root.end(); context.pop()
+        Thread.sleep(50)
+
+        val beforeRelease = System.currentTimeMillis() * 1_000_000
+        context.releaseBridgedSpans()
+
+        val span = exporter.finishedSpanItems.single()
+        assertTrue(span.endEpochNanos < beforeRelease - 20_000_000, "end time moved to the release")
+        assertTrue(span.endEpochNanos >= span.startEpochNanos - 1_000_000)
+    }
+
+    @Test
+    fun `held span closes its current-context scope when it ends`() {
+        val context = heldContext(makeCurrent = true)
+        val root = push(context, "Poller.pollOnce", MetricLayer.ENTRY)
+        val child = push(context, "Store.claimPending", MetricLayer.DB)
+        assertEquals(child.spanId, Span.current().spanContext.spanId)
+
+        child.end(); context.pop()
+        assertEquals(root.spanId, Span.current().spanContext.spanId)
+
+        root.end(); context.pop()
+        assertFalse(Span.current().spanContext.isValid)
+        context.discardBridgedSpans()
+    }
+
+    @Test
+    fun `released failure keeps its error status`() {
+        val context = heldContext()
+        val root = push(context, "Poller.pollOnce", MetricLayer.ENTRY)
+        root.end(RuntimeException("boom")); context.pop()
+
+        context.releaseBridgedSpans()
+
+        assertEquals(StatusCode.ERROR, exporter.finishedSpanItems.single().status.statusCode)
+    }
+
+    @Test
+    fun `async fork follows the decision of its execution, even when it ends later`() {
+        val discarded = heldContext()
+        push(discarded, "Poller.pollOnce", MetricLayer.ENTRY)
+        val discardedFork = discarded.forkAsync()
+        discarded.discardBridgedSpans()
+        discardedFork.rootSpan!!.end(); discardedFork.pop()
+        assertTrue(exporter.finishedSpanItems.isEmpty())
+
+        val released = heldContext()
+        push(released, "Poller.pollOnce", MetricLayer.ENTRY)
+        val releasedFork = released.forkAsync()
+        released.releaseBridgedSpans()
+        releasedFork.rootSpan!!.end(); releasedFork.pop()
+        assertEquals("async.execution", exporter.finishedSpanItems.single().name)
+    }
+
+    @Test
+    fun `without a hold spans export as soon as they end`() {
+        val context = newContext(OtelSpanBridge(tracer, makeCurrent = false))
+        context.injectTraceId("self-generated")
+        val root = push(context, "Controller.get", MetricLayer.ENTRY)
+        root.end(); context.pop()
+        assertEquals(1, exporter.finishedSpanItems.size)
+    }
+
+    // ── span kind of ENTRY ────────────────────────────────────────────────────
+
+    @Test
+    fun `async fork is INTERNAL so the service graph has no self edge`() {
+        val context = newContext(OtelSpanBridge(tracer, makeCurrent = false))
+        context.injectTraceId("self-generated")
+        push(context, "Controller.get", MetricLayer.ENTRY)
+
+        val fork = context.forkAsync()
+        fork.rootSpan!!.end(); fork.pop()
+
+        assertEquals(SpanKind.INTERNAL, exporter.finishedSpanItems.single().kind)
+    }
+
+    @Test
+    fun `entry continued from a remote parent stays SERVER`() {
+        val context = newContext(OtelSpanBridge(tracer, makeCurrent = false))
+        context.injectTraceId("4bf92f3577b34da6a3ce929d0e0e4736")
+        context.injectCausationId("00f067aa0ba902b7")
+        context.markTraceContinuedFromRemote()
+
+        val root = push(context, "Controller.get", MetricLayer.ENTRY)
+        root.end(); context.pop()
+
+        assertEquals(SpanKind.SERVER, exporter.finishedSpanItems.single().kind)
+    }
 }

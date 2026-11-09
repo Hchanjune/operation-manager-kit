@@ -2,6 +2,7 @@ package io.github.hchanjune.omk.core.context
 
 import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.bridge.BridgedSpan
+import io.github.hchanjune.omk.core.bridge.BridgedSpanHold
 import io.github.hchanjune.omk.core.bridge.BridgedTrace
 import io.github.hchanjune.omk.core.bridge.SpanBridge
 import io.github.hchanjune.omk.core.contants.ExecutionScope
@@ -212,6 +213,32 @@ class ManagedContext(
     // Backend root context, created lazily by the bridge on the first push.
     private var bridgedTrace: BridgedTrace? = null
 
+    // Set while this execution's backend spans wait for the entry point's export decision.
+    private var bridgedSpanHold: BridgedSpanHold? = null
+
+    /**
+     * Holds back the backend end of every span from now on, until [releaseBridgedSpans] or
+     * [discardBridgedSpans]. Call before the first [push]. Metrics and logs are not affected —
+     * only what reaches the trace backend. No effect without a [SpanBridge].
+     *
+     * 지금부터 모든 span 의 백엔드 종료를 [releaseBridgedSpans] 또는 [discardBridgedSpans] 까지 미룬다.
+     * 첫 [push] 전에 호출한다. 메트릭·로그는 영향이 없고 trace 백엔드로 가는 것만 달라진다.
+     * [SpanBridge] 가 없으면 아무 일도 하지 않는다.
+     */
+    fun holdBridgedSpans() {
+        if (bridgedSpanHold == null && runtime?.spanBridge != null) bridgedSpanHold = BridgedSpanHold()
+    }
+
+    /** Exports the held spans with their real end times. 미뤄 둔 span 을 실제 종료 시각으로 내보낸다. */
+    fun releaseBridgedSpans() {
+        bridgedSpanHold?.release()
+    }
+
+    /** Drops the held spans: never ended, so never exported. 미뤄 둔 span 을 버린다(끝내지 않으므로 내보내지 않는다). */
+    fun discardBridgedSpans() {
+        bridgedSpanHold?.discard()
+    }
+
     fun push(
         name: MetricName,
         kind: MetricKind,
@@ -235,6 +262,7 @@ class ManagedContext(
         if (bridged != null) {
             newSpan.bridge = runtime?.spanBridge
             newSpan.bridgeHandle = bridged
+            newSpan.bridgeHold = bridgedSpanHold
         }
 
         if (spanStack.isEmpty()) {
@@ -301,6 +329,8 @@ class ManagedContext(
         // parent under it (same backend trace) instead of starting a disconnected one.
         child.bridgedTrace = (spanStack.firstOrNull()?.bridgeHandle?.nativeContext ?: bridgedTrace?.nativeContext)
             ?.let { BridgedTrace(it) }
+        // The fork belongs to the same execution, so its spans follow the same export decision.
+        child.bridgedSpanHold = this.bridgedSpanHold
         child.executionScope = ExecutionScope.ASYNC
         child.isAsyncHookEnabled = this.isAsyncHookEnabled
         child.push(

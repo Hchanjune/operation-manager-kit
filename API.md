@@ -186,7 +186,7 @@ Applied to a scheduler-triggered method (e.g. `@Scheduled`). Scheduled execution
 | Parameter        | Type      | Default | Description               |
 |------------------|-----------|---------|---------------------------|
 | `description`    | `String`  | `""`    | Human-readable description |
-| `quietWhenEmpty` | `Boolean` | `false` | Silences the default success log when the method returns an "empty" result (null, `Unit`, `0`, `false`, or an empty Collection/Map/Array/CharSequence). Return the processed count or batch from a high-frequency poller so only meaningful runs are logged. Failures are always logged; spans and metrics are recorded either way |
+| `quietWhenEmpty` | `Boolean` | `false` | Silences the default success log when the method returns an "empty" result (null, `Unit`, `0`, `false`, or an empty Collection/Map/Array/CharSequence). Return the processed count or batch from a high-frequency poller so only meaningful runs are logged. Its spans, children included, are not exported to the trace backend either. Failures are always logged and exported; metrics are recorded either way |
 
 ---
 

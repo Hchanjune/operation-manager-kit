@@ -186,7 +186,7 @@ annotation class ManagedSchedule(
 | 파라미터             | 타입        | 기본값     | 설명       |
 |------------------|-----------|---------|----------|
 | `description`    | `String`  | `""`    | 설명용 텍스트 |
-| `quietWhenEmpty` | `Boolean` | `false` | 메서드 반환값이 "빈" 값(null, `Unit`, `0`, `false`, 빈 Collection/Map/Array/CharSequence)이면 기본 성공 로그를 침묵. 고빈도 폴러에서 처리 건수나 배치를 반환하게 하면 의미 있는 실행만 로깅됨. 실패는 항상 로깅되고 span/메트릭은 그대로 기록 |
+| `quietWhenEmpty` | `Boolean` | `false` | 메서드 반환값이 "빈" 값(null, `Unit`, `0`, `false`, 빈 Collection/Map/Array/CharSequence)이면 기본 성공 로그를 침묵. 고빈도 폴러에서 처리 건수나 배치를 반환하게 하면 의미 있는 실행만 로깅됨. 이 실행의 span 도 자식까지 trace 백엔드로 내보내지 않음. 실패는 항상 로깅하고 내보내며 메트릭은 그대로 기록 |
 
 ---
 

@@ -35,13 +35,17 @@ class ManagedScheduleAspect(
                 if (contextOwner) {
                     val newContext = ReactiveOperations.initializeForSchedule(runtime)
                     newContext.injectEntryPoint(className)
+                    if (managedSchedule.quietWhenEmpty) newContext.holdBridgedSpans()
                     val span = SpanSupport.pushEntrySpan(newContext, className, methodName, spanIdProvider)
                     mono
                         .doOnSuccess { value ->
-                            if (managedSchedule.quietWhenEmpty && Results.isEmpty(value)) newContext.defaultLogging = false
-                            span.end(); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onSuccess(newContext)
+                            val quiet = managedSchedule.quietWhenEmpty && Results.isEmpty(value)
+                            if (quiet) newContext.defaultLogging = false
+                            span.end(); newContext.pop()
+                            if (quiet) newContext.discardBridgedSpans() else newContext.releaseBridgedSpans()
+                            newContext.end(); ReactiveOperations.hookFor(newContext)?.onSuccess(newContext)
                         }
-                        .doOnError { e -> span.end(e); newContext.pop(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e) }
+                        .doOnError { e -> span.end(e); newContext.pop(); newContext.releaseBridgedSpans(); newContext.end(); ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e) }
                         .propagateBridgedContext(span)
                         .contextWrite(Context.of(ReactiveOperations.CONTEXT_KEY, newContext))
                 } else {
@@ -59,16 +63,20 @@ class ManagedScheduleAspect(
         // ── synchronous / blocking target (typical @Scheduled fun) ────────────────
         val newContext = ReactiveOperations.initializeForSchedule(runtime)
         newContext.injectEntryPoint(className)
+        if (managedSchedule.quietWhenEmpty) newContext.holdBridgedSpans()
         val span = SpanSupport.pushEntrySpan(newContext, className, methodName, spanIdProvider)
         threadBoundContext.set(newContext)
         return try {
             val result = joinPoint.proceed()
-            if (managedSchedule.quietWhenEmpty && Results.isEmpty(result)) newContext.defaultLogging = false
-            span.end(); newContext.pop(); newContext.end()
+            val quiet = managedSchedule.quietWhenEmpty && Results.isEmpty(result)
+            if (quiet) newContext.defaultLogging = false
+            span.end(); newContext.pop()
+            if (quiet) newContext.discardBridgedSpans() else newContext.releaseBridgedSpans()
+            newContext.end()
             ReactiveOperations.hookFor(newContext)?.onSuccess(newContext)
             result
         } catch (e: Throwable) {
-            span.end(e); newContext.pop(); newContext.end()
+            span.end(e); newContext.pop(); newContext.releaseBridgedSpans(); newContext.end()
             ReactiveOperations.hookFor(newContext)?.onFailure(newContext, e)
             throw e
         } finally {

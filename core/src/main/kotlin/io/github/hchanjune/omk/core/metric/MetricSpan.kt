@@ -1,9 +1,11 @@
 package io.github.hchanjune.omk.core.metric
 
 import io.github.hchanjune.omk.core.bridge.BridgedSpan
+import io.github.hchanjune.omk.core.bridge.BridgedSpanHold
 import io.github.hchanjune.omk.core.bridge.SpanBridge
 import org.slf4j.LoggerFactory
 import java.time.Clock
+import java.time.Instant
 
 class MetricSpan(
     val traceId: String,
@@ -66,6 +68,7 @@ class MetricSpan(
     // Live backend span this OMK span is bridged onto; set by ManagedContext.push.
     internal var bridge: SpanBridge? = null
     internal var bridgeHandle: BridgedSpan? = null
+    internal var bridgeHold: BridgedSpanHold? = null
 
     /**
      * The backend-native context of the bridged live span (e.g. an OTel Context), or null when
@@ -91,8 +94,21 @@ class MetricSpan(
         this.timing.end(clock)
         this.outcome = outcome
         val handle = bridgeHandle ?: return
+        val hold = bridgeHold
+        bridgeFailOpen {
+            if (hold == null) {
+                bridge?.endSpan(handle, this)
+            } else {
+                bridge?.releaseScope(handle)
+                val endTime = Instant.now(clock)
+                hold.onSpanEnded { bridgeFailOpen { bridge?.endSpan(handle, this, endTime) } }
+            }
+        }
+    }
+
+    private inline fun bridgeFailOpen(block: () -> Unit) {
         try {
-            bridge?.endSpan(handle, this)
+            block()
         } catch (e: Throwable) {
             log.warn("Span bridge failed to end span [{}]: {}", spanId, e.toString())
         }
