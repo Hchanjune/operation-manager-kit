@@ -12,13 +12,42 @@ import java.util.concurrent.ConcurrentHashMap
  * Extracts [EventMetadata] from event-handler method arguments, trying in order:
  * OMK field/getter annotations → Kafka ConsumerRecord headers → Spring Messaging headers →
  * conventional field names by reflection. All lookups are reflection-based (no compile-time
- * dependency on Kafka or Spring Messaging) and cached per class.
+ * dependency on Kafka or Spring Messaging) and cached per class. Metadata given explicitly through
+ * [withMetadata] comes before all of them.
  *
  * Shared by the servlet and reactive @ManagedEventHandler aspects.
  */
 object EventMetadataExtractor {
 
+    private val scopedMetadata = ThreadLocal<EventMetadata?>()
+
+    /**
+     * Runs [block] with [metadata] as the metadata of every `@ManagedEventHandler` it enters on
+     * this thread. For a transport that keeps trace data beside the event rather than inside it —
+     * an inbox record holds the trace id, while the event class the handler receives has no such
+     * field — so the handler continues the trace of the event instead of starting a new one.
+     *
+     * Thread-bound: the handler must be entered, and a `Mono` handler subscribed, inside [block].
+     *
+     * [block] 안에서 이 스레드로 들어가는 `@ManagedEventHandler` 의 메타데이터를 [metadata] 로 지정한다.
+     * trace 정보를 이벤트 안이 아니라 옆에 두는 전송 경로용이다 — inbox 레코드에는 trace id 가 있지만
+     * 핸들러가 받는 이벤트 클래스에는 그런 필드가 없으므로, 이걸 쓰지 않으면 핸들러가 이벤트의 trace 를
+     * 잇지 못하고 새 trace 를 시작한다.
+     *
+     * 스레드에 묶이므로 핸들러 진입과 `Mono` 핸들러 구독이 [block] 안에서 일어나야 한다.
+     */
+    fun <T> withMetadata(metadata: EventMetadata, block: () -> T): T {
+        val previous = scopedMetadata.get()
+        scopedMetadata.set(metadata)
+        try {
+            return block()
+        } finally {
+            if (previous == null) scopedMetadata.remove() else scopedMetadata.set(previous)
+        }
+    }
+
     fun extract(args: Array<Any?>): EventMetadata {
+        scopedMetadata.get()?.let { return it }
         for (arg in args) {
             if (arg == null) continue
             val result = tryExtractFromAnnotations(arg)

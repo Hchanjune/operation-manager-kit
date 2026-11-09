@@ -169,6 +169,16 @@ annotation class ManagedEventHandler
 
 메시징 핸들러 메서드(Kafka, Spring Messaging 등)에 적용합니다. **ENTRY 레이어** span을 생성하고 `executionScope`를 `EVENT`로 설정합니다. 메서드 인자에서 트레이스 메타데이터를 자동 추출합니다.
 
+trace 정보를 이벤트 안이 아니라 옆에 두는 전송 경로(예: inbox 레코드)라면 직접 넘깁니다. 추출 우선순위 전체보다 먼저 적용됩니다:
+
+```kotlin
+EventMetadataExtractor.withMetadata(EventMetadata(traceId = record.traceId, causationId = record.causationId)) {
+    handler.handle(event)
+}
+```
+
+스코프는 스레드에 묶이므로 핸들러 진입과 `Mono` 핸들러 구독이 블록 안에서 일어나야 합니다.
+
 ---
 
 ### `@ManagedSchedule`

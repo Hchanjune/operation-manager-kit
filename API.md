@@ -169,6 +169,16 @@ annotation class ManagedEventHandler
 
 Applied to a messaging handler method (Kafka, Spring Messaging, etc.). Opens an **ENTRY-layer** span and sets `executionScope` to `EVENT`. Auto-extracts trace metadata from method arguments using the extraction priority chain.
 
+When the transport keeps trace data beside the event rather than inside it (an inbox record, for example), hand it over explicitly. It comes before the whole extraction chain:
+
+```kotlin
+EventMetadataExtractor.withMetadata(EventMetadata(traceId = record.traceId, causationId = record.causationId)) {
+    handler.handle(event)
+}
+```
+
+The scope is thread-bound: enter the handler, and subscribe a `Mono` handler, inside the block.
+
 ---
 
 ### `@ManagedSchedule`

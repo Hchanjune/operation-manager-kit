@@ -238,4 +238,40 @@ class ManagedEventHandlerAspectMetadataTest {
         val result = extractMetadata(first, second)
         assertEquals("first", result.traceId)
     }
+
+    // ── Explicit metadata scope ───────────────────────────────────────────
+
+    @Test
+    fun `withMetadata supplies metadata for an event without trace fields`() {
+        val scoped = EventMetadata(traceId = "scoped-tid", causationId = "scoped-cid")
+        val result = EventMetadataExtractor.withMetadata(scoped) { extractMetadata(NoTraceFields()) }
+        assertEquals(scoped, result)
+    }
+
+    @Test
+    fun `withMetadata wins over the fields of the event`() {
+        val scoped = EventMetadata(traceId = "scoped-tid")
+        val result = EventMetadataExtractor.withMetadata(scoped) { extractMetadata(FullyAnnotatedEvent()) }
+        assertEquals("scoped-tid", result.traceId)
+    }
+
+    @Test
+    fun `withMetadata ends with its block, also when the block throws`() {
+        EventMetadataExtractor.withMetadata(EventMetadata(traceId = "scoped-tid")) { }
+        assertEquals(null, extractMetadata(NoTraceFields()).traceId)
+
+        runCatching {
+            EventMetadataExtractor.withMetadata(EventMetadata(traceId = "scoped-tid")) { error("boom") }
+        }
+        assertEquals(null, extractMetadata(NoTraceFields()).traceId)
+    }
+
+    @Test
+    fun `nested withMetadata restores the outer metadata`() {
+        val result = EventMetadataExtractor.withMetadata(EventMetadata(traceId = "outer")) {
+            EventMetadataExtractor.withMetadata(EventMetadata(traceId = "inner")) { }
+            extractMetadata(NoTraceFields())
+        }
+        assertEquals("outer", result.traceId)
+    }
 }

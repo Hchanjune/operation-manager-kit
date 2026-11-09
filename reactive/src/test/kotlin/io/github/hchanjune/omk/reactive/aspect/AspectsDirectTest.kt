@@ -1,5 +1,7 @@
 package io.github.hchanjune.omk.reactive.aspect
 
+import io.github.hchanjune.omk.core.event.EventMetadata
+import io.github.hchanjune.omk.core.event.EventMetadataExtractor
 import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.bridge.BridgedSpan
 import io.github.hchanjune.omk.core.bridge.BridgedTrace
@@ -966,5 +968,24 @@ class AspectsDirectTest {
         (aspect.aroundSchedule(jp, QUIET_SCHEDULE_ANN) as Mono<*>).block()
 
         assertEquals(1, bridge.ended.size)
+    }
+
+    @Test
+    fun `event handler aspect continues the trace given through withMetadata`() {
+        configureEventProviders()
+        var captured: ManagedContext? = null
+        ReactiveOperations.configureHook(object : io.github.hchanjune.omk.core.OperationHook {
+            override fun onSuccess(context: ManagedContext) { captured = context }
+        })
+        val aspect = ManagedEventHandlerAspect(spanIdProvider)
+        val jp = fakeJp(StubEventHolder::class.java, "handleEvent", returns = "done")
+
+        EventMetadataExtractor.withMetadata(EventMetadata(traceId = "inbox-trace", causationId = "inbox-cause")) {
+            aspect.aroundEventHandler(jp)
+        }
+
+        assertEquals("inbox-trace", captured?.traceId)
+        assertEquals("inbox-cause", captured?.causationId)
+        assertTrue(captured?.traceContinuedFromRemote == true)
     }
 }
