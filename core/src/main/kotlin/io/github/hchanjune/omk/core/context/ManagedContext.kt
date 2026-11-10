@@ -84,6 +84,20 @@ class ManagedContext(
     var entrypoint: String = ""
         private set
 
+    /**
+     * Reads the route template the web framework matched (e.g. `/api/v1/user/{accountId}`).
+     * Set by the HTTP entry filter; the route is only known after the filter has passed the request
+     * on, so it is resolved lazily when the controller span opens. Wiring detail.
+     *
+     * 웹 프레임워크가 매칭한 경로 템플릿을 읽는다. HTTP 진입 필터가 넣으며, 경로는 필터가 요청을 넘긴 뒤에야
+     * 정해지므로 컨트롤러 span 을 열 때 늦게 읽는다.
+     */
+    var httpRouteResolver: (() -> String?)? = null
+
+    /** The matched route template, or null when unknown. 매칭된 경로 템플릿, 모르면 null. */
+    fun httpRoute(): String? =
+        runCatching { httpRouteResolver?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() }
+
     var service: String = ""
         private set
 

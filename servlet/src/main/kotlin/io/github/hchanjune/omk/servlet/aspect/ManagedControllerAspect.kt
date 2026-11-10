@@ -31,7 +31,7 @@ class ManagedControllerAspect(
             context.injectEntryPoint(className)
         }
 
-        val span = SpanSupport.pushEntrySpan(context, className, methodName, spanIdProvider)
+        val span = SpanSupport.pushControllerSpan(context, className, methodName, spanIdProvider)
 
         return try {
             val result = joinPoint.proceed()

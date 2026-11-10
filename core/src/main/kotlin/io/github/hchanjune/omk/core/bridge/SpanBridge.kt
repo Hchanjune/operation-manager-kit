@@ -60,6 +60,15 @@ interface SpanBridge {
     fun releaseScope(handle: BridgedSpan) {}
 
     /**
+     * Sets an attribute on the live backend span only — it never becomes a metric tag. For values
+     * that are known only after the span started (e.g. the matched HTTP route).
+     *
+     * 백엔드 span 에만 속성을 단다 — 메트릭 태그가 되지 않는다. span 을 연 뒤에야 알 수 있는 값용
+     * (예: 매칭된 HTTP 경로).
+     */
+    fun setAttribute(handle: BridgedSpan, key: String, value: String) {}
+
+    /**
      * Ends a held-back backend span at the moment it really finished. The scope was already closed
      * through [releaseScope].
      *

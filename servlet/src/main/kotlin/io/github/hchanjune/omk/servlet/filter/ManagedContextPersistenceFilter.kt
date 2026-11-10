@@ -11,6 +11,7 @@ import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.servlet.Operations
 import jakarta.servlet.DispatcherType
 import jakarta.servlet.FilterChain
+import org.springframework.web.servlet.HandlerMapping
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpMethod
@@ -55,6 +56,8 @@ class ManagedContextPersistenceFilter(
                     method = request.method,
                 )
                 this.injectIp(resolveClientIp(request))
+                // Spring MVC sets the matched pattern once the handler is found — after this filter
+                this.httpRouteResolver = { request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE)?.toString() }
             }.also { context ->
                 context.runtime = runtime
                 request.setAttribute(KEY, context)

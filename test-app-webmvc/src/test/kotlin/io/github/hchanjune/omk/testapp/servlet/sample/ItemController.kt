@@ -20,13 +20,13 @@ class ItemController(private val itemService: ItemService) {
     fun getAll(): List<SampleItem> = itemService.getAll()
 
     @GetMapping("/{id}")
-    fun getById(@PathVariable id: Long): SampleItem = itemService.getById(id)
+    fun getById(@PathVariable("id") id: Long): SampleItem = itemService.getById(id)
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    fun create(@RequestParam name: String): SampleItem = itemService.create(name)
+    fun create(@RequestParam("name") name: String): SampleItem = itemService.create(name)
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun delete(@PathVariable id: Long) = itemService.delete(id)
+    fun delete(@PathVariable("id") id: Long) = itemService.delete(id)
 }

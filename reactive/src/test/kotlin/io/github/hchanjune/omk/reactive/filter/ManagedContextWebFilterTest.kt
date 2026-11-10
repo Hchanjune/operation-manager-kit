@@ -284,4 +284,21 @@ class ManagedContextWebFilterTest {
         runFilter(filter, exchange(), okChain())
         assertTrue(hook.successCalled)
     }
+
+    @Test
+    fun `route resolver reads the pattern WebFlux matched after the filter`() {
+        val ex = exchange(path = "/api/v1/user/123")
+        var route: String? = "unset"
+        runFilter(makeFilter(), ex, WebFilterChain { e ->
+            e.attributes[org.springframework.web.reactive.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE] =
+                org.springframework.web.util.pattern.PathPatternParser.defaultInstance.parse("/api/v1/user/{accountId}")
+            Mono.deferContextual { ctx ->
+                route = ctx.get<io.github.hchanjune.omk.core.context.ManagedContext>(
+                    io.github.hchanjune.omk.reactive.ReactiveOperations.CONTEXT_KEY
+                ).httpRoute()
+                Mono.empty<Void>()
+            }
+        })
+        assertEquals("/api/v1/user/{accountId}", route)
+    }
 }

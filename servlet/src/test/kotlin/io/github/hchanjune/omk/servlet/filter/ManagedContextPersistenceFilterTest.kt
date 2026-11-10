@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.servlet.filter
 
+import org.springframework.web.servlet.HandlerMapping
 import io.github.hchanjune.omk.core.OperationHook
 import io.github.hchanjune.omk.core.contants.OperationOutcome
 import io.github.hchanjune.omk.core.context.ManagedContext
@@ -254,5 +255,16 @@ class ManagedContextPersistenceFilterTest {
         val req = MockHttpServletRequest("POST", "/api/v1/auth/login/oauth/naver")
         makeFilter(hook = hook, excludeOptions = true).doFilter(req, MockHttpServletResponse(), MockFilterChain())
         assertTrue(hook.successCalled)
+    }
+
+    @Test
+    fun `route resolver reads the pattern Spring MVC matched after the filter`() {
+        val req = MockHttpServletRequest("GET", "/api/v1/user/123")
+        var route: String? = "unset"
+        makeFilter().doFilter(req, MockHttpServletResponse(), FilterChain { r, _ ->
+            r.setAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE, "/api/v1/user/{accountId}")
+            route = Operations.context.httpRoute()
+        })
+        assertEquals("/api/v1/user/{accountId}", route)
     }
 }

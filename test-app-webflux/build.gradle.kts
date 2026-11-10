@@ -14,6 +14,8 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-webflux")
     testImplementation("org.springframework.boot:spring-boot-starter-actuator")
     testImplementation("org.aspectj:aspectjweaver")
+    testImplementation("io.opentelemetry:opentelemetry-sdk")
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
 }
 

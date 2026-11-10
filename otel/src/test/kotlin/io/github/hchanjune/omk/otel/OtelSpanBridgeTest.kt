@@ -1,5 +1,6 @@
 package io.github.hchanjune.omk.otel
 
+import io.github.hchanjune.omk.core.metric.SpanSupport
 import io.github.hchanjune.omk.core.OperationRuntime
 import io.github.hchanjune.omk.core.context.ManagedContext
 import io.github.hchanjune.omk.core.metric.MetricDescriptor
@@ -333,5 +334,56 @@ class OtelSpanBridgeTest {
         root.end(); context.pop()
 
         assertEquals(SpanKind.SERVER, exporter.finishedSpanItems.single().kind)
+    }
+
+    // ── HTTP route on the controller span ─────────────────────────────────────
+
+    private fun httpContext(route: String?) = newContext(OtelSpanBridge(tracer, makeCurrent = false)).also {
+        it.injectTraceId("self-generated")
+        it.injectProtocol("HTTP")
+        it.injectHttpInfo(uri = "/api/v1/user/123", method = "GET")
+        it.httpRouteResolver = { route }
+    }
+
+    private fun exportedAttribute(key: String): String? =
+        exporter.finishedSpanItems.single().attributes.asMap().entries.firstOrNull { it.key.key == key }?.value?.toString()
+
+    @Test
+    fun `controller span carries the HTTP method and the matched route template`() {
+        val context = httpContext("/api/v1/user/{accountId}")
+        val span = SpanSupport.pushControllerSpan(context, "UserController", "get", omkIdProvider)
+        span.end(); context.pop()
+
+        assertEquals("GET", exportedAttribute("http.request.method"))
+        assertEquals("/api/v1/user/{accountId}", exportedAttribute("http.route"))
+    }
+
+    @Test
+    fun `route stays a trace attribute and never becomes an OMK metric tag`() {
+        val context = httpContext("/api/v1/user/{accountId}")
+        val span = SpanSupport.pushControllerSpan(context, "UserController", "get", omkIdProvider)
+        span.end(); context.pop()
+
+        assertEquals(setOf("entrypoint", "method"), span.tags.values.keys)
+    }
+
+    @Test
+    fun `unknown route leaves http_route out`() {
+        val context = httpContext(null)
+        val span = SpanSupport.pushControllerSpan(context, "UserController", "get", omkIdProvider)
+        span.end(); context.pop()
+
+        assertEquals(null, exportedAttribute("http.route"))
+        assertEquals("GET", exportedAttribute("http.request.method"))
+    }
+
+    @Test
+    fun `a failing route resolver does not break the span`() {
+        val context = httpContext(null).also { it.httpRouteResolver = { error("boom") } }
+        val span = SpanSupport.pushControllerSpan(context, "UserController", "get", omkIdProvider)
+        span.end(); context.pop()
+
+        assertEquals(1, exporter.finishedSpanItems.size)
+        assertEquals(null, exportedAttribute("http.route"))
     }
 }

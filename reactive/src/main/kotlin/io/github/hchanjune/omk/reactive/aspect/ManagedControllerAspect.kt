@@ -42,7 +42,7 @@ class ManagedControllerAspect(
         val ctx = getManagedContext(joinPoint) ?: return joinPoint.proceed()
 
         if (ctx.entrypoint != className) ctx.injectEntryPoint(className)
-        val span = SpanSupport.pushEntrySpan(ctx, className, methodName, spanIdProvider)
+        val span = SpanSupport.pushControllerSpan(ctx, className, methodName, spanIdProvider)
 
         // proceed() itself can throw synchronously (before any Mono even exists) — the span must
         // be pushed before this call so a sync throw here still ends/pops it and is recorded.
@@ -71,7 +71,7 @@ class ManagedControllerAspect(
             val ctx = getManagedContext(reactorCtx)
                 ?: return@transformDeferredContextual mono
             if (ctx.entrypoint != className) ctx.injectEntryPoint(className)
-            val span = SpanSupport.pushEntrySpan(ctx, className, methodName, spanIdProvider)
+            val span = SpanSupport.pushControllerSpan(ctx, className, methodName, spanIdProvider)
             mono.doOnSuccess { span.end(); ctx.pop() }
                 .doOnError { e -> span.end(e); ctx.pop(); ctx.recordException(e) }
                 .propagateBridgedContext(span)

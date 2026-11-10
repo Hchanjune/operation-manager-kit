@@ -91,6 +91,10 @@ class OtelSpanBridge(
         }
     }
 
+    override fun setAttribute(handle: BridgedSpan, key: String, value: String) {
+        (handle.nativeSpan as Span).setAttribute(key, value)
+    }
+
     override fun releaseScope(handle: BridgedSpan) {
         handle.nativeScope?.close()
     }

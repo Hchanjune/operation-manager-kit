@@ -13,6 +13,8 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-web")
     testImplementation("org.springframework.boot:spring-boot-starter-actuator")
     testImplementation("org.aspectj:aspectjweaver")
+    testImplementation("io.opentelemetry:opentelemetry-sdk")
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
 }
 
 tasks.test { useJUnitPlatform() }

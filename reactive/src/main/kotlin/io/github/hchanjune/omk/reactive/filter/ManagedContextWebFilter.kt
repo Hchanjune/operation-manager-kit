@@ -11,6 +11,7 @@ import io.github.hchanjune.omk.core.provider.TraceIdProvider
 import io.github.hchanjune.omk.reactive.ReactiveOperations
 import org.springframework.http.HttpMethod
 import org.springframework.http.server.reactive.ServerHttpRequest
+import org.springframework.web.reactive.HandlerMapping
 import org.springframework.web.server.ServerWebExchange
 import org.springframework.web.server.WebFilter
 import org.springframework.web.server.WebFilterChain
@@ -46,6 +47,8 @@ class ManagedContextWebFilter(
             injectProtocol("HTTP")
             injectType("API")
             injectHttpInfo(uri = request.uri.path, method = request.method.name())
+            // DispatcherHandler sets the matched pattern once the handler is found — after this filter
+            httpRouteResolver = { exchange.getAttribute<Any>(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE)?.toString() }
             runtime = operationRuntime
             if (operationRuntime?.defaultAsyncHookEnabled == true) enableAsyncHook()
         }

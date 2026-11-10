@@ -77,6 +77,23 @@ class MetricSpan(
      */
     val bridgedContext: Any? get() = bridgeHandle?.nativeContext
 
+    /**
+     * Adds [key]=[value] to the trace backend span only. Unlike [tags] it is not a metric
+     * dimension, so it may carry values that are fine in a trace but not as a Prometheus label.
+     * No effect without a bridge.
+     *
+     * trace 백엔드 span 에만 [key]=[value] 를 단다. [tags] 와 달리 메트릭 차원이 아니다.
+     * 브릿지가 없으면 아무 일도 하지 않는다.
+     */
+    fun setTraceAttribute(key: String, value: String) {
+        val handle = bridgeHandle ?: return
+        try {
+            bridge?.setAttribute(handle, key, value)
+        } catch (e: Throwable) {
+            log.warn("Span bridge failed to set attribute [{}] on span [{}]: {}", key, spanId, e.toString())
+        }
+    }
+
     fun addChild(child: MetricSpan) {
         check(child.parent == null) {
             "Span [${child.spanId}] already has a parent [${child.parent?.spanId}]"
