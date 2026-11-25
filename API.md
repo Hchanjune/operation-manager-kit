@@ -582,11 +582,21 @@ data class MetricOutcome(
 | Value             | Condition                                           |
 |-------------------|-----------------------------------------------------|
 | `SUCCESS`         | Normal completion                                   |
-| `FAILURE_CLIENT`  | `IllegalArgumentException`, `IllegalStateException` |
-| `FAILURE_SERVER`  | Other exceptions                                    |
-| `CANCELLED`       | `CancellationException`                             |
+| `FAILURE_CLIENT`  | `FaultAttributable` with `isClientFault = true`; otherwise `IllegalArgumentException`, `IllegalStateException` |
+| `FAILURE_SERVER`  | `FaultAttributable` with `isClientFault = false`; otherwise other exceptions |
+| `CANCELLED`       | `CancellationException` (checked first)             |
 | `PARTIAL_SUCCESS` | —                                                   |
 | `UNKNOWN`         | —                                                   |
+
+Order: `CancellationException` → `FaultAttributable` → type heuristic. Implement `FaultAttributable` on your
+application's base exception so that rule violations ("not found", "insufficient balance") are not counted as
+server failures:
+
+```kotlin
+abstract class PolicyException(val status: Int) : RuntimeException(), FaultAttributable {
+    override val isClientFault: Boolean get() = status in 400..499
+}
+```
 
 ---
 

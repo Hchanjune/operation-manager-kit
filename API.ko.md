@@ -577,11 +577,20 @@ data class MetricOutcome(
 | 값                 | 조건                                                  |
 |-------------------|-----------------------------------------------------|
 | `SUCCESS`         | 정상 완료                                               |
-| `FAILURE_CLIENT`  | `IllegalArgumentException`, `IllegalStateException` |
-| `FAILURE_SERVER`  | 그 외 예외                                              |
-| `CANCELLED`       | `CancellationException`                             |
+| `FAILURE_CLIENT`  | `FaultAttributable` 이고 `isClientFault = true`. 아니면 `IllegalArgumentException`, `IllegalStateException` |
+| `FAILURE_SERVER`  | `FaultAttributable` 이고 `isClientFault = false`. 아니면 그 외 예외 |
+| `CANCELLED`       | `CancellationException` (가장 먼저 판정)                  |
 | `PARTIAL_SUCCESS` | —                                                   |
 | `UNKNOWN`         | —                                                   |
+
+판정 순서: `CancellationException` → `FaultAttributable` → 타입 추측. 애플리케이션의 기반 예외에 `FaultAttributable` 을
+구현하면 규칙 위반("없음"·"잔액 부족")이 서버 실패로 집계되지 않습니다:
+
+```kotlin
+abstract class PolicyException(val status: Int) : RuntimeException(), FaultAttributable {
+    override val isClientFault: Boolean get() = status in 400..499
+}
+```
 
 ---
 
